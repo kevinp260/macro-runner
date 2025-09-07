@@ -44,6 +44,7 @@ ActionType = Literal["click", "wait", "key", "move"]
 class Action:
     kind: ActionType
     # Common
+    name: str = ""
     repeats: int = 1
 
     # Click
@@ -68,8 +69,8 @@ class MacroRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Macro Runner (Mouse/Keyboard Automator)")
-        self.geometry("980x590")
-        self.minsize(980, 590)
+        self.geometry("980x650")
+        self.minsize(980, 650)
 
         self.actions: List[Action] = []
         self.run_thread: Optional[threading.Thread] = None
@@ -144,12 +145,13 @@ class MacroRunnerApp(tk.Tk):
             btns.columnconfigure(i, weight=1)
 
         # Concise button labels (no shortcut text)
-        ttk.Button(btns, text="▲ Up", command=lambda: self.move_item(-1))      .grid(row=0, column=0, sticky="ew", padx=2)
-        ttk.Button(btns, text="▼ Down", command=lambda: self.move_item(1))     .grid(row=0, column=1, sticky="ew", padx=2)
-        ttk.Button(btns, text="Delete", command=self.delete_item)              .grid(row=0, column=2, sticky="ew", padx=2)
-        ttk.Button(btns, text="Duplicate", command=self.duplicate_item)        .grid(row=0, column=3, sticky="ew", padx=2)
-        ttk.Button(btns, text="Clear", command=self.clear_items)               .grid(row=0, column=4, sticky="ew", padx=2)
+        ttk.Button(btns, text="▲ Up", command=lambda: self.move_item(-1))       .grid(row=0, column=0, sticky="ew", padx=2)
+        ttk.Button(btns, text="▼ Down", command=lambda: self.move_item(1))      .grid(row=0, column=1, sticky="ew", padx=2)
+        ttk.Button(btns, text="Delete", command=self.delete_item)               .grid(row=0, column=2, sticky="ew", padx=2)
+        ttk.Button(btns, text="Duplicate", command=self.duplicate_item)         .grid(row=0, column=3, sticky="ew", padx=2)
+        ttk.Button(btns, text="Clear", command=self.clear_items)                .grid(row=0, column=4, sticky="ew", padx=2)
         ttk.Button(btns, text="Edit Repeat…", command=self.edit_repeat_selected).grid(row=0, column=5, sticky="ew", padx=2)
+        ttk.Button(btns, text="Edit Name…", command=self.edit_name_selected)    .grid(row=0, column=6, sticky="ew", padx=2)
 
         # Right: tabs
         right = ttk.Notebook(split)
@@ -215,7 +217,20 @@ class MacroRunnerApp(tk.Tk):
         self.crepeats = tk.IntVar(value=1)
         ttk.Entry(tab, width=8, textvariable=self.crepeats).grid(row=r, column=3, sticky="w", pady=4)
 
-        # Row 3: Add action button
+        # Row 3: Label (optional)  ← NEW
+        r += 1
+        ttk.Label(tab, text="Label (optional):").grid(row=r, column=0, sticky="e", padx=(0,6), pady=4)
+        self.cname = tk.StringVar(value="")
+        ttk.Entry(tab, width=24, textvariable=self.cname).grid(row=r, column=1, columnspan=3, sticky="w", pady=4)
+
+        # Row 4: Test + Add buttons  ← NEW
+        r += 1
+        ttk.Button(tab, text="Test Move", command=self.test_move_click_target)\
+            .grid(row=r, column=0, columnspan=2, sticky="ew", pady=(8, 12), padx=(0,6))
+        ttk.Button(tab, text="Add Click Action", command=self.add_click)\
+            .grid(row=r, column=2, columnspan=2, sticky="ew", pady=(8, 12))
+
+        # Row 5: Add action button
         r += 1
         ttk.Button(tab, text="Add Click Action", command=self.add_click).grid(row=r, column=0, columnspan=4, sticky="ew", pady=(8, 12))
 
@@ -277,8 +292,13 @@ class MacroRunnerApp(tk.Tk):
         ttk.Label(tab, text="Repeat (per-action):").grid(row=0, column=2, sticky="e", padx=(10,6), pady=4)
         self.wrepeats = tk.IntVar(value=1)
         ttk.Entry(tab, width=8, textvariable=self.wrepeats).grid(row=0, column=3, sticky="w", pady=4)
+        
+        ttk.Label(tab, text="Label (optional):").grid(row=1, column=0, sticky="e", padx=(0,6), pady=4)
+        self.wname = tk.StringVar(value="")
+        ttk.Entry(tab, width=24, textvariable=self.wname).grid(row=1, column=1, columnspan=3, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Wait Action", command=self.add_wait).grid(row=1, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Button(tab, text="Add Wait Action", command=self.add_wait)\
+            .grid(row=2, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     def _build_key_tab(self, nb: ttk.Notebook):
         tab = ttk.Frame(nb, padding=12)
@@ -301,7 +321,12 @@ class MacroRunnerApp(tk.Tk):
         self.kkeys = tk.StringVar(value="enter")
         ttk.Entry(tab, width=44, textvariable=self.kkeys).grid(row=2, column=0, columnspan=4, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Key Action", command=self.add_key).grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Label(tab, text="Label (optional):").grid(row=3, column=0, sticky="e", padx=(0,6), pady=4)
+        self.kname = tk.StringVar(value="")
+        ttk.Entry(tab, width=24, textvariable=self.kname).grid(row=3, column=1, columnspan=3, sticky="w", pady=4)
+
+        ttk.Button(tab, text="Add Key Action", command=self.add_key)\
+            .grid(row=4, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     def _build_move_tab(self, nb: ttk.Notebook):
         tab = ttk.Frame(nb, padding=12)
@@ -326,7 +351,12 @@ class MacroRunnerApp(tk.Tk):
         self.mrepeats = tk.IntVar(value=1)
         ttk.Entry(tab, width=8, textvariable=self.mrepeats).grid(row=1, column=3, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Move Action", command=self.add_move).grid(row=2, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Label(tab, text="Label (optional):").grid(row=2, column=0, sticky="e", padx=(0,6), pady=4)
+        self.mname = tk.StringVar(value="")
+        ttk.Entry(tab, width=24, textvariable=self.mname).grid(row=2, column=1, columnspan=3, sticky="w", pady=4)
+
+        ttk.Button(tab, text="Add Move Action", command=self.add_move)\
+            .grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     # ---------- Keyboard shortcuts ----------
     def _bind_shortcuts(self):
@@ -347,6 +377,7 @@ class MacroRunnerApp(tk.Tk):
         self.bind("<Control-o>", lambda e: self.load_sequence())
         # Recording
         self.bind("<Control-r>", self._toggle_recording)
+        self.bind("<F2>", lambda e: self.edit_name_selected())
 
         # Also bind Delete directly on the listbox
         self.lst.bind("<Delete>", self._shortcut_delete)
@@ -422,6 +453,7 @@ class MacroRunnerApp(tk.Tk):
     def add_click(self):
         a = Action(
             kind="click",
+            name=self.cname.get().strip(),
             repeats=max(1, int(self.crepeats.get())),
             x=int(self.cx.get()),
             y=int(self.cy.get()),
@@ -435,6 +467,7 @@ class MacroRunnerApp(tk.Tk):
     def add_wait(self):
         a = Action(
             kind="wait",
+            name=self.wname.get().strip(),
             repeats=max(1, int(self.wrepeats.get())),
             seconds=max(0.0, float(self.wseconds.get()))
         )
@@ -447,13 +480,17 @@ class MacroRunnerApp(tk.Tk):
         if not keys:
             messagebox.showerror("Invalid input", "Please enter a key name (e.g., 'enter') or text to type.")
             return
-        a = Action(kind="key", repeats=max(1, int(self.krepeats.get())), key_mode=mode, keys=keys)
+        a = Action(kind="key", 
+                   name=self.kname.get().strip(),
+                   repeats=max(1, int(self.krepeats.get())), 
+                   key_mode=mode, keys=keys)
         self.actions.append(a)
         self.refresh_list()
 
     def add_move(self):
         a = Action(
             kind="move",
+            name=self.mname.get().strip(),
             repeats=max(1, int(self.mrepeats.get())),
             x=int(self.mx.get()),
             y=int(self.my.get()),
@@ -470,16 +507,76 @@ class MacroRunnerApp(tk.Tk):
 
     def describe(self, a: Action) -> str:
         rep = f" ×{a.repeats}" if a.repeats > 1 else ""
+        label = f"[{a.name}] " if a.name.strip() else ""
         if a.kind == "click":
-            return f"Click({a.button}) @({a.x},{a.y}) clicks={a.clicks} interval={a.interval}s{rep}"
+            return f"{label}Click({a.button}) @({a.x},{a.y}) clicks={a.clicks} interval={a.interval}s{rep}"
         if a.kind == "wait":
-            return f"Wait {a.seconds}s{rep}"
+            return f"{label}Wait {a.seconds}s{rep}"
         if a.kind == "key":
             d = f'Type "{a.keys}"' if a.key_mode == "type" else f"Key press: {a.keys}"
-            return f"{d}{rep}"
+            return f"{label}{d}{rep}"
         if a.kind == "move":
-            return f"Move @({a.x},{a.y}) over {a.move_duration}s{rep}"
+            return f"{label}Move @({a.x},{a.y}) over {a.move_duration}s{rep}"
         return str(a)
+    
+    def edit_name_selected(self):
+        sel = self.lst.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        a = self.actions[idx]
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Edit Name")
+        dlg.grab_set()
+        ttk.Label(dlg, text="Label / Name:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
+        var = tk.StringVar(value=a.name)
+        ttk.Entry(dlg, width=32, textvariable=var).grid(row=0, column=1, padx=10, pady=10, sticky="w")
+
+        def ok():
+            a.name = var.get().strip()
+            self.refresh_list()
+            dlg.destroy()
+
+        ttk.Button(dlg, text="OK", command=ok).grid(row=1, column=0, columnspan=2, pady=(0, 10))
+
+    def test_move_click_target(self):
+        try:
+            x = int(self.cx.get())
+            y = int(self.cy.get())
+        except Exception:
+            messagebox.showerror("Invalid coordinates", "Please enter valid X and Y.")
+            return
+
+        # Small countdown overlay (reuse style from pick_position)
+        overlay = tk.Toplevel(self)
+        overlay.overrideredirect(True)
+        overlay.attributes("-topmost", True)
+        overlay.geometry(f"260x110+{self.winfo_rootx()+60}+{self.winfo_rooty()+60}")
+        frm = ttk.Frame(overlay, padding=12)
+        frm.pack(expand=True, fill="both")
+        lbl = ttk.Label(frm, text="Test move in 2…", font=("Segoe UI", 11))
+        lbl.pack(expand=True)
+
+        def go():
+            overlay.destroy()
+            try:
+                # Save current pos, move to target, wait, move back
+                curx, cury = pag.position()
+                pag.moveTo(x, y, duration=0.35)
+                time.sleep(0.6)
+                pag.moveTo(curx, cury, duration=0.35)
+            except Exception as e:
+                messagebox.showerror("Test failed", str(e))
+
+        # quick 2->1 countdown
+        def countdown(n=2):
+            if n == 0:
+                self.after(50, go)
+                return
+            lbl.config(text=f"Test move in {n}…")
+            self.after(1000, lambda: countdown(n-1))
+        countdown()
 
     def move_item(self, delta: int):
         sel = self.lst.curselection()
