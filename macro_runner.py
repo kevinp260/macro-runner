@@ -69,8 +69,8 @@ class MacroRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Macro Runner (Mouse/Keyboard Automator)")
-        self.geometry("980x650")
-        self.minsize(980, 650)
+        self.geometry("850x580")
+        self.minsize(850, 580)
 
         self.actions: List[Action] = []
         self.run_thread: Optional[threading.Thread] = None
@@ -88,6 +88,8 @@ class MacroRunnerApp(tk.Tk):
         self.columnconfigure(0, weight=1)
         # rows: 0=top bar, 1=main split, 2=status bar
         self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=0)
+        self.rowconfigure(3, weight=0)
 
         # Top: Run controls
         top = ttk.Frame(self, padding=(12, 10))
@@ -123,9 +125,10 @@ class MacroRunnerApp(tk.Tk):
         # Main split
         split = ttk.Frame(self, padding=(12, 10))
         split.grid(row=1, column=0, sticky="nsew")
-        split.columnconfigure(0, weight=3)
-        split.columnconfigure(1, weight=2)
+        split.columnconfigure(0, weight=1)
+        split.columnconfigure(1, weight=0)
         split.rowconfigure(0, weight=1)
+        split.rowconfigure(1, weight=0)
 
         # Left: listbox + list controls
         left = ttk.Frame(split)
@@ -139,32 +142,41 @@ class MacroRunnerApp(tk.Tk):
         self.lst.grid(row=1, column=0, sticky="nsew")
         self.lst.bind("<<ListboxSelect>>", self.on_select)
 
-        btns = ttk.Frame(left)
-        btns.grid(row=2, column=0, sticky="ew", pady=(8, 0))
-        for i in range(6):
-            btns.columnconfigure(i, weight=1)
-
-        # Concise button labels (no shortcut text)
-        ttk.Button(btns, text="▲ Up", command=lambda: self.move_item(-1))       .grid(row=0, column=0, sticky="ew", padx=2)
-        ttk.Button(btns, text="▼ Down", command=lambda: self.move_item(1))      .grid(row=0, column=1, sticky="ew", padx=2)
-        ttk.Button(btns, text="Delete", command=self.delete_item)               .grid(row=0, column=2, sticky="ew", padx=2)
-        ttk.Button(btns, text="Duplicate", command=self.duplicate_item)         .grid(row=0, column=3, sticky="ew", padx=2)
-        ttk.Button(btns, text="Clear", command=self.clear_items)                .grid(row=0, column=4, sticky="ew", padx=2)
-        ttk.Button(btns, text="Edit Repeat…", command=self.edit_repeat_selected).grid(row=0, column=5, sticky="ew", padx=2)
-        ttk.Button(btns, text="Edit Name…", command=self.edit_name_selected)    .grid(row=0, column=6, sticky="ew", padx=2)
-
         # Right: tabs
         right = ttk.Notebook(split)
-        right.grid(row=0, column=1, sticky="nsew")
+        right.grid(row=0, column=1, sticky="ns")
 
         self._build_click_tab(right)  # includes Recording (moved here)
         self._build_wait_tab(right)
         self._build_key_tab(right)
         self._build_move_tab(right)
 
+        # Bottom: action bar (fixed-width buttons, spans full window)
+        bottom = ttk.Frame(self, padding=(12, 8))
+        bottom.grid(row=2, column=0, sticky="ew")
+
+        btns = ttk.Frame(bottom)
+        btns.grid(row=0, column=0, sticky="ew")
+
+        # columns 0..6 = buttons, 7 = spacer to absorb extra width
+        for i in range(7):
+            btns.columnconfigure(i, weight=0)
+        btns.columnconfigure(7, weight=1)
+
+        BW = 14  # fixed width in text units
+        ttk.Button(btns, text="▲ Up",         width=BW, command=lambda: self.move_item(-1)).grid(row=0, column=0, padx=2, sticky="w")
+        ttk.Button(btns, text="▼ Down",       width=BW, command=lambda: self.move_item(1)).grid(row=0, column=1, padx=2, sticky="w")
+        ttk.Button(btns, text="Delete",       width=BW, command=self.delete_item).grid(row=0, column=2, padx=2, sticky="w")
+        ttk.Button(btns, text="Duplicate",    width=BW, command=self.duplicate_item).grid(row=0, column=3, padx=2, sticky="w")
+        ttk.Button(btns, text="Clear",        width=BW, command=self.clear_items).grid(row=0, column=4, padx=2, sticky="w")
+        ttk.Button(btns, text="Edit Repeat…", width=BW, command=self.edit_repeat_selected).grid(row=0, column=5, padx=2, sticky="w")
+        ttk.Button(btns, text="Edit Name…",   width=BW, command=self.edit_name_selected).grid(row=0, column=6, padx=2, sticky="w")
+        # spacer at col 7
+        ttk.Label(btns, text="").grid(row=0, column=7, sticky="ew")
+
         # Status bar (shortcuts + safety tip)
         status = ttk.Frame(self, padding=(12, 6))
-        status.grid(row=2, column=0, sticky="ew")
+        status.grid(row=3, column=0, sticky="ew")
         status.columnconfigure(0, weight=1)
         IS_MAC = sys.platform == "darwin"
         def acc(s: str) -> str:
@@ -176,6 +188,12 @@ class MacroRunnerApp(tk.Tk):
 
         # Bind keyboard shortcuts last (widgets exist now)
         self._bind_shortcuts()
+
+        def _lock_right_width():
+            right.update_idletasks()
+            split.columnconfigure(1, minsize=right.winfo_reqwidth())
+
+        self.after(0, _lock_right_width)
 
     # ---------- Tabs ----------
     def _build_click_tab(self, nb: ttk.Notebook):
@@ -229,10 +247,6 @@ class MacroRunnerApp(tk.Tk):
             .grid(row=r, column=0, columnspan=2, sticky="ew", pady=(8, 12), padx=(0,6))
         ttk.Button(tab, text="Add Click Action", command=self.add_click)\
             .grid(row=r, column=2, columnspan=2, sticky="ew", pady=(8, 12))
-
-        # Row 5: Add action button
-        r += 1
-        ttk.Button(tab, text="Add Click Action", command=self.add_click).grid(row=r, column=0, columnspan=4, sticky="ew", pady=(8, 12))
 
         # Separator
         r += 1
