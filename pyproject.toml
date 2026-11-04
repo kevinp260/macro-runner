@@ -13,4 +13,4 @@ dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9"]
 macro-runner = "macro_runner:main"
 
 [tool.setuptools]
-py-modules = ["macro_runner", "macro_model"]
+py-modules = ["macro_runner", "macro_model", "macro_playback"]

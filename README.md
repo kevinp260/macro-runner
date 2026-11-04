@@ -108,6 +108,56 @@ On Windows, the existing PyInstaller/Inno Setup installer remains unchanged.
 
 ---
 
+## Build, install and manual QA
+
+Use [the manual QA checklist](docs/manual-tests.md) to verify all changes after PRs 1–3.
+
+### Ubuntu (Xorg/X11)
+
+First install one-time prerequisites:
+
+```bash
+sudo apt update
+sudo apt install make python3-venv python3-tk python3-dev pipx
+pipx ensurepath
+```
+
+From the repository folder:
+
+```bash
+make install       # pipx installation + application launcher; no build required
+make setup         # optional development environment
+make test          # unit tests (requires make setup)
+make run           # run development version
+make build         # optional standalone executable: dist/MacroRunner
+make uninstall     # uninstall after QA is finished
+```
+
+Use `make help` to see the commands. Override variables if needed, e.g. `make setup PYTHON=python3.12 VENV=.venv312`.
+
+Use **an Xorg/X11 session** for actual input control; `echo $XDG_SESSION_TYPE` can confirm it. Wayland sessions may prevent automation.
+
+### Windows (PowerShell)
+
+GNU Make is not installed by default on Windows, so the native one-time commands are simpler:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e . pyinstaller
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean MacroRunner.spec
+```
+
+Launch `dist\MacroRunner.exe` to test the standalone build. To create the installable Windows setup, first install **Inno Setup 6**, then run:
+
+```powershell
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" .\installer.iss
+Start-Process .\Output\MacroRunner-Setup-1.5.5.exe
+```
+
+Check `installer.iss` for the installer version if it has changed. Install/test on the same OS type used for the build; PyInstaller does not cross-compile.
+
+---
 ## Project Setup (Dev)
 
 ```bash

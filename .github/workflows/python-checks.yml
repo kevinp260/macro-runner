@@ -16,6 +16,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile Python sources
-        run: python -m compileall -q macro_runner.py macro_model.py
+        run: python -m compileall -q macro_runner.py macro_model.py macro_playback.py
+      - name: Verify built wheel includes all runtime modules
+        run: |
+          python -m pip wheel --no-deps --wheel-dir wheelhouse .
+          python -c "from pathlib import Path; import zipfile; w=next(Path('wheelhouse').glob('*.whl')); names=set(zipfile.ZipFile(w).namelist()); assert {'macro_runner.py', 'macro_model.py', 'macro_playback.py'} <= names"
       - name: Run pure-model tests
         run: python -m unittest discover -s tests -v
