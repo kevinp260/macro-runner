@@ -45,7 +45,9 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 
 ## Features
 
-- ✅ **Actions**: Click / Wait / Key (press or type) / Move
+- ✅ **Actions**: Click / Wait / Key (press or type) / Move / Scroll / Drag
+- ✅ **Pause / Resume** (button or F6), execution progress and active-action selection
+- ✅ **Scroll** and **Drag** actions
 - ✅ **Per‑action repeat counters**
 - ✅ **Whole‑sequence Repeat count** (top bar)
 - ✅ **Recording (mouse clicks)** inside Click tab
@@ -238,6 +240,7 @@ _single_instance_mutex()
 
 - **Run** — `F5`
 - **Stop** — `Esc`
+- **Pause / Resume** — `F6`
 - **Delete selected** — `Del`
 - **Duplicate selected** — `Ctrl+Shift+D` (`⌘⇧D` on macOS)
 - **Move selected** — `Ctrl+↑ / Ctrl+↓`
@@ -276,6 +279,22 @@ Captured actions are appended to the list; you can reorder, duplicate, or delete
 7. To abort at any time, move mouse to **top‑left corner**.
 
 ---
+
+## Playback controls
+
+Run a sequence with **F5**, pause/resume with **F6**, and stop with **Esc**.
+The progress label shows the current loop and executed action step, and the
+active action is selected in the list. Pause works between actions and during
+Wait/start-delay; an in-progress operating-system mouse drag or move cannot be
+interrupted midway. Stop remains available while paused.
+
+The **Scroll** tab adds mouse wheel steps (positive = up, negative = down).
+The **Drag** tab moves from a starting coordinate to an end coordinate while
+holding a selected mouse button. Both types can be edited by double-clicking
+them and are saved in the existing version-2 JSON format.
+
+Keyboard-event recording has intentionally been deferred: it requires a
+separate permission and input-safety review, and was not necessary for PR 3.
 
 ## Edit and manage actions
 

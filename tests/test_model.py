@@ -60,6 +60,21 @@ class ActionTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 parse_document(bad)
 
+    def test_new_action_types(self):
+        actions = [
+            Action(kind="scroll", scroll_amount=-4, repeats=2),
+            Action(kind="drag", x=10, y=20, to_x=80, to_y=90,
+                   move_duration=0.5, button="left"),
+        ]
+        restored, _ = parse_document(serialize_document(actions, 3, 1.0))
+        self.assertEqual(restored, actions)
+        for bad in ({"kind": "scroll", "scroll_amount": 0},
+                    {"kind": "scroll", "scroll_amount": 1.5},
+                    {"kind": "drag", "x": 1, "y": 1, "to_x": None, "to_y": 5},
+                    {"kind": "drag", "x": 1, "y": 1, "to_x": 2, "to_y": 5, "move_duration": -1}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate_action(bad)
+
     def test_invalid_document(self):
         for data in ({}, [None], [{"kind": "wait", "repeats": 0}]):
             with self.subTest(data=data), self.assertRaises(ValueError):
