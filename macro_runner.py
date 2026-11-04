@@ -3,8 +3,11 @@ import time
 import json
 import os
 import ctypes, sys
-from dataclasses import dataclass, asdict
-from typing import List, Literal, Optional
+import queue
+from dataclasses import asdict
+from typing import List, Optional
+
+from macro_model import Action, parse_sequence, validate_action
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -23,7 +26,8 @@ def _single_instance_mutex():
         except Exception:
             pass
         sys.exit(0)
-_single_instance_mutex()
+if sys.platform == "win32":
+    _single_instance_mutex()
 
 
 def resource_path(rel):
@@ -38,33 +42,6 @@ def resource_path(rel):
 pag.PAUSE = 0.05
 pag.FAILSAFE = True  # move mouse to top-left corner to abort
 
-ActionType = Literal["click", "wait", "key", "move"]
-
-@dataclass
-class Action:
-    kind: ActionType
-    # Common
-    name: str = ""
-    repeats: int = 1
-
-    # Click
-    x: Optional[int] = None
-    y: Optional[int] = None
-    button: str = "left"
-    clicks: int = 1
-    interval: float = 0.0
-
-    # Wait
-    seconds: float = 1.0
-
-    # Key / Type
-    key_mode: str = "press"  # "press" or "type"
-    keys: str = "enter"
-
-    # Move
-    move_duration: float = 0.2
-
-
 class MacroRunnerApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -75,6 +52,15 @@ class MacroRunnerApp(tk.Tk):
         self.actions: List[Action] = []
         self.run_thread: Optional[threading.Thread] = None
         self.stop_flag = threading.Event()
+        self.events = queue.Queue()
+        self._run_active = False
+        self.editor_buttons = []
+        self._record_pending = False
+        self._record_after_id = None
+        self._record_token = 0
+        self._record_min_wait = 0.3
+        self._record_repeats = 1
+        self._record_insert_waits = True
 
         # Recording state
         self.is_recording = False
@@ -82,6 +68,8 @@ class MacroRunnerApp(tk.Tk):
         self.last_record_ts: Optional[float] = None
 
         self._build_ui()
+        self.after(50, self._drain_events)
+        self.protocol("WM_DELETE_WINDOW", self._close)
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -164,13 +152,13 @@ class MacroRunnerApp(tk.Tk):
         btns.columnconfigure(7, weight=1)
 
         BW = 14  # fixed width in text units
-        ttk.Button(btns, text="▲ Up",         width=BW, command=lambda: self.move_item(-1)).grid(row=0, column=0, padx=2, sticky="w")
-        ttk.Button(btns, text="▼ Down",       width=BW, command=lambda: self.move_item(1)).grid(row=0, column=1, padx=2, sticky="w")
-        ttk.Button(btns, text="Delete",       width=BW, command=self.delete_item).grid(row=0, column=2, padx=2, sticky="w")
-        ttk.Button(btns, text="Duplicate",    width=BW, command=self.duplicate_item).grid(row=0, column=3, padx=2, sticky="w")
-        ttk.Button(btns, text="Clear",        width=BW, command=self.clear_items).grid(row=0, column=4, padx=2, sticky="w")
-        ttk.Button(btns, text="Edit Repeat…", width=BW, command=self.edit_repeat_selected).grid(row=0, column=5, padx=2, sticky="w")
-        ttk.Button(btns, text="Edit Name…",   width=BW, command=self.edit_name_selected).grid(row=0, column=6, padx=2, sticky="w")
+        self._editor_button(btns, text="▲ Up",         width=BW, command=lambda: self.move_item(-1)).grid(row=0, column=0, padx=2, sticky="w")
+        self._editor_button(btns, text="▼ Down",       width=BW, command=lambda: self.move_item(1)).grid(row=0, column=1, padx=2, sticky="w")
+        self._editor_button(btns, text="Delete",       width=BW, command=self.delete_item).grid(row=0, column=2, padx=2, sticky="w")
+        self._editor_button(btns, text="Duplicate",    width=BW, command=self.duplicate_item).grid(row=0, column=3, padx=2, sticky="w")
+        self._editor_button(btns, text="Clear",        width=BW, command=self.clear_items).grid(row=0, column=4, padx=2, sticky="w")
+        self._editor_button(btns, text="Edit Repeat…", width=BW, command=self.edit_repeat_selected).grid(row=0, column=5, padx=2, sticky="w")
+        self._editor_button(btns, text="Edit Name…",   width=BW, command=self.edit_name_selected).grid(row=0, column=6, padx=2, sticky="w")
         # spacer at col 7
         ttk.Label(btns, text="").grid(row=0, column=7, sticky="ew")
 
@@ -194,6 +182,52 @@ class MacroRunnerApp(tk.Tk):
             split.columnconfigure(1, minsize=right.winfo_reqwidth())
 
         self.after(0, _lock_right_width)
+
+    def _editor_button(self, parent, **kwargs):
+        button = ttk.Button(parent, **kwargs)
+        self.editor_buttons.append(button)
+        return button
+
+    def _set_editing_enabled(self, enabled):
+        state = "normal" if enabled else "disabled"
+        for button in self.editor_buttons:
+            button.config(state=state)
+
+    def _editing_locked(self):
+        return self._run_active or self.is_recording or self._record_pending
+
+    def _drain_events(self):
+        try:
+            while True:
+                event = self.events.get_nowait()
+                kind = event[0]
+                if kind == "click":
+                    _, x, y, button, timestamp, token = event
+                    if self.is_recording and token == self._record_token:
+                        self._handle_recorded_click(x, y, button, timestamp)
+                elif kind == "countdown":
+                    self.btn_run.config(text=event[1])
+                elif kind == "finished":
+                    _, status, message = event
+                    self._run_active = False
+                    self.btn_run.config(state="normal", text="Run")
+                    self.btn_stop.config(state="disabled")
+                    self.btn_rec.config(state="normal")
+                    self.btn_rec_stop.config(state="disabled")
+                    self._set_editing_enabled(True)
+                    if status == "done":
+                        messagebox.showinfo("Done", message)
+                    else:
+                        messagebox.showwarning("Aborted", message)
+        except queue.Empty:
+            pass
+        if self.winfo_exists():
+            self.after(50, self._drain_events)
+
+    def _close(self):
+        self.stop_flag.set()
+        self.stop_recording()
+        self.destroy()
 
     # ---------- Tabs ----------
     def _build_click_tab(self, nb: ttk.Notebook):
@@ -245,7 +279,7 @@ class MacroRunnerApp(tk.Tk):
         r += 1
         ttk.Button(tab, text="Test Move", command=self.test_move_click_target)\
             .grid(row=r, column=0, columnspan=2, sticky="ew", pady=(8, 12), padx=(0,6))
-        ttk.Button(tab, text="Add Click Action", command=self.add_click)\
+        self._editor_button(tab, text="Add Click Action", command=self.add_click)\
             .grid(row=r, column=2, columnspan=2, sticky="ew", pady=(8, 12))
 
         # Separator
@@ -311,7 +345,7 @@ class MacroRunnerApp(tk.Tk):
         self.wname = tk.StringVar(value="")
         ttk.Entry(tab, width=24, textvariable=self.wname).grid(row=1, column=1, columnspan=3, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Wait Action", command=self.add_wait)\
+        self._editor_button(tab, text="Add Wait Action", command=self.add_wait)\
             .grid(row=2, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     def _build_key_tab(self, nb: ttk.Notebook):
@@ -339,7 +373,7 @@ class MacroRunnerApp(tk.Tk):
         self.kname = tk.StringVar(value="")
         ttk.Entry(tab, width=24, textvariable=self.kname).grid(row=3, column=1, columnspan=3, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Key Action", command=self.add_key)\
+        self._editor_button(tab, text="Add Key Action", command=self.add_key)\
             .grid(row=4, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     def _build_move_tab(self, nb: ttk.Notebook):
@@ -369,7 +403,7 @@ class MacroRunnerApp(tk.Tk):
         self.mname = tk.StringVar(value="")
         ttk.Entry(tab, width=24, textvariable=self.mname).grid(row=2, column=1, columnspan=3, sticky="w", pady=4)
 
-        ttk.Button(tab, text="Add Move Action", command=self.add_move)\
+        self._editor_button(tab, text="Add Move Action", command=self.add_move)\
             .grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
     # ---------- Keyboard shortcuts ----------
@@ -465,7 +499,10 @@ class MacroRunnerApp(tk.Tk):
 
     # ---------- Action add helpers ----------
     def add_click(self):
-        a = Action(
+        if self._editing_locked():
+            return
+        try:
+            a = Action(
             kind="click",
             name=self.cname.get().strip(),
             repeats=max(1, int(self.crepeats.get())),
@@ -474,43 +511,61 @@ class MacroRunnerApp(tk.Tk):
             button=self.cbutton.get(),
             clicks=max(1, int(self.cclicks.get())),
             interval=max(0.0, float(self.cinterval.get()))
-        )
-        self.actions.append(a)
-        self.refresh_list()
+            )
+            self._append_validated(a)
+        except (ValueError, tk.TclError, TypeError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
 
     def add_wait(self):
-        a = Action(
+        if self._editing_locked():
+            return
+        try:
+            a = Action(
             kind="wait",
             name=self.wname.get().strip(),
             repeats=max(1, int(self.wrepeats.get())),
             seconds=max(0.0, float(self.wseconds.get()))
-        )
-        self.actions.append(a)
-        self.refresh_list()
+            )
+            self._append_validated(a)
+        except (ValueError, tk.TclError, TypeError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
 
     def add_key(self):
-        mode = self.kmode.get()
-        keys = self.kkeys.get().strip()
-        if not keys:
-            messagebox.showerror("Invalid input", "Please enter a key name (e.g., 'enter') or text to type.")
+        if self._editing_locked():
             return
-        a = Action(kind="key", 
+        try:
+            mode = self.kmode.get()
+            keys = self.kkeys.get().strip()
+            if not keys:
+                messagebox.showerror("Invalid input", "Please enter a key name (e.g., 'enter') or text to type.")
+                return
+            a = Action(kind="key", 
                    name=self.kname.get().strip(),
                    repeats=max(1, int(self.krepeats.get())), 
                    key_mode=mode, keys=keys)
-        self.actions.append(a)
-        self.refresh_list()
+            self._append_validated(a)
+        except (ValueError, tk.TclError, TypeError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
 
     def add_move(self):
-        a = Action(
+        if self._editing_locked():
+            return
+        try:
+            a = Action(
             kind="move",
             name=self.mname.get().strip(),
             repeats=max(1, int(self.mrepeats.get())),
             x=int(self.mx.get()),
             y=int(self.my.get()),
             move_duration=max(0.0, float(self.mdur.get()))
-        )
-        self.actions.append(a)
+            )
+            self._append_validated(a)
+        except (ValueError, tk.TclError, TypeError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
+
+    def _append_validated(self, action):
+        action = validate_action(asdict(action))
+        self.actions.append(action)
         self.refresh_list()
 
     # ---------- List management ----------
@@ -534,6 +589,8 @@ class MacroRunnerApp(tk.Tk):
         return str(a)
     
     def edit_name_selected(self):
+        if self._editing_locked():
+            return
         sel = self.lst.curselection()
         if not sel:
             return
@@ -548,6 +605,9 @@ class MacroRunnerApp(tk.Tk):
         ttk.Entry(dlg, width=32, textvariable=var).grid(row=0, column=1, padx=10, pady=10, sticky="w")
 
         def ok():
+            if self._editing_locked():
+                dlg.destroy()
+                return
             a.name = var.get().strip()
             self.refresh_list()
             dlg.destroy()
@@ -593,6 +653,8 @@ class MacroRunnerApp(tk.Tk):
         countdown()
 
     def move_item(self, delta: int):
+        if self._editing_locked():
+            return
         sel = self.lst.curselection()
         if not sel:
             return
@@ -605,6 +667,8 @@ class MacroRunnerApp(tk.Tk):
         self.lst.selection_set(new)
 
     def delete_item(self):
+        if self._editing_locked():
+            return
         sel = self.lst.curselection()
         if not sel:
             return
@@ -612,6 +676,8 @@ class MacroRunnerApp(tk.Tk):
         self.refresh_list()
 
     def duplicate_item(self):
+        if self._editing_locked():
+            return
         sel = self.lst.curselection()
         if not sel:
             return
@@ -621,11 +687,15 @@ class MacroRunnerApp(tk.Tk):
         self.lst.selection_set(idx + 1)
 
     def clear_items(self):
+        if self._editing_locked():
+            return
         if messagebox.askyesno("Confirm", "Clear all actions?"):
             self.actions.clear()
             self.refresh_list()
 
     def edit_repeat_selected(self):
+        if self._editing_locked():
+            return
         sel = self.lst.curselection()
         if not sel:
             return
@@ -639,6 +709,9 @@ class MacroRunnerApp(tk.Tk):
         var = tk.IntVar(value=a.repeats)
         ttk.Entry(dlg, width=8, textvariable=var).grid(row=0, column=1, padx=10, pady=10)
         def ok():
+            if self._editing_locked():
+                dlg.destroy()
+                return
             try:
                 a.repeats = max(1, int(var.get()))
                 self.refresh_list()
@@ -690,6 +763,8 @@ class MacroRunnerApp(tk.Tk):
         messagebox.showinfo("Saved", f"Saved to {path}")
 
     def load_sequence(self):
+        if self._editing_locked():
+            return
         path = filedialog.askopenfilename(
             filetypes=[("JSON", "*.json")],
             title="Load Sequence"
@@ -699,81 +774,96 @@ class MacroRunnerApp(tk.Tk):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            self.actions = [Action(**item) for item in data]
+            loaded = parse_sequence(data)
+            self.actions = loaded
             self.refresh_list()
         except Exception as e:
             messagebox.showerror("Load failed", f"Could not load file:\n{e}")
 
     # ---------- Recording ----------
     def start_recording(self):
-        if self.is_running():
-            messagebox.showwarning("Busy", "Stop the running sequence before recording.")
+        if self._run_active or self.is_recording or self._record_pending:
             return
-        if self.is_recording:
+        try:
+            min_wait = float(self.rec_min_wait_var.get())
+            repeats = int(self.rec_repeats_var.get())
+            if not 0 <= min_wait < float("inf") or repeats < 1:
+                raise ValueError("Recording wait must be nonnegative and repeats must be positive.")
+        except (ValueError, tk.TclError) as exc:
+            messagebox.showerror("Invalid recording settings", str(exc))
             return
 
-        # 3-second countdown
-        self.rec_status.config(text="Recording starts in 3…")
+        self._record_min_wait = min_wait
+        self._record_repeats = repeats
+        self._record_insert_waits = bool(self.rec_insert_waits_var.get())
+        self._record_token += 1
+        token = self._record_token
+        self._record_pending = True
+        self._set_editing_enabled(False)
         self.btn_rec.config(state="disabled")
-        self.btn_rec_stop.config(state="disabled")
+        self.btn_rec_stop.config(state="normal")
 
-        def start_after_countdown(n=3):
-            if n == 0:
+        def countdown(n=3):
+            if not self._record_pending or token != self._record_token:
+                return
+            if n <= 0:
+                self._record_after_id = None
                 self._begin_mouse_listener()
                 return
             self.rec_status.config(text=f"Recording starts in {n}…")
-            self.after(1000, lambda: start_after_countdown(n - 1))
-
-        start_after_countdown(3)
+            self._record_after_id = self.after(1000, lambda: countdown(n - 1))
+        countdown()
 
     def _begin_mouse_listener(self):
+        if not self._record_pending:
+            return
+        self._record_pending = False
         self.is_recording = True
         self.last_record_ts = None
         self.rec_status.config(text="Recording…")
-        self.btn_rec_stop.config(state="normal")
+        token = self._record_token
 
         def on_click(x, y, button, pressed):
-            if not self.is_recording:
-                return False  # stop listener
             if not pressed:
-                return  # only on press
+                return
+            bname = str(button).split(".")[-1].lower()
+            self.events.put(("click", int(x), int(y), bname, time.monotonic(), token))
 
-            # Insert wait (gap since last)
-            now = time.time()
-            if self.rec_insert_waits_var.get() and self.last_record_ts is not None:
-                gap = now - self.last_record_ts
-                if gap >= float(self.rec_min_wait_var.get()):
-                    self._append_action_threadsafe(Action(kind="wait", seconds=round(gap, 3), repeats=1))
-            self.last_record_ts = now
+        try:
+            self.mouse_listener = mouse.Listener(on_click=on_click)
+            self.mouse_listener.start()
+        except Exception as exc:
+            self.stop_recording()
+            messagebox.showerror("Recording unavailable", str(exc))
 
-            # Map button
-            bname = "left"
-            try:
-                bname = str(button).split(".")[-1].lower()
-            except Exception:
-                pass
-
-            # Recorded per-action repeats
-            rep = max(1, int(self.rec_repeats_var.get()))
-            a = Action(kind="click", x=int(x), y=int(y), button=bname, clicks=1, interval=0.0, repeats=rep)
-            self._append_action_threadsafe(a)
-
-        self.mouse_listener = mouse.Listener(on_click=on_click)
-        self.mouse_listener.start()
-
-    def _append_action_threadsafe(self, action: Action):
-        def _do():
-            self.actions.append(action)
-            self.refresh_list()
-            self.lst.selection_clear(0, tk.END)
-            self.lst.selection_set(tk.END)
-            self.lst.see(tk.END)
-        self.after(0, _do)
+    def _handle_recorded_click(self, x, y, button, timestamp):
+        # Ignore interaction with the MacroRunner window.
+        if (self.winfo_rootx() <= x < self.winfo_rootx() + self.winfo_width()
+                and self.winfo_rooty() <= y < self.winfo_rooty() + self.winfo_height()):
+            return
+        if button not in ("left", "right", "middle"):
+            return
+        if self._record_insert_waits and self.last_record_ts is not None:
+            gap = timestamp - self.last_record_ts
+            if gap >= self._record_min_wait:
+                self.actions.append(Action(kind="wait", seconds=round(gap, 3)))
+        self.last_record_ts = timestamp
+        self.actions.append(Action(kind="click", x=x, y=y, button=button,
+                                   repeats=self._record_repeats))
+        self.refresh_list()
+        self.lst.selection_clear(0, tk.END)
+        self.lst.selection_set(tk.END)
+        self.lst.see(tk.END)
 
     def stop_recording(self):
-        if not self.is_recording:
+        if not self.is_recording and not self._record_pending:
             return
         self.is_recording = False
+        self._record_pending = False
+        self._record_token += 1
+        if self._record_after_id is not None:
+            self.after_cancel(self._record_after_id)
+            self._record_after_id = None
         if self.mouse_listener is not None:
             try:
                 self.mouse_listener.stop()
@@ -783,92 +873,88 @@ class MacroRunnerApp(tk.Tk):
         self.rec_status.config(text="Ready")
         self.btn_rec.config(state="normal")
         self.btn_rec_stop.config(state="disabled")
+        self._set_editing_enabled(True)
 
     # ---------- Running ----------
     def is_running(self) -> bool:
-        return bool(self.run_thread and self.run_thread.is_alive())
+        return self._run_active
 
     def request_stop(self):
         self.stop_flag.set()
 
     def start_run(self):
-        if self.is_recording:
+        if self.is_recording or self._record_pending:
             messagebox.showwarning("Recording active", "Stop recording before running.")
+            return
+        if self._run_active:
             return
         if not self.actions:
             messagebox.showerror("No actions", "Add at least one action.")
             return
         try:
-            repeats = max(1, int(self.repeat_var.get()))
-            start_delay = max(0.0, float(self.start_delay_var.get()))
-        except Exception:
-            messagebox.showerror("Invalid settings", "Repeat count and start delay must be numbers.")
-            return
-        if self.is_running():
-            messagebox.showwarning("Already running", "Wait for the current run to finish or press Stop.")
+            repeats = int(self.repeat_var.get())
+            start_delay = float(self.start_delay_var.get())
+            if repeats < 1 or not 0 <= start_delay < float("inf"):
+                raise ValueError("Repeat count must be positive and delay nonnegative.")
+            snapshot = [validate_action(asdict(a)) for a in self.actions]
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid settings", str(exc))
             return
 
         self.stop_flag.clear()
+        self._run_active = True
         self.btn_run.config(state="disabled")
         self.btn_stop.config(state="normal")
-        # recording buttons live in Click tab; disable Start during run
-        try:
-            self.btn_rec.config(state="disabled")
-            self.btn_rec_stop.config(state="disabled")
-        except Exception:
-            pass
-
-        self.run_thread = threading.Thread(target=self._run_sequence, args=(repeats, start_delay), daemon=True)
+        self.btn_rec.config(state="disabled")
+        self.btn_rec_stop.config(state="disabled")
+        self._set_editing_enabled(False)
+        self.run_thread = threading.Thread(
+            target=self._run_sequence, args=(snapshot, repeats, start_delay), daemon=True
+        )
         self.run_thread.start()
 
-    def _run_sequence(self, repeats: int, start_delay: float):
+    def _wait_or_stop(self, duration):
+        if self.stop_flag.wait(duration):
+            raise RuntimeError("Stopped")
+
+    def _run_sequence(self, actions, repeats, start_delay):
         try:
-            if start_delay > 0:
-                for i in range(int(start_delay), 0, -1):
-                    self.btn_run.config(text=f"Starting in {i}…")
-                    time.sleep(1)
-                    if self.stop_flag.is_set():
-                        raise RuntimeError("Stopped")
-                leftover = start_delay - int(start_delay)
-                if leftover > 0:
-                    time.sleep(leftover)
-                self.btn_run.config(text="Run")
+            remaining = start_delay
+            while remaining > 0:
+                self.events.put(("countdown", f"Starting in {remaining:.1f}s…"))
+                step = min(0.2, remaining)
+                self._wait_or_stop(step)
+                remaining -= step
+            self.events.put(("countdown", "Run"))
 
             for _ in range(repeats):
-                if self.stop_flag.is_set():
-                    raise RuntimeError("Stopped")
-                for a in self.actions:
-                    if self.stop_flag.is_set():
-                        raise RuntimeError("Stopped")
-                    for __ in range(max(1, int(a.repeats))):
-                        self._execute_action(a)
-                time.sleep(0.001)
-
-            messagebox.showinfo("Done", f"Finished {repeats} loop(s).")
-        except Exception as e:
-            msg = "Stopped." if str(e).lower().startswith("stopped") else f"Stopped: {e}"
-            messagebox.showwarning("Aborted", msg)
-        finally:
-            self.btn_run.config(state="normal", text="Run")
-            self.btn_stop.config(state="disabled")
-            try:
-                self.btn_rec.config(state="normal")
-                self.btn_rec_stop.config(state="disabled")
-            except Exception:
-                pass
+                for action in actions:
+                    for __ in range(action.repeats):
+                        self._wait_or_stop(0)
+                        self._execute_action(action)
+            self.events.put(("finished", "done", f"Finished {repeats} loop(s)."))
+        except Exception as exc:
+            msg = "Stopped." if str(exc) == "Stopped" else f"Stopped: {exc}"
+            self.events.put(("finished", "aborted", msg))
 
     def _execute_action(self, a: Action):
         if a.kind == "click":
             if a.x is not None and a.y is not None:
                 pag.moveTo(a.x, a.y, duration=0)
-            pag.click(clicks=a.clicks, interval=a.interval, button=a.button)
+            for index in range(a.clicks):
+                self._wait_or_stop(0)
+                pag.click(button=a.button)
+                if index + 1 < a.clicks:
+                    self._wait_or_stop(a.interval)
 
         elif a.kind == "wait":
-            time.sleep(max(0.0, a.seconds))
+            self._wait_or_stop(a.seconds)
 
         elif a.kind == "key":
             if a.key_mode == "type":
-                pag.typewrite(a.keys)
+                for character in a.keys:
+                    self._wait_or_stop(0)
+                    pag.write(character)
             else:
                 combo = [k.strip() for k in a.keys.split("+") if k.strip()]
                 if len(combo) == 1:
@@ -881,7 +967,7 @@ class MacroRunnerApp(tk.Tk):
                 pag.moveTo(a.x, a.y, duration=max(0.0, a.move_duration))
 
 
-if __name__ == "__main__":
+def main():
     app = MacroRunnerApp()
     try:
         app.iconbitmap(resource_path("macro_runner_icon.ico"))
@@ -891,3 +977,7 @@ if __name__ == "__main__":
         # app.iconphoto(True, PhotoImage(file=resource_path("macro_runner_icon.png")))
         pass
     app.mainloop()
+
+
+if __name__ == "__main__":
+    main()

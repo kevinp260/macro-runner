@@ -81,6 +81,29 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 
 ---
 
+## Ubuntu installation (X11 / Xorg)
+
+MacroRunner now supports Python installation on Ubuntu. **Use an X11/Xorg desktop
+session**, not Wayland, for reliable PyAutoGUI/Pynput input automation.
+On the Ubuntu login screen choose the gear icon and select *Ubuntu on Xorg*
+when available. Do not run MacroRunner as root.
+
+Install prerequisites:
+
+```bash
+sudo apt update
+sudo apt install python3-tk python3-dev pipx
+pipx ensurepath
+```
+
+From the cloned project folder run `bash install-ubuntu.sh`. The script installs
+the app with `pipx` and adds a user-level launcher (MacroRunner) to your app menu.
+Alternatively run `pipx install .` and `~/.local/bin/macro-runner` directly.
+
+On Windows, the existing PyInstaller/Inno Setup installer remains unchanged.
+
+---
+
 ## Project Setup (Dev)
 
 ```bash
