@@ -8,6 +8,7 @@ from dataclasses import asdict
 from typing import List, Optional
 
 from macro_model import Action, parse_document, serialize_document, validate_action
+from macro_playback import PlaybackGate, progress_total
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -52,6 +53,9 @@ class MacroRunnerApp(tk.Tk):
         self.actions: List[Action] = []
         self.run_thread: Optional[threading.Thread] = None
         self.stop_flag = threading.Event()
+        self.playback = PlaybackGate(self.stop_flag)
+        self._progress_index = None
+        self._progress_total = 0
         self.events = queue.Queue()
         self._run_active = False
         self.editor_buttons = []
@@ -97,11 +101,13 @@ class MacroRunnerApp(tk.Tk):
         self.btn_run = ttk.Button(top, text="Run", command=self.start_run)
         self.btn_run.grid(row=0, column=4, padx=4)
 
+        self.btn_pause = ttk.Button(top, text="Pause", command=self.toggle_pause, state="disabled")
+        self.btn_pause.grid(row=0, column=5, padx=4)
         self.btn_stop = ttk.Button(top, text="Stop", command=self.request_stop, state="disabled")
-        self.btn_stop.grid(row=0, column=5, padx=4)
+        self.btn_stop.grid(row=0, column=6, padx=4)
 
-        ttk.Button(top, text="Save", command=self.save_sequence).grid(row=0, column=6, padx=4)
-        ttk.Button(top, text="Load", command=self.load_sequence).grid(row=0, column=7, padx=4)
+        ttk.Button(top, text="Save", command=self.save_sequence).grid(row=0, column=7, padx=4)
+        ttk.Button(top, text="Load", command=self.load_sequence).grid(row=0, column=8, padx=4)
 
         # Menu (for shortcuts help)
         menubar = tk.Menu(self)
@@ -152,6 +158,8 @@ class MacroRunnerApp(tk.Tk):
         self._build_wait_tab(right)
         self._build_key_tab(right)
         self._build_move_tab(right)
+        self._build_scroll_tab(right)
+        self._build_drag_tab(right)
 
         # Bottom: action bar (fixed-width buttons, spans full window)
         bottom = ttk.Frame(self, padding=(12, 8))
@@ -183,6 +191,9 @@ class MacroRunnerApp(tk.Tk):
         IS_MAC = sys.platform == "darwin"
         def acc(s: str) -> str:
             return s.replace("Ctrl", "⌘").replace("Alt", "⌥").replace("Shift", "⇧") if IS_MAC else s
+
+        self.progress_var = tk.StringVar(value="Ready")
+        ttk.Label(status, textvariable=self.progress_var).grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # shortcuts_text = f"Shortcuts: F5 Run, Esc Stop, Del Delete, {acc('Ctrl+Shift+D')} Duplicate, {acc('Ctrl+↑/↓')} Move, {acc('Ctrl+E')} Edit Repeat, {acc('Ctrl+S')} Save, {acc('Ctrl+O')} Load, {acc('Ctrl+R')} Record"
         # ttk.Label(status, text=shortcuts_text, foreground="#666").grid(row=0, column=0, sticky="w")
@@ -220,12 +231,23 @@ class MacroRunnerApp(tk.Tk):
                     if self.is_recording and token == self._record_token:
                         self._handle_recorded_click(x, y, button, timestamp)
                 elif kind == "countdown":
-                    self.btn_run.config(text=event[1])
+                    self.progress_var.set(event[1])
+                elif kind == "progress":
+                    _, loop, loops, idx, step, total = event
+                    self._progress_index = idx
+                    self.progress_var.set(f"Loop {loop}/{loops} · Step {step}/{total}")
+                    self.lst.selection_clear(0, tk.END)
+                    self.lst.selection_set(idx)
+                    self.lst.activate(idx)
+                    self.lst.see(idx)
                 elif kind == "finished":
                     _, status, message = event
                     self._run_active = False
                     self.btn_run.config(state="normal", text="Run")
                     self.btn_stop.config(state="disabled")
+                    self.btn_pause.config(state="disabled", text="Pause")
+                    self._progress_index = None
+                    self.progress_var.set("Ready" if status == "done" else message)
                     self.btn_rec.config(state="normal")
                     self.btn_rec_stop.config(state="disabled")
                     self._set_editing_enabled(True)
@@ -420,6 +442,76 @@ class MacroRunnerApp(tk.Tk):
         self._editor_button(tab, text="Add Move Action", command=self.add_move)\
             .grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
 
+    def _build_scroll_tab(self, nb):
+        tab = ttk.Frame(nb, padding=12)
+        nb.add(tab, text="Scroll")
+        self.scroll_amount = tk.StringVar(value="-3")
+        self.scroll_repeats = tk.StringVar(value="1")
+        self.scroll_name = tk.StringVar(value="")
+        for row, (label, var) in enumerate((
+            ("Scroll steps (+up / -down):", self.scroll_amount),
+            ("Repeat (per-action):", self.scroll_repeats),
+            ("Label (optional):", self.scroll_name),
+        )):
+            ttk.Label(tab, text=label).grid(row=row, column=0, sticky="w", pady=5)
+            ttk.Entry(tab, width=23, textvariable=var).grid(row=row, column=1, sticky="w", pady=5, padx=8)
+        self._editor_button(tab, text="Add Scroll Action", command=self.add_scroll).grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0)
+        )
+
+    def _build_drag_tab(self, nb):
+        tab = ttk.Frame(nb, padding=12)
+        nb.add(tab, text="Drag")
+        self.drag_vars = {
+            "x": tk.StringVar(value="0"), "y": tk.StringVar(value="0"),
+            "to_x": tk.StringVar(value="100"), "to_y": tk.StringVar(value="100"),
+            "move_duration": tk.StringVar(value="0.5"),
+            "button": tk.StringVar(value="left"),
+            "repeats": tk.StringVar(value="1"), "name": tk.StringVar(value=""),
+        }
+        fields = [
+            ("Start X", "x"), ("Start Y", "y"), ("End X", "to_x"),
+            ("End Y", "to_y"), ("Duration (s)", "move_duration"),
+            ("Mouse button", "button"), ("Repeat", "repeats"), ("Label", "name")
+        ]
+        for i, (label, key) in enumerate(fields):
+            ttk.Label(tab, text=label + ":").grid(row=i, column=0, sticky="w", pady=2)
+            if key == "button":
+                control = ttk.Combobox(tab, width=22, state="readonly",
+                                       textvariable=self.drag_vars[key],
+                                       values=("left", "right", "middle"))
+            else:
+                control = ttk.Entry(tab, width=24, textvariable=self.drag_vars[key])
+            control.grid(row=i, column=1, sticky="w", padx=8, pady=2)
+        self._editor_button(tab, text="Add Drag Action", command=self.add_drag).grid(
+            row=len(fields), column=0, columnspan=2, sticky="ew", pady=(8, 0)
+        )
+
+    def add_scroll(self):
+        if self._editing_locked():
+            return
+        try:
+            self._append_validated(Action(kind="scroll", name=self.scroll_name.get().strip(),
+                                          repeats=int(self.scroll_repeats.get()),
+                                          scroll_amount=int(self.scroll_amount.get())))
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
+
+    def add_drag(self):
+        if self._editing_locked():
+            return
+        try:
+            vars = self.drag_vars
+            self._append_validated(Action(
+                kind="drag", x=int(vars["x"].get()), y=int(vars["y"].get()),
+                to_x=int(vars["to_x"].get()), to_y=int(vars["to_y"].get()),
+                move_duration=float(vars["move_duration"].get()),
+                button=vars["button"].get(), repeats=int(vars["repeats"].get()),
+                name=vars["name"].get().strip()
+            ))
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid action", str(exc))
+
     # ---------- Keyboard shortcuts ----------
     def _bind_shortcuts(self):
         # List editing
@@ -434,6 +526,7 @@ class MacroRunnerApp(tk.Tk):
         # Run/Stop
         self.bind("<F5>", lambda e: self.start_run())
         self.bind("<Escape>", lambda e: self.request_stop())
+        self.bind("<F6>", lambda e: self.toggle_pause())
         # Files
         self.bind("<Control-s>", lambda e: self.save_sequence())
         self.bind("<Control-o>", lambda e: self.load_sequence())
@@ -498,6 +591,7 @@ class MacroRunnerApp(tk.Tk):
         rows = [
             ("Run", "F5"),
             ("Stop", "Esc"),
+            ("Pause / Resume", "F6"),
             ("Delete selected", "Del"),
             ("Duplicate selected", acc("Ctrl+Shift+D")),
             ("Move selected", acc("Ctrl+↑ / Ctrl+↓")),
@@ -584,9 +678,12 @@ class MacroRunnerApp(tk.Tk):
 
     # ---------- List management ----------
     def refresh_list(self):
+        selection = self.lst.curselection()
         self.lst.delete(0, tk.END)
         for i, a in enumerate(self.actions):
             self.lst.insert(tk.END, f"{i+1}. {self.describe(a)}")
+        if selection and selection[0] < len(self.actions):
+            self.lst.selection_set(selection[0])
 
     def _select_action(self, index):
         self.lst.selection_clear(0, tk.END)
@@ -612,6 +709,10 @@ class MacroRunnerApp(tk.Tk):
             return f"{label}{d}{rep}"
         if a.kind == "move":
             return f"{label}Move @({a.x},{a.y}) over {a.move_duration}s{rep}"
+        if a.kind == "scroll":
+            return f"{label}Scroll {a.scroll_amount} steps{rep}"
+        if a.kind == "drag":
+            return f"{label}Drag ({a.x},{a.y}) → ({a.to_x},{a.to_y}) in {a.move_duration}s{rep}"
         return str(a)
     
     def _double_click_action(self, event):
@@ -662,7 +763,7 @@ class MacroRunnerApp(tk.Tk):
 
         ttk.Label(form, text="Action type:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Combobox(form, width=25, textvariable=kind_var,
-                     values=("click", "wait", "key", "move"),
+                     values=("click", "wait", "key", "move", "scroll", "drag"),
                      state="readonly").grid(row=0, column=1, sticky="ew", pady=4)
 
         ttk.Label(form, text="Name:").grid(row=1, column=0, sticky="w", pady=4)
@@ -685,13 +786,18 @@ class MacroRunnerApp(tk.Tk):
             "key": (("key_mode", "Mode", str), ("keys", "Key / Text", str)),
             "move": (("x", "X coordinate", int), ("y", "Y coordinate", int),
                      ("move_duration", "Duration (seconds)", float)),
+            "scroll": (("scroll_amount", "Scroll steps (+up/-down)", int),),
+            "drag": (("x", "Start X", int), ("y", "Start Y", int),
+                     ("to_x", "End X", int), ("to_y", "End Y", int),
+                     ("move_duration", "Duration (seconds)", float),
+                     ("button", "Mouse button", str)),
         }
         fields = {}
         for kind_fields in field_specs.values():
             for key, _, _ in kind_fields:
                 if key not in fields:
                     value = getattr(original, key)
-                    if value is None and key in ("x", "y"):
+                    if value is None and key in ("x", "y", "to_x", "to_y"):
                         value = 0
                     fields[key] = tk.StringVar(value=str(value))
 
@@ -1055,7 +1161,18 @@ class MacroRunnerApp(tk.Tk):
         return self._run_active
 
     def request_stop(self):
-        self.stop_flag.set()
+        self.playback.stop()
+
+    def toggle_pause(self):
+        if not self._run_active or self.stop_flag.is_set():
+            return
+        if self.playback.paused:
+            self.playback.resume()
+            self.btn_pause.config(text="Pause")
+        else:
+            self.playback.pause()
+            self.btn_pause.config(text="Resume")
+            self.progress_var.set("Paused")
 
     def start_run(self):
         if self.is_recording or self._record_pending:
@@ -1079,10 +1196,13 @@ class MacroRunnerApp(tk.Tk):
             messagebox.showerror("Invalid settings", str(exc))
             return
 
-        self.stop_flag.clear()
+        self.playback.reset()
+        self._progress_total = progress_total(snapshot, repeats)
         self._run_active = True
         self.btn_run.config(state="disabled")
         self.btn_stop.config(state="normal")
+        self.btn_pause.config(state="normal", text="Pause")
+        self.progress_var.set("Starting…")
         self.btn_rec.config(state="disabled")
         self.btn_rec_stop.config(state="disabled")
         self._set_editing_enabled(False)
@@ -1092,8 +1212,7 @@ class MacroRunnerApp(tk.Tk):
         self.run_thread.start()
 
     def _wait_or_stop(self, duration):
-        if self.stop_flag.wait(duration):
-            raise RuntimeError("Stopped")
+        self.playback.wait(duration)
 
     def _run_sequence(self, actions, repeats, start_delay):
         try:
@@ -1105,12 +1224,16 @@ class MacroRunnerApp(tk.Tk):
                 remaining -= step
             self.events.put(("countdown", "Run"))
 
-            for _ in range(repeats):
-                for action in actions:
+            total = self._progress_total
+            step = 0
+            for loop in range(repeats):
+                for idx, action in enumerate(actions):
                     if not action.enabled:
                         continue
                     for __ in range(action.repeats):
                         self._wait_or_stop(0)
+                        step += 1
+                        self.events.put(("progress", loop + 1, repeats, idx, step, total))
                         self._execute_action(action)
             self.events.put(("finished", "done", f"Finished {repeats} loop(s)."))
         except Exception as exc:
@@ -1145,6 +1268,16 @@ class MacroRunnerApp(tk.Tk):
         elif a.kind == "move":
             if a.x is not None and a.y is not None:
                 pag.moveTo(a.x, a.y, duration=max(0.0, a.move_duration))
+
+        elif a.kind == "scroll":
+            self._wait_or_stop(0)
+            pag.scroll(a.scroll_amount)
+
+        elif a.kind == "drag":
+            self._wait_or_stop(0)
+            pag.moveTo(a.x, a.y, duration=0)
+            # PyAutoGUI can finish a native drag before another pause/stop check.
+            pag.dragTo(a.to_x, a.to_y, duration=a.move_duration, button=a.button)
 
 
 def main():

@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag"]
 
 @dataclass
 class Action:
@@ -20,6 +20,9 @@ class Action:
     key_mode: str = "press"
     keys: str = "enter"
     move_duration: float = 0.2
+    to_x: Optional[int] = None
+    to_y: Optional[int] = None
+    scroll_amount: int = -3
 
 
 def _finite_nonnegative(value, field):
@@ -43,17 +46,29 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
     _positive_int(action.repeats, "Action repeats")
     if not isinstance(action.enabled, bool):
         raise ValueError("Enabled must be true or false.")
-    if action.kind in ("click", "move"):
+    if action.kind in ("click", "move", "drag"):
         for field, value in (("x", action.x), ("y", action.y)):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{field} must be an integer.")
+    if action.kind == "drag":
+        for field, value in (("to_x", action.to_x), ("to_y", action.to_y)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{field} must be an integer.")
+        _finite_nonnegative(action.move_duration, "Drag duration")
+        if action.button not in ("left", "right", "middle"):
+            raise ValueError("Invalid drag button.")
+    if action.kind == "scroll":
+        if isinstance(action.scroll_amount, bool) or not isinstance(action.scroll_amount, int):
+            raise ValueError("Scroll steps must be an integer.")
+        if action.scroll_amount == 0:
+            raise ValueError("Scroll steps cannot be zero.")
     if action.kind == "click":
         if action.button not in ("left", "right", "middle"):
             raise ValueError("Invalid mouse button.")
