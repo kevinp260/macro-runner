@@ -7,8 +7,8 @@ import queue
 from dataclasses import asdict
 from typing import List, Optional
 
-from macro_model import Action, parse_document, serialize_document, validate_action
-from macro_playback import PlaybackGate, progress_total
+from macro_model import Action, loop_spans, parse_document, serialize_document, validate_action
+from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -160,6 +160,7 @@ class MacroRunnerApp(tk.Tk):
         self._build_move_tab(right)
         self._build_scroll_tab(right)
         self._build_drag_tab(right)
+        self._build_loop_tab(right)
 
         # Bottom: action bar (fixed-width buttons, spans full window)
         bottom = ttk.Frame(self, padding=(12, 8))
@@ -512,6 +513,59 @@ class MacroRunnerApp(tk.Tk):
         except (ValueError, TypeError, tk.TclError) as exc:
             messagebox.showerror("Invalid action", str(exc))
 
+    def _build_loop_tab(self, nb):
+        tab = ttk.Frame(nb, padding=12)
+        nb.add(tab, text="Loop")
+        self.loop_repeats_var = tk.StringVar(value="5")
+        self.loop_name_var = tk.StringVar(value="")
+
+        ttk.Label(tab, text="Repeat block (cycles):").grid(
+            row=0, column=0, sticky="w", pady=5
+        )
+        ttk.Entry(tab, width=10, textvariable=self.loop_repeats_var).grid(
+            row=0, column=1, sticky="w", padx=8, pady=5
+        )
+        ttk.Label(tab, text="Label (optional):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Entry(tab, width=20, textvariable=self.loop_name_var).grid(
+            row=1, column=1, sticky="w", padx=8, pady=5
+        )
+        ttk.Label(
+            tab, text="Select the first action inside the block, then insert Start.\n"
+                      "Select the last action inside the block, then insert End.\n"
+                      "No selection: insert the marker at the end.",
+            justify="left"
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 8))
+        self._editor_button(tab, text="Insert Loop Start", command=self.add_loop_start).grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=4
+        )
+        self._editor_button(tab, text="Insert Loop End", command=self.add_loop_end).grid(
+            row=4, column=0, columnspan=2, sticky="ew", pady=4
+        )
+
+    def _insert_loop_marker(self, action, before_selected):
+        selected = self.lst.curselection()
+        index = selected[0] + (0 if before_selected else 1) if selected else len(self.actions)
+        self.actions.insert(index, validate_action(asdict(action)))
+        self.refresh_list()
+        self._select_action(index)
+
+    def add_loop_start(self):
+        if self._editing_locked():
+            return
+        try:
+            repeats = int(self.loop_repeats_var.get())
+            self._insert_loop_marker(
+                Action(kind="loop_start", name=self.loop_name_var.get().strip(),
+                       repeats=repeats), before_selected=True
+            )
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid loop", str(exc))
+
+    def add_loop_end(self):
+        if self._editing_locked():
+            return
+        self._insert_loop_marker(Action(kind="loop_end"), before_selected=False)
+
     # ---------- Keyboard shortcuts ----------
     def _bind_shortcuts(self):
         # List editing
@@ -680,8 +734,14 @@ class MacroRunnerApp(tk.Tk):
     def refresh_list(self):
         selection = self.lst.curselection()
         self.lst.delete(0, tk.END)
+        inside_block = False
         for i, a in enumerate(self.actions):
-            self.lst.insert(tk.END, f"{i+1}. {self.describe(a)}")
+            prefix = "    ↳ " if inside_block and a.kind != "loop_end" else ""
+            self.lst.insert(tk.END, f"{i+1}. {prefix}{self.describe(a)}")
+            if a.kind == "loop_start":
+                inside_block = True
+            elif a.kind == "loop_end":
+                inside_block = False
         if selection and selection[0] < len(self.actions):
             self.lst.selection_set(selection[0])
 
@@ -713,6 +773,10 @@ class MacroRunnerApp(tk.Tk):
             return f"{label}Scroll {a.scroll_amount} steps{rep}"
         if a.kind == "drag":
             return f"{label}Drag ({a.x},{a.y}) → ({a.to_x},{a.to_y}) in {a.move_duration}s{rep}"
+        if a.kind == "loop_start":
+            return f"{label}┌ Repeat block ×{a.repeats}"
+        if a.kind == "loop_end":
+            return f"{label}└ End block"
         return str(a)
     
     def _double_click_action(self, event):
@@ -733,6 +797,9 @@ class MacroRunnerApp(tk.Tk):
             return
         index = selected[0]
         action = self.actions[index]
+        if action.kind in ("loop_start", "loop_end"):
+            messagebox.showinfo("Loop marker", "Loop markers cannot be disabled. Disable actions inside the loop instead.")
+            return
         action.enabled = not action.enabled
         self.refresh_list()
         self._select_action(index)
@@ -763,7 +830,7 @@ class MacroRunnerApp(tk.Tk):
 
         ttk.Label(form, text="Action type:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Combobox(form, width=25, textvariable=kind_var,
-                     values=("click", "wait", "key", "move", "scroll", "drag"),
+                     values=("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"),
                      state="readonly").grid(row=0, column=1, sticky="ew", pady=4)
 
         ttk.Label(form, text="Name:").grid(row=1, column=0, sticky="w", pady=4)
@@ -771,11 +838,11 @@ class MacroRunnerApp(tk.Tk):
         name_entry.grid(row=1, column=1, sticky="ew", pady=4)
 
         ttk.Label(form, text="Repeat:").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=repeat_var).grid(row=2, column=1, sticky="ew", pady=4)
+        repeat_entry = ttk.Entry(form, textvariable=repeat_var)
+        repeat_entry.grid(row=2, column=1, sticky="ew", pady=4)
 
-        ttk.Checkbutton(form, text="Enabled", variable=enabled_var).grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=(4, 8)
-        )
+        enabled_check = ttk.Checkbutton(form, text="Enabled", variable=enabled_var)
+        enabled_check.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4, 8))
 
         # Each kind shows only its relevant fields. Values are kept when switching tabs.
         field_specs = {
@@ -791,6 +858,8 @@ class MacroRunnerApp(tk.Tk):
                      ("to_x", "End X", int), ("to_y", "End Y", int),
                      ("move_duration", "Duration (seconds)", float),
                      ("button", "Mouse button", str)),
+            "loop_start": (),
+            "loop_end": (),
         }
         fields = {}
         for kind_fields in field_specs.values():
@@ -806,6 +875,13 @@ class MacroRunnerApp(tk.Tk):
         details.columnconfigure(1, weight=1)
 
         def rebuild_fields(*_):
+            marker = kind_var.get() in ("loop_start", "loop_end")
+            repeat_entry.configure(state="disabled" if kind_var.get() == "loop_end" else "normal")
+            if kind_var.get() == "loop_end":
+                repeat_var.set("1")
+            enabled_check.configure(state="disabled" if marker else "normal")
+            if marker:
+                enabled_var.set(True)
             for child in details.winfo_children():
                 child.destroy()
             for row, (field, label, _) in enumerate(field_specs[kind_var.get()]):
@@ -948,6 +1024,9 @@ class MacroRunnerApp(tk.Tk):
         if not sel:
             return
         idx = sel[0]
+        if self.actions[idx].kind in ("loop_start", "loop_end"):
+            messagebox.showinfo("Duplicate loop", "Duplicate the actions inside the block, then add a separate Loop Start and Loop End.")
+            return
         self.actions.insert(idx + 1, Action(**asdict(self.actions[idx])))
         self.refresh_list()
         self.lst.selection_set(idx + 1)
@@ -967,6 +1046,9 @@ class MacroRunnerApp(tk.Tk):
             return
         idx = sel[0]
         a = self.actions[idx]
+        if a.kind == "loop_end":
+            messagebox.showinfo("Loop End", "Edit the repeat count on Loop Start instead.")
+            return
 
         dlg = tk.Toplevel(self)
         dlg.title("Edit Repeat")
@@ -1192,6 +1274,7 @@ class MacroRunnerApp(tk.Tk):
             if repeats < 1 or not 0 <= start_delay < float("inf"):
                 raise ValueError("Repeat count must be positive and delay nonnegative.")
             snapshot = [validate_action(asdict(a)) for a in self.actions]
+            loop_spans(snapshot)
         except (ValueError, TypeError, tk.TclError) as exc:
             messagebox.showerror("Invalid settings", str(exc))
             return
@@ -1227,14 +1310,11 @@ class MacroRunnerApp(tk.Tk):
             total = self._progress_total
             step = 0
             for loop in range(repeats):
-                for idx, action in enumerate(actions):
-                    if not action.enabled:
-                        continue
-                    for __ in range(action.repeats):
-                        self._wait_or_stop(0)
-                        step += 1
-                        self.events.put(("progress", loop + 1, repeats, idx, step, total))
-                        self._execute_action(action)
+                for idx, action in iter_execution_steps(actions):
+                    self._wait_or_stop(0)
+                    step += 1
+                    self.events.put(("progress", loop + 1, repeats, idx, step, total))
+                    self._execute_action(action)
             self.events.put(("finished", "done", f"Finished {repeats} loop(s)."))
         except Exception as exc:
             msg = "Stopped." if str(exc) == "Stopped" else f"Stopped: {exc}"

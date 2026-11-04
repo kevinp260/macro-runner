@@ -48,6 +48,7 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 - ✅ **Actions**: Click / Wait / Key (press or type) / Move / Scroll / Drag
 - ✅ **Pause / Resume** (button or F6), execution progress and active-action selection
 - ✅ **Scroll** and **Drag** actions
+- ✅ **Repeat Blocks** (Loop Start / Loop End) with independent cycle count
 - ✅ **Per‑action repeat counters**
 - ✅ **Whole‑sequence Repeat count** (top bar)
 - ✅ **Recording (mouse clicks)** inside Click tab
@@ -345,6 +346,40 @@ them and are saved in the existing version-2 JSON format.
 
 Keyboard-event recording has intentionally been deferred: it requires a
 separate permission and input-safety review, and was not necessary for PR 3.
+
+## Repeat Blocks (subloops)
+
+Use **Loop** tab to repeat a group of consecutive actions. For example:
+
+```text
+Action A
+Action B
+Loop Start (5 cycles)
+    Action C
+    Action D
+Loop End
+Action E
+```
+
+This executes A, B, then C/D five times, then E. If the whole-sequence
+repeat count is 3, the entire operation runs three times. Individual
+action repeat counts also work inside blocks.
+
+To place markers around **existing** actions, select C and choose
+**Insert Loop Start** (inserts before C); then select D and choose
+**Insert Loop End** (inserts after D). With no action selected,
+markers append to the end of the list. Rename Loop Start and edit its
+cycle count by double-clicking it.
+
+Only **one level of subloop** is supported. Loop markers must be
+paired, with at least one action between them; nested, incomplete and
+empty loops are rejected when running, saving or loading. Loop markers
+cannot be disabled or duplicated separately. Normal actions inside
+the block can still be enabled/disabled, renamed, reordered and duplicated.
+Pause and Stop work between actions in every loop cycle.
+
+The existing version-2 JSON file format is retained, and older macros
+remain compatible.
 
 ## Edit and manage actions
 

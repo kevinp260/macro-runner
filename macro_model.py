@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"]
 
 @dataclass
 class Action:
@@ -46,13 +46,19 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
     _positive_int(action.repeats, "Action repeats")
     if not isinstance(action.enabled, bool):
         raise ValueError("Enabled must be true or false.")
+    if action.kind in ("loop_start", "loop_end"):
+        # Loop markers control the sequence itself and cannot be disabled.
+        if not action.enabled:
+            raise ValueError("Loop markers must remain enabled.")
+        if action.kind == "loop_end" and action.repeats != 1:
+            raise ValueError("Loop End cannot have its own repeat count.")
     if action.kind in ("click", "move", "drag"):
         for field, value in (("x", action.x), ("y", action.y)):
             if isinstance(value, bool) or not isinstance(value, int):
@@ -84,10 +90,33 @@ def validate_action(item):
     return action
 
 
+def loop_spans(actions: List[Action]):
+    """Map Loop Start indices to matching Loop End indices; one level only."""
+    starts = {}
+    open_index = None
+    for index, action in enumerate(actions):
+        if action.kind == "loop_start":
+            if open_index is not None:
+                raise ValueError(f"Nested loops are not supported (action {index + 1}).")
+            open_index = index
+        elif action.kind == "loop_end":
+            if open_index is None:
+                raise ValueError(f"Loop End at action {index + 1} has no Loop Start.")
+            if index == open_index + 1:
+                raise ValueError(f"Loop at action {open_index + 1} is empty.")
+            starts[open_index] = index
+            open_index = None
+    if open_index is not None:
+        raise ValueError(f"Loop Start at action {open_index + 1} has no Loop End.")
+    return starts
+
+
 def parse_sequence(data) -> List[Action]:
     if not isinstance(data, list):
         raise ValueError("The sequence must be a JSON array of actions.")
-    return [validate_action(action) for action in data]
+    actions = [validate_action(action) for action in data]
+    loop_spans(actions)
+    return actions
 
 
 DOCUMENT_VERSION = 2
@@ -98,7 +127,9 @@ def serialize_document(actions: List[Action], repeat_count: int, start_delay: fl
     _positive_int(repeat_count, "Whole-sequence repeat count")
     _finite_nonnegative(start_delay, "Start delay")
     from dataclasses import asdict
-    validated = [asdict(validate_action(asdict(action))) for action in actions]
+    normalized = [validate_action(asdict(action)) for action in actions]
+    loop_spans(normalized)
+    validated = [asdict(action) for action in normalized]
     return {
         "version": DOCUMENT_VERSION,
         "settings": {"repeat_count": repeat_count, "start_delay": start_delay},
