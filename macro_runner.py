@@ -7,7 +7,7 @@ import queue
 from dataclasses import asdict
 from typing import List, Optional
 
-from macro_model import Action, parse_sequence, validate_action
+from macro_model import Action, parse_document, serialize_document, validate_action
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -124,11 +124,25 @@ class MacroRunnerApp(tk.Tk):
         left.rowconfigure(1, weight=1)
         left.columnconfigure(0, weight=1)
 
-        ttk.Label(left, text="Actions").grid(row=0, column=0, sticky="w")
+        actions_header = ttk.Frame(left)
+        actions_header.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        actions_header.columnconfigure(0, weight=1)
+        ttk.Label(actions_header, text="Actions (double-click to edit)").grid(
+            row=0, column=0, sticky="w"
+        )
+        self._editor_button(actions_header, text="Edit…",
+                            command=self.edit_action_selected).grid(
+            row=0, column=1, padx=(4, 0)
+        )
+        self._editor_button(actions_header, text="Enable/Disable",
+                            command=self.toggle_action_enabled).grid(
+            row=0, column=2, padx=(4, 0)
+        )
 
         self.lst = tk.Listbox(left, height=20, activestyle="dotbox")
         self.lst.grid(row=1, column=0, sticky="nsew")
         self.lst.bind("<<ListboxSelect>>", self.on_select)
+        self.lst.bind("<Double-Button-1>", self._double_click_action)
 
         # Right: tabs
         right = ttk.Notebook(split)
@@ -574,9 +588,21 @@ class MacroRunnerApp(tk.Tk):
         for i, a in enumerate(self.actions):
             self.lst.insert(tk.END, f"{i+1}. {self.describe(a)}")
 
+    def _select_action(self, index):
+        self.lst.selection_clear(0, tk.END)
+        if 0 <= index < len(self.actions):
+            self.lst.selection_set(index)
+            self.lst.activate(index)
+            self.lst.see(index)
+
     def describe(self, a: Action) -> str:
+        if not a.enabled:
+            state = "[OFF] "
+        else:
+            state = ""
         rep = f" ×{a.repeats}" if a.repeats > 1 else ""
         label = f"[{a.name}] " if a.name.strip() else ""
+        label = state + label
         if a.kind == "click":
             return f"{label}Click({a.button}) @({a.x},{a.y}) clicks={a.clicks} interval={a.interval}s{rep}"
         if a.kind == "wait":
@@ -588,6 +614,139 @@ class MacroRunnerApp(tk.Tk):
             return f"{label}Move @({a.x},{a.y}) over {a.move_duration}s{rep}"
         return str(a)
     
+    def _double_click_action(self, event):
+        if self._editing_locked():
+            return "break"
+        index = self.lst.nearest(event.y)
+        bounds = self.lst.bbox(index)
+        if bounds and bounds[1] <= event.y < bounds[1] + bounds[3]:
+            self._select_action(index)
+            self.edit_action_selected()
+        return "break"
+
+    def toggle_action_enabled(self):
+        if self._editing_locked():
+            return
+        selected = self.lst.curselection()
+        if not selected:
+            return
+        index = selected[0]
+        action = self.actions[index]
+        action.enabled = not action.enabled
+        self.refresh_list()
+        self._select_action(index)
+
+    def edit_action_selected(self):
+        """Edit an existing action without altering it until Save is validated."""
+        if self._editing_locked():
+            return
+        selected = self.lst.curselection()
+        if not selected:
+            return
+        index = selected[0]
+        original = self.actions[index]
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit Action")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+
+        form = ttk.Frame(dialog, padding=14)
+        form.pack(fill="both", expand=True)
+        form.columnconfigure(1, weight=1)
+
+        kind_var = tk.StringVar(value=original.kind)
+        name_var = tk.StringVar(value=original.name)
+        repeat_var = tk.StringVar(value=str(original.repeats))
+        enabled_var = tk.BooleanVar(value=original.enabled)
+
+        ttk.Label(form, text="Action type:").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Combobox(form, width=25, textvariable=kind_var,
+                     values=("click", "wait", "key", "move"),
+                     state="readonly").grid(row=0, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text="Name:").grid(row=1, column=0, sticky="w", pady=4)
+        name_entry = ttk.Entry(form, width=32, textvariable=name_var)
+        name_entry.grid(row=1, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text="Repeat:").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(form, textvariable=repeat_var).grid(row=2, column=1, sticky="ew", pady=4)
+
+        ttk.Checkbutton(form, text="Enabled", variable=enabled_var).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(4, 8)
+        )
+
+        # Each kind shows only its relevant fields. Values are kept when switching tabs.
+        field_specs = {
+            "click": (("x", "X coordinate", int), ("y", "Y coordinate", int),
+                      ("button", "Mouse button", str), ("clicks", "Click count", int),
+                      ("interval", "Interval (seconds)", float)),
+            "wait": (("seconds", "Wait (seconds)", float),),
+            "key": (("key_mode", "Mode", str), ("keys", "Key / Text", str)),
+            "move": (("x", "X coordinate", int), ("y", "Y coordinate", int),
+                     ("move_duration", "Duration (seconds)", float)),
+        }
+        fields = {}
+        for kind_fields in field_specs.values():
+            for key, _, _ in kind_fields:
+                if key not in fields:
+                    value = getattr(original, key)
+                    if value is None and key in ("x", "y"):
+                        value = 0
+                    fields[key] = tk.StringVar(value=str(value))
+
+        details = ttk.LabelFrame(form, text="Action settings", padding=8)
+        details.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(4, 10))
+        details.columnconfigure(1, weight=1)
+
+        def rebuild_fields(*_):
+            for child in details.winfo_children():
+                child.destroy()
+            for row, (field, label, _) in enumerate(field_specs[kind_var.get()]):
+                ttk.Label(details, text=label + ":").grid(
+                    row=row, column=0, sticky="w", padx=(0, 10), pady=4
+                )
+                if field in ("button", "key_mode"):
+                    choices = ("left", "right", "middle") if field == "button" else ("press", "type")
+                    widget = ttk.Combobox(details, width=24, textvariable=fields[field],
+                                          values=choices, state="readonly")
+                else:
+                    widget = ttk.Entry(details, width=25, textvariable=fields[field])
+                widget.grid(row=row, column=1, sticky="ew", pady=4)
+
+        kind_var.trace_add("write", rebuild_fields)
+        rebuild_fields()
+
+        buttons = ttk.Frame(form)
+        buttons.grid(row=5, column=0, columnspan=2, sticky="e", pady=(2, 0))
+
+        def save():
+            if self._editing_locked():
+                dialog.destroy()
+                return
+            try:
+                data = asdict(original)
+                data.update(kind=kind_var.get(), name=name_var.get().strip(),
+                            repeats=int(repeat_var.get()), enabled=enabled_var.get())
+                for field, _, converter in field_specs[kind_var.get()]:
+                    data[field] = converter(fields[field].get())
+                updated = validate_action(data)
+            except (ValueError, TypeError, tk.TclError, KeyError) as exc:
+                messagebox.showerror("Invalid action", str(exc), parent=dialog)
+                return
+            self.actions[index] = updated
+            self.refresh_list()
+            self._select_action(index)
+            dialog.destroy()
+
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(
+            side="left", padx=(0, 8)
+        )
+        ttk.Button(buttons, text="Save", command=save).pack(side="left")
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.grab_set()
+        name_entry.focus_set()
+
     def edit_name_selected(self):
         if self._editing_locked():
             return
@@ -610,6 +769,7 @@ class MacroRunnerApp(tk.Tk):
                 return
             a.name = var.get().strip()
             self.refresh_list()
+            self._select_action(idx)
             dlg.destroy()
 
         ttk.Button(dlg, text="OK", command=ok).grid(row=1, column=0, columnspan=2, pady=(0, 10))
@@ -715,6 +875,7 @@ class MacroRunnerApp(tk.Tk):
             try:
                 a.repeats = max(1, int(var.get()))
                 self.refresh_list()
+                self._select_action(idx)
                 dlg.destroy()
             except Exception:
                 messagebox.showerror("Invalid value", "Repeat must be a positive integer.")
@@ -751,6 +912,13 @@ class MacroRunnerApp(tk.Tk):
         if not self.actions:
             messagebox.showinfo("Nothing to save", "Add some actions first.")
             return
+        try:
+            document = serialize_document(
+                self.actions, self.repeat_var.get(), self.start_delay_var.get()
+            )
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid settings", str(exc))
+            return
         path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON", "*.json")],
@@ -758,8 +926,12 @@ class MacroRunnerApp(tk.Tk):
         )
         if not path:
             return
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump([asdict(a) for a in self.actions], f, indent=2)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(document, f, indent=2)
+        except OSError as exc:
+            messagebox.showerror("Save failed", str(exc))
+            return
         messagebox.showinfo("Saved", f"Saved to {path}")
 
     def load_sequence(self):
@@ -774,8 +946,11 @@ class MacroRunnerApp(tk.Tk):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            loaded = parse_sequence(data)
+            loaded, settings = parse_document(data)
             self.actions = loaded
+            if settings is not None:
+                self.repeat_var.set(settings["repeat_count"])
+                self.start_delay_var.set(settings["start_delay"])
             self.refresh_list()
         except Exception as e:
             messagebox.showerror("Load failed", f"Could not load file:\n{e}")
@@ -891,6 +1066,9 @@ class MacroRunnerApp(tk.Tk):
         if not self.actions:
             messagebox.showerror("No actions", "Add at least one action.")
             return
+        if not any(action.enabled for action in self.actions):
+            messagebox.showwarning("No enabled actions", "Enable at least one action before running.")
+            return
         try:
             repeats = int(self.repeat_var.get())
             start_delay = float(self.start_delay_var.get())
@@ -929,6 +1107,8 @@ class MacroRunnerApp(tk.Tk):
 
             for _ in range(repeats):
                 for action in actions:
+                    if not action.enabled:
+                        continue
                     for __ in range(action.repeats):
                         self._wait_or_stop(0)
                         self._execute_action(action)

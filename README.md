@@ -52,7 +52,9 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
   - Insert waits between clicks (with minimum threshold)
   - Per‑recorded‑action repeats
 - ✅ **Pick** coordinates with a 3‑second countdown
-- ✅ **Save / Load** sequences as JSON
+- ✅ **Save / Load** sequences as JSON (including repeat count and start delay)
+- ✅ **Edit any action** by double-clicking; optionally change its action type
+- ✅ **Enable / disable** actions without deleting them
 - ✅ **Emergency stop**: move to top‑left corner
 - ✅ **Keyboard shortcuts** for fast editing
 - ✅ **Single‑instance mutex** (optional) so only one app instance runs
@@ -275,37 +277,33 @@ Captured actions are appended to the list; you can reorder, duplicate, or delete
 
 ---
 
+## Edit and manage actions
+
+Double-click an action (or select it and press **Edit…**) to change its name,
+repeat count, type, and applicable settings. Changes are applied only after
+validation when you press **Save**. Select an action and click **Enable/Disable**
+to skip it during playback without deleting it. Disabled actions appear with
+an `[OFF]` prefix. Duplicate, Rename, Edit Repeat, Up/Down and Delete still work.
+
 ## Save / Load Sequences
 
-- **Save Sequence** writes a `.json` with the list of actions.
-- **Load Sequence** restores it. You can keep multiple recipes and reuse them.
-
-Example JSON snippet:
+**Save** writes a versioned JSON document that includes the action list,
+whole-sequence repeat count, and start delay:
 
 ```json
-[
-  {
-    "kind": "click",
-    "repeats": 1,
-    "x": 1200,
-    "y": 640,
-    "button": "left",
-    "clicks": 1,
-    "interval": 0.0
-  },
-  { "kind": "wait", "repeats": 1, "seconds": 2.0 },
-  {
-    "kind": "click",
-    "repeats": 1,
-    "x": 980,
-    "y": 420,
-    "button": "left",
-    "clicks": 1,
-    "interval": 0.0
-  },
-  { "kind": "key", "repeats": 1, "key_mode": "press", "keys": "enter" }
-]
+{
+  "version": 2,
+  "settings": {"repeat_count": 80, "start_delay": 3.0},
+  "actions": [
+    {"kind": "click", "x": 1200, "y": 640, "repeats": 2, "enabled": true},
+    {"kind": "wait", "seconds": 1.0, "enabled": false}
+  ]
+}
 ```
+
+**Load** supports this new format and older JSON files containing just an array
+of actions. When loading an old file, the currently entered whole-sequence
+repeat and start delay are left unchanged. Existing actions default to enabled.
 
 ---
 

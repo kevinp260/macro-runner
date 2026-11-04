@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import asdict
-from macro_model import Action, parse_sequence, validate_action
+from macro_model import Action, parse_sequence, parse_document, serialize_document, validate_action
 
 
 class ActionTests(unittest.TestCase):
@@ -25,6 +25,40 @@ class ActionTests(unittest.TestCase):
         for data in examples:
             with self.subTest(data=data), self.assertRaises(ValueError):
                 validate_action(data)
+
+    def test_disabled_action(self):
+        action = validate_action({"kind": "wait", "seconds": 1, "enabled": False})
+        self.assertFalse(action.enabled)
+        self.assertEqual(parse_sequence([{"kind": "wait"}])[0].enabled, True)
+        with self.assertRaises(ValueError):
+            validate_action({"kind": "wait", "enabled": "false"})
+
+    def test_macro_document_roundtrip(self):
+        actions = [Action(kind="click", x=42, y=99, enabled=False, name="Skip me"),
+                   Action(kind="wait", seconds=0.25, repeats=3)]
+        document = serialize_document(actions, 8, 2.5)
+        self.assertEqual(document["version"], 2)
+        parsed, settings = parse_document(document)
+        self.assertEqual(parsed, actions)
+        self.assertEqual(settings, {"repeat_count": 8, "start_delay": 2.5})
+
+    def test_legacy_file_keeps_current_settings(self):
+        actions, settings = parse_document([{"kind": "wait", "seconds": 1.0}])
+        self.assertIsNone(settings)
+        self.assertEqual(len(actions), 1)
+        self.assertTrue(actions[0].enabled)
+
+    def test_bad_document_settings(self):
+        valid = serialize_document([Action(kind="wait")], 1, 0.0)
+        for bad in (
+            {"version": 3, "settings": valid["settings"], "actions": valid["actions"]},
+            {"version": 2, "settings": {"repeat_count": 0, "start_delay": 0}, "actions": []},
+            {"version": 2, "settings": {"repeat_count": 2, "start_delay": -0.1}, "actions": []},
+            {"version": 2, "settings": {"repeat_count": 2, "start_delay": float("inf")}, "actions": []},
+            {"version": 2, "settings": {"repeat_count": 2, "start_delay": 0}, "actions": "wrong"},
+        ):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_document(bad)
 
     def test_invalid_document(self):
         for data in ({}, [None], [{"kind": "wait", "repeats": 0}]):
