@@ -10,6 +10,7 @@ class Action:
     kind: ActionType
     name: str = ""
     repeats: int = 1
+    enabled: bool = True
     x: Optional[int] = None
     y: Optional[int] = None
     button: str = "left"
@@ -47,6 +48,8 @@ def validate_action(item):
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
     _positive_int(action.repeats, "Action repeats")
+    if not isinstance(action.enabled, bool):
+        raise ValueError("Enabled must be true or false.")
     if action.kind in ("click", "move"):
         for field, value in (("x", action.x), ("y", action.y)):
             if isinstance(value, bool) or not isinstance(value, int):
@@ -70,3 +73,37 @@ def parse_sequence(data) -> List[Action]:
     if not isinstance(data, list):
         raise ValueError("The sequence must be a JSON array of actions.")
     return [validate_action(action) for action in data]
+
+
+DOCUMENT_VERSION = 2
+
+
+def serialize_document(actions: List[Action], repeat_count: int, start_delay: float):
+    """Create a full saved macro, including execution settings."""
+    _positive_int(repeat_count, "Whole-sequence repeat count")
+    _finite_nonnegative(start_delay, "Start delay")
+    from dataclasses import asdict
+    validated = [asdict(validate_action(asdict(action))) for action in actions]
+    return {
+        "version": DOCUMENT_VERSION,
+        "settings": {"repeat_count": repeat_count, "start_delay": start_delay},
+        "actions": validated,
+    }
+
+
+def parse_document(data):
+    """Return (actions, settings); legacy JSON action lists have settings=None."""
+    if isinstance(data, list):
+        return parse_sequence(data), None
+    if not isinstance(data, dict) or data.get("version") != DOCUMENT_VERSION:
+        raise ValueError("Unknown macro file format or version.")
+
+    settings = data.get("settings")
+    if not isinstance(settings, dict):
+        raise ValueError("Macro settings must be an object.")
+    repeat_count = settings.get("repeat_count")
+    start_delay = settings.get("start_delay")
+    _positive_int(repeat_count, "Whole-sequence repeat count")
+    _finite_nonnegative(start_delay, "Start delay")
+    actions = parse_sequence(data.get("actions"))
+    return actions, {"repeat_count": repeat_count, "start_delay": start_delay}
