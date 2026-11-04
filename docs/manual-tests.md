@@ -27,6 +27,11 @@ Run through the functional checks on Windows, then repeat key input checks on Ub
 - [ ] **A11 — Delete and clear:** Delete one action and use Clear; verify the confirmation dialog avoids accidental full deletion.
 - [ ] **A12 — Enabled state:** Disable an action, verify `[OFF]`, run and confirm it is skipped; re-enable it and check it runs.
 - [ ] **A13 — Loop semantics:** Set per-action repeat = 2 and whole-sequence repeat = 3; verify exactly six executions for that action.
+- [ ] **A14 — Subloop execution:** Add A, B, Loop Start (5 cycles), C, D, Loop End, E; verify A/B once, C/D five times, and E once.
+- [ ] **A15 — Repeat inside subloop:** Make C repeat twice; verify C/C/D for each inner cycle. Then repeat the whole sequence twice and verify totals.
+- [ ] **A16 — Loop editing:** Insert Start before a selected action, End after another, move markers, rename Loop Start, edit its cycle count, save/reload.
+- [ ] **A17 — Invalid loops:** Verify Save/Run rejects incomplete, empty or nested blocks, but normal actions can be edited to correct the macro.
+- [ ] **A18 — Stop/pause inside subloop:** Pause during a Wait inside the block and resume; Stop during a later cycle and verify no further actions execute.
 
 ## Playback and safety
 

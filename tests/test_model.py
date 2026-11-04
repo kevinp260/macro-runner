@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import asdict
-from macro_model import Action, parse_sequence, parse_document, serialize_document, validate_action
+from macro_model import Action, loop_spans, parse_sequence, parse_document, serialize_document, validate_action
 
 
 class ActionTests(unittest.TestCase):
@@ -74,6 +74,41 @@ class ActionTests(unittest.TestCase):
                     {"kind": "drag", "x": 1, "y": 1, "to_x": 2, "to_y": 5, "move_duration": -1}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 validate_action(bad)
+
+    def test_repeat_blocks_roundtrip(self):
+        actions = [
+            Action(kind="key", keys="a"), Action(kind="key", keys="b"),
+            Action(kind="loop_start", repeats=4, name="C + D"),
+            Action(kind="key", keys="c"),
+            Action(kind="key", keys="d"),
+            Action(kind="loop_end"),
+            Action(kind="key", keys="e"),
+        ]
+        saved = serialize_document(actions, repeat_count=3, start_delay=0)
+        self.assertEqual(saved["version"], 2)
+        loaded, settings = parse_document(saved)
+        self.assertEqual(loaded, actions)
+        self.assertEqual(settings["repeat_count"], 3)
+        self.assertEqual(loop_spans(loaded), {2: 5})
+
+    def test_invalid_repeat_blocks(self):
+        wrong = (
+            [Action(kind="loop_start", repeats=2), Action(kind="key", keys="a")],
+            [Action(kind="loop_end")],
+            [Action(kind="loop_start"), Action(kind="loop_end")],
+            [Action(kind="loop_start"), Action(kind="key", keys="a"),
+             Action(kind="loop_start"), Action(kind="key", keys="b"),
+             Action(kind="loop_end"), Action(kind="loop_end")],
+        )
+        for actions in wrong:
+            with self.subTest(actions=actions), self.assertRaises(ValueError):
+                loop_spans(actions)
+            with self.subTest(actions=actions), self.assertRaises(ValueError):
+                serialize_document(actions, 1, 0)
+        with self.assertRaises(ValueError):
+            validate_action({"kind": "loop_end", "repeats": 3})
+        with self.assertRaises(ValueError):
+            validate_action({"kind": "loop_start", "enabled": False})
 
     def test_invalid_document(self):
         for data in ({}, [None], [{"kind": "wait", "repeats": 0}]):
