@@ -7,6 +7,18 @@ app = QApplication.instance() or QApplication([])
 
 
 class WindowTests(unittest.TestCase):
+    def test_pending_completion_keeps_editor_locked(self):
+        w = MacroWindow()
+        try:
+            from types import SimpleNamespace
+            w.executor = SimpleNamespace(thread=SimpleNamespace(is_alive=lambda: False))
+            self.assertTrue(w._busy())
+            w.executor = None
+            self.assertFalse(w._busy())
+        finally:
+            w.executor = None
+            w.close()
+
     def test_window_undo_and_full_workflow(self):
         w = MacroWindow()
         try:

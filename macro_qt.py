@@ -311,16 +311,12 @@ class MacroWindow(QMainWindow):
         self.status.setText(text)
 
     def _busy(self):
-        return self.recording or self.record_pending or (
-            self.executor is not None and self.executor.thread is not None
-            and self.executor.thread.is_alive()
-        )
+        # Wait for the queued completion signal before allowing edits.
+        return self.recording or self.record_pending or self.executor is not None
 
     def _update_controls(self):
         busy = self._busy()
-        running = self.executor is not None and self.executor.thread is not None and (
-            self.executor.thread.is_alive()
-        )
+        running = self.executor is not None
         recording = self.recording or self.record_pending
         for key in ("new", "open", "save", "undo", "redo"):
             self.toolbar_actions[key].setEnabled(not busy)
@@ -750,10 +746,41 @@ class MacroWindow(QMainWindow):
         event.accept()
 
 
+def _windows_single_instance():
+    """Keep the Windows installer mutex held while the application runs."""
+    if sys.platform != "win32":
+        return None, False
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel.CreateMutexW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.CreateMutexW(None, False, "Global\MacroRunnerMutex")
+    if not handle:
+        raise OSError(ctypes.get_last_error(), "Cannot create MacroRunner mutex")
+    if ctypes.get_last_error() == 183:
+        kernel.CloseHandle(handle)
+        return None, True
+    return (kernel, handle), False
+
+
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("MacroRunner")
     app.setOrganizationName("MacroRunner")
-    window = MacroWindow()
-    window.show()
-    return app.exec()
+    mutex, already_running = _windows_single_instance()
+    if already_running:
+        QMessageBox.warning(None, "Already running", "MacroRunner is already running.")
+        return 0
+    try:
+        window = MacroWindow()
+        window.show()
+        return app.exec()
+    finally:
+        if mutex is not None:
+            kernel, handle = mutex
+            kernel.CloseHandle(handle)

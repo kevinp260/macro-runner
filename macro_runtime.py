@@ -71,7 +71,10 @@ class MacroExecutor:
         return self.automation
 
     def _condition(self, action):
-        self.gate.wait(0)
+        # Markers run between actions: do not block on Pause before the next
+        # executable action can acquire its Step token.
+        if self.gate.stopped.is_set():
+            raise RuntimeError("Stopped")
         return check_condition(action, self._pag().screenshot)
 
     def _execute(self, a):

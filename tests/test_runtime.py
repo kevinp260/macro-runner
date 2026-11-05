@@ -57,6 +57,53 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(result[0][0])
         self.assertIn(("press", "x"), fake.calls)
 
+    def test_step_around_conditional_markers(self):
+        fake = FakeAutomation()
+        completed = threading.Event()
+        outcomes = []
+        actions = [
+            Action(kind="if_start", condition_source="pixel", pixel_color="#00FF00"),
+            Action(kind="key", keys="inside"),
+            Action(kind="if_end"),
+            Action(kind="key", keys="after"),
+        ]
+        runner = MacroExecutor(actions, 1, 0, lambda *args: None,
+                               lambda *args: (outcomes.append(args), completed.set()),
+                               step_mode=True, automation=fake)
+        runner.start()
+        self.assertFalse(completed.wait(.05))
+        runner.step()
+        for _ in range(50):
+            if ("press", "inside") in fake.calls:
+                break
+            completed.wait(.01)
+        self.assertIn(("press", "inside"), fake.calls)
+        self.assertNotIn(("press", "after"), fake.calls)
+        runner.step()
+        self.assertTrue(completed.wait(2))
+        self.assertTrue(outcomes[0][0])
+        self.assertIn(("press", "after"), fake.calls)
+
+    def test_step_repeat_until_condition(self):
+        fake = FakeAutomation()
+        completed = threading.Event()
+        outcomes = []
+        actions = [
+            Action(kind="until_start", repeats=3, condition_source="pixel",
+                   pixel_color="#00FF00"),
+            Action(kind="key", keys="body"),
+            Action(kind="until_end"),
+        ]
+        runner = MacroExecutor(actions, 1, 0, lambda *args: None,
+                               lambda *args: (outcomes.append(args), completed.set()),
+                               step_mode=True, automation=fake)
+        runner.start()
+        self.assertFalse(completed.wait(.05))
+        runner.step()
+        self.assertTrue(completed.wait(2))
+        self.assertTrue(outcomes[0][0])
+        self.assertEqual(fake.calls.count(("press", "body")), 1)
+
     def test_pause_step_and_stop(self):
         fake = FakeAutomation()
         complete = threading.Event()
