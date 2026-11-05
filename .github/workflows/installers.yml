@@ -57,6 +57,19 @@ jobs:
         run: |
           python -m PyInstaller --clean --noconfirm MacroRunner.spec
           if (!(Test-Path dist/MacroRunner.exe)) { throw "Missing Windows executable" }
+      - name: Smoke test Windows executable
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $process = Start-Process -FilePath (Resolve-Path dist/MacroRunner.exe) -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            $process.Refresh()
+            if ($process.HasExited) { throw "MacroRunner exited unexpectedly: $($process.ExitCode)" }
+          } finally {
+            $process.Refresh()
+            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
       - name: Compile Windows installer
         shell: pwsh
         run: |
