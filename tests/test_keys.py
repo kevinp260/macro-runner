@@ -19,6 +19,7 @@ class KeyTests(unittest.TestCase):
         self.assertEqual(normalize_event_key(SimpleNamespace(char="A")),"a")
         self.assertEqual(normalize_event_key(SimpleNamespace(char=chr(3))),"c")
         self.assertEqual(normalize_event_key(SimpleNamespace(char=" ")),"space")
+        self.assertEqual(normalize_event_key(SimpleNamespace(char="!")),"!")
         self.assertIsNone(normalize_event_key(SimpleNamespace(char="☃")))
         self.assertFalse(valid_hold_key("ctrl+v"))
     def test_recorder(self):

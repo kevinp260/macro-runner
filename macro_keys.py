@@ -30,7 +30,7 @@ def normalize_event_key(key):
         if char==" ": return "space"
         if char in ("\r","\n"): return "enter"
         if char=="\t": return "tab"
-        if char.isascii() and char.isprintable() and valid_hold_key(char.lower()):
+        if char.isascii() and char.isprintable():
             return char.lower()
         if 1<=ord(char)<=26: return chr(ord("a")+ord(char)-1)
     vk=getattr(key,"vk",None)
