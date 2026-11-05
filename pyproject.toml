@@ -13,4 +13,4 @@ dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9", "opencv-pytho
 macro-runner = "macro_runner:main"
 
 [tool.setuptools]
-py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision"]
+py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing"]

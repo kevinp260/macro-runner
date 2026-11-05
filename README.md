@@ -51,6 +51,7 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 - ✅ **Scroll** and **Drag** actions
 - ✅ **Repeat Blocks** (Loop Start / Loop End) with independent cycle count
 - ✅ **Visual recognition** (image and pixel/color) with conditional Wait, If/Else and Repeat Until
+- ✅ **Keyboard Hold/Release**, opt-in keyboard recording, multi-selection, and Undo/Redo
 - ✅ **Per‑action repeat counters**
 - ✅ **Whole‑sequence Repeat count** (top bar)
 - ✅ **Recording (mouse clicks)** inside Click tab
@@ -300,6 +301,8 @@ _single_instance_mutex()
 - **Duplicate selected** — `Ctrl+Shift+D` (`⌘⇧D` on macOS)
 - **Move selected** — `Ctrl+↑ / Ctrl+↓`
 - **Edit repeat** — `Ctrl+E`
+- **Undo** — `Ctrl+Z`
+- **Redo** — `Ctrl+Y` or `Ctrl+Shift+Z`
 - **Save** — `Ctrl+S`
 - **Load** — `Ctrl+O`
 - **Start/Stop recording** — `Ctrl+R`
@@ -307,6 +310,53 @@ _single_instance_mutex()
 > Shortcuts are disabled while your caret is inside a text field to avoid accidental triggers.
 
 ---
+
+## Keyboard hold/release, recording, and action history
+
+In **Key / Type**, use **Add Hold** and **Add Release** to surround actions
+with a held modifier or other supported key. Example:
+
+```text
+Hold shift
+Click at (400, 300)
+Release shift
+```
+
+The Hold/Release actions accept a **single key name**, not a combination.
+Held keys are tracked during playback, and MacroRunner attempts to release
+any remaining keys on normal completion, Stop, or a playback error. An
+explicit Release for a key that was not held by the macro is rejected at run
+time so a malformed macro cannot silently release a user's real key press.
+
+### Optional keyboard-event recording
+
+In the Click tab's recording section, enable **Also record keyboard input**
+before clicking Start Recording. It is **off by default**, and enabling it
+displays a confirmation warning. Input starts being captured only after
+the normal three-second countdown and stops with **Stop Recording**.
+When enabled, standard key presses become Key actions, and modifier
+press/release transitions become Hold/Release actions. Duplicate key-down
+events from autorepeat are ignored. Mouse clicks and optional waits are
+recorded in the same action sequence.
+
+**Privacy:** Keyboard recording captures globally while active, including
+text entered in password fields or other sensitive applications. Never
+enable it while entering secrets. Review and delete recorded actions before
+saving or sharing a macro. No keyboard capture runs when the option is off.
+
+### Editing a group of actions
+
+Use **Ctrl-click / Shift-click** to select multiple rows in the action list.
+**Up**, **Down**, **Duplicate**, and **Delete** act on the selection.
+Control markers (If/Else/End, Repeat/End, Until/End) cannot be duplicated
+in isolation. After reordering or deleting markers, validate the macro
+before running or saving it.
+
+**Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Y` or `Ctrl+Shift+Z`)
+restore earlier action-list edits, up to 60 history snapshots.
+Recording a session is one undoable edit. Loading another macro is
+undoable. History is kept in memory only, not written to JSON files.
+Undo/Redo and editing are unavailable while recording or playing.
 
 ## Recording Mode
 
@@ -370,8 +420,7 @@ The **Drag** tab moves from a starting coordinate to an end coordinate while
 holding a selected mouse button. Both types can be edited by double-clicking
 them and are saved in the existing version-2 JSON format.
 
-Keyboard-event recording has intentionally been deferred: it requires a
-separate permission and input-safety review, and was not necessary for PR 3.
+Keyboard recording is available as an opt-in option; see the privacy note above.
 
 ## Visual matching and smart automation
 
