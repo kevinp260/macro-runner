@@ -11,6 +11,9 @@ from macro_model import Action, loop_spans, parse_document, serialize_document, 
 from macro_flow import CONTROL, has_smart_actions, iter_flow_steps, validate_flow, validate_start_selection
 from macro_vision import locate_image, check_condition, poll_until
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
+from macro_editing import ActionHistory, move_selected, duplicate_selected, delete_selected
+from macro_keys import KeyboardRecorder, HeldKeys, normalize_event_key
+
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -53,6 +56,12 @@ class MacroRunnerApp(tk.Tk):
         self.minsize(850, 580)
 
         self.actions: List[Action] = []
+        self.history = ActionHistory(limit=60)
+        self._record_history_pending = False
+        self.keyboard_listener = None
+        self.keyboard_recorder = None
+        self._record_keyboard = False
+        self._held_keys = None
         self.run_thread: Optional[threading.Thread] = None
         self.stop_flag = threading.Event()
         self.playback = PlaybackGate(self.stop_flag)
@@ -159,7 +168,8 @@ class MacroRunnerApp(tk.Tk):
             row=0, column=2, padx=(4, 0)
         )
 
-        self.lst = tk.Listbox(left, height=20, activestyle="dotbox")
+        self.lst = tk.Listbox(left, height=20, activestyle="dotbox",
+                              selectmode=tk.EXTENDED, exportselection=False)
         self.lst.grid(row=1, column=0, sticky="nsew")
         self.lst.bind("<<ListboxSelect>>", self.on_select)
         self.lst.bind("<Double-Button-1>", self._double_click_action)
@@ -197,6 +207,10 @@ class MacroRunnerApp(tk.Tk):
         self._editor_button(btns, text="Clear",        width=BW, command=self.clear_items).grid(row=0, column=4, padx=2, sticky="w")
         self._editor_button(btns, text="Edit Repeat…", width=BW, command=self.edit_repeat_selected).grid(row=0, column=5, padx=2, sticky="w")
         self._editor_button(btns, text="Edit Name…",   width=BW, command=self.edit_name_selected).grid(row=0, column=6, padx=2, sticky="w")
+        self._editor_button(btns, text="Undo", width=10, command=self.undo_edit).grid(
+            row=1, column=0, padx=2, pady=(6, 0), sticky="w")
+        self._editor_button(btns, text="Redo", width=10, command=self.redo_edit).grid(
+            row=1, column=1, padx=2, pady=(6, 0), sticky="w")
         # spacer at col 7
         ttk.Label(btns, text="").grid(row=0, column=7, sticky="ew")
 
@@ -407,6 +421,11 @@ class MacroRunnerApp(tk.Tk):
         ttk.Label(recbox, text="Recorded repeats (x):").grid(row=2, column=2, sticky="e", padx=(10, 6), pady=4)
         self.rec_repeats_var = tk.IntVar(value=1)
         ttk.Entry(recbox, width=8, textvariable=self.rec_repeats_var).grid(row=2, column=3, sticky="w", pady=4)
+        self.rec_keyboard_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            recbox, text="Also record keyboard input (opt-in; avoid passwords)",
+            variable=self.rec_keyboard_var
+        ).grid(row=3, column=0, columnspan=4, sticky="w", pady=4)
 
 
     def _build_wait_tab(self, nb: ttk.Notebook):
@@ -459,6 +478,15 @@ class MacroRunnerApp(tk.Tk):
 
         self._editor_button(tab, text="Add Key Action", command=self.add_key)\
             .grid(row=4, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Label(tab, text="Hold/Release key:").grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(12, 3))
+        self.hold_key = tk.StringVar(value="shift")
+        ttk.Entry(tab, width=18, textvariable=self.hold_key).grid(
+            row=6, column=0, columnspan=2, sticky="w")
+        self._editor_button(tab, text="Add Hold", command=lambda: self.add_hold_key("key_down")).grid(
+            row=7, column=0, columnspan=2, sticky="ew", pady=5)
+        self._editor_button(tab, text="Add Release", command=lambda: self.add_hold_key("key_up")).grid(
+            row=7, column=2, columnspan=2, sticky="ew", pady=5)
 
     def _build_move_tab(self, nb: ttk.Notebook):
         tab = ttk.Frame(nb, padding=12)
@@ -592,6 +620,7 @@ class MacroRunnerApp(tk.Tk):
     def _insert_loop_marker(self, action, before_selected):
         selected = self.lst.curselection()
         index = selected[0] + (0 if before_selected else 1) if selected else len(self.actions)
+        self._remember_edit()
         self.actions.insert(index, validate_action(asdict(action)))
         self.refresh_list()
         self._select_action(index)
@@ -723,6 +752,7 @@ class MacroRunnerApp(tk.Tk):
             before_selected = kind in ("if_start", "until_start")
             index = (selected[0] + (0 if before_selected else 1)
                      if selected else len(self.actions))
+            self._remember_edit()
             self.actions.insert(index, action)
             self.refresh_list()
             self._select_action(index)
@@ -740,6 +770,9 @@ class MacroRunnerApp(tk.Tk):
         self.bind("<Control-Up>", lambda e: self._shortcut_move(-1, e))
         self.bind("<Control-Down>", lambda e: self._shortcut_move(1, e))
         self.bind("<Control-e>", self._shortcut_edit_repeat)
+        self.bind("<Control-z>", self._shortcut_undo)
+        self.bind("<Control-y>", self._shortcut_redo)
+        self.bind("<Control-Shift-z>", self._shortcut_redo)
         # Run/Stop
         self.bind("<F5>", lambda e: self.start_run())
         self.bind("<Escape>", lambda e: self.request_stop())
@@ -777,6 +810,18 @@ class MacroRunnerApp(tk.Tk):
         if event and self._is_typing_context(event):
             return
         self.move_item(delta)
+        return "break"
+
+    def _shortcut_undo(self, event=None):
+        if event and self._is_typing_context(event):
+            return
+        self.undo_edit()
+        return "break"
+
+    def _shortcut_redo(self, event=None):
+        if event and self._is_typing_context(event):
+            return
+        self.redo_edit()
         return "break"
 
     def _shortcut_edit_repeat(self, event=None):
@@ -894,8 +939,49 @@ class MacroRunnerApp(tk.Tk):
         except (ValueError, tk.TclError, TypeError) as exc:
             messagebox.showerror("Invalid action", str(exc))
 
+    def add_hold_key(self, kind):
+        if self._editing_locked():
+            return
+        try:
+            self._append_validated(Action(kind=kind, keys=self.hold_key.get().strip().lower()))
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid key", str(exc))
+
+    def _remember_edit(self):
+        self.history.record(self.actions)
+
+    def undo_edit(self):
+        if self._editing_locked():
+            return
+        previous = self.history.undo(self.actions)
+        if previous is not None:
+            self.actions = previous
+            self.refresh_list()
+
+    def redo_edit(self):
+        if self._editing_locked():
+            return
+        following = self.history.redo(self.actions)
+        if following is not None:
+            self.actions = following
+            self.refresh_list()
+
+    def _apply_actions(self, new_actions, selected=None):
+        if new_actions == self.actions:
+            return
+        self._remember_edit()
+        self.actions = new_actions
+        self.refresh_list()
+        if selected is not None:
+            self.lst.selection_clear(0, tk.END)
+            for idx in selected:
+                self.lst.selection_set(idx)
+            if selected:
+                self.lst.see(selected[0])
+
     def _append_validated(self, action):
         action = validate_action(asdict(action))
+        self._remember_edit()
         self.actions.append(action)
         self.refresh_list()
 
@@ -911,8 +997,9 @@ class MacroRunnerApp(tk.Tk):
                 inside_block = True
             elif a.kind == "loop_end":
                 inside_block = False
-        if selection and selection[0] < len(self.actions):
-            self.lst.selection_set(selection[0])
+        for index in selection:
+            if index < len(self.actions):
+                self.lst.selection_set(index)
 
     def _select_action(self, index):
         self.lst.selection_clear(0, tk.END)
@@ -936,6 +1023,8 @@ class MacroRunnerApp(tk.Tk):
         if a.kind == "key":
             d = f'Type "{a.keys}"' if a.key_mode == "type" else f"Key press: {a.keys}"
             return f"{label}{d}{rep}"
+        if a.kind in ("key_down", "key_up"):
+            return f"{label}{'Hold' if a.kind == 'key_down' else 'Release'} key: {a.keys}"
         if a.kind == "move":
             return f"{label}Move @({a.x},{a.y}) over {a.move_duration}s{rep}"
         if a.kind == "scroll":
@@ -976,12 +1065,14 @@ class MacroRunnerApp(tk.Tk):
             return
         index = selected[0]
         action = self.actions[index]
-        if action.kind in CONTROL:
-            messagebox.showinfo("Control marker", "Control markers cannot be disabled. Disable actions inside the block instead.")
+        if any(self.actions[i].kind in CONTROL for i in selected):
+            messagebox.showinfo("Control marker", "Select executable actions only; block markers cannot be disabled.")
             return
-        action.enabled = not action.enabled
+        self._remember_edit()
+        for idx in selected:
+            if self.actions[idx].kind not in CONTROL:
+                self.actions[idx].enabled = not self.actions[idx].enabled
         self.refresh_list()
-        self._select_action(index)
 
     def edit_action_selected(self):
         """Edit an existing action without altering it until Save is validated."""
@@ -1009,7 +1100,7 @@ class MacroRunnerApp(tk.Tk):
 
         ttk.Label(form, text="Action type:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Combobox(form, width=25, textvariable=kind_var,
-                     values=("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end",
+                     values=("click", "wait", "key", "key_down", "key_up", "move", "scroll", "drag", "loop_start", "loop_end",
                              "click_image", "wait_until", "if_start", "else", "if_end",
                              "until_start", "until_end"),
                      state="readonly").grid(row=0, column=1, sticky="ew", pady=4)
@@ -1032,6 +1123,8 @@ class MacroRunnerApp(tk.Tk):
                       ("interval", "Interval (seconds)", float)),
             "wait": (("seconds", "Wait (seconds)", float),),
             "key": (("key_mode", "Mode", str), ("keys", "Key / Text", str)),
+            "key_down": (("keys", "Key to hold", str),),
+            "key_up": (("keys", "Key to release", str),),
             "move": (("x", "X coordinate", int), ("y", "Y coordinate", int),
                      ("move_duration", "Duration (seconds)", float)),
             "scroll": (("scroll_amount", "Scroll steps (+up/-down)", int),),
@@ -1152,6 +1245,7 @@ class MacroRunnerApp(tk.Tk):
             except (ValueError, TypeError, tk.TclError, KeyError) as exc:
                 messagebox.showerror("Invalid action", str(exc), parent=dialog)
                 return
+            self._remember_edit()
             self.actions[index] = updated
             self.refresh_list()
             self._select_action(index)
@@ -1185,7 +1279,9 @@ class MacroRunnerApp(tk.Tk):
             if self._editing_locked():
                 dlg.destroy()
                 return
-            a.name = var.get().strip()
+            if a.name != var.get().strip():
+                self._remember_edit()
+                a.name = var.get().strip()
             self.refresh_list()
             self._select_action(idx)
             dlg.destroy()
@@ -1297,7 +1393,11 @@ class MacroRunnerApp(tk.Tk):
                 dlg.destroy()
                 return
             try:
-                a.repeats = max(1, int(var.get()))
+                count = max(1, int(var.get()))
+                candidate = validate_action({**asdict(a), "repeats": count})
+                if candidate != a:
+                    self._remember_edit()
+                    a.repeats = count
                 self.refresh_list()
                 self._select_action(idx)
                 dlg.destroy()
