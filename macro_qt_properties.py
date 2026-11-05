@@ -159,18 +159,22 @@ class PropertiesPanel(QFrame):
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
         if action.kind in ("click", "move", "drag"):
-            pick = QPushButton("Pick start position (3 seconds)")
+            pick = QPushButton("Pick start (3 s)")
+            pick.setToolTip("Move the pointer to the start position; capture after 3 seconds.")
             pick.clicked.connect(lambda: self.pick_coordinates.emit("start"))
             self.form.addRow(pick)
-            test = QPushButton("Test move to position")
+            test = QPushButton("Test position")
+            test.setToolTip("Move the pointer to the selected X/Y coordinates.")
             test.clicked.connect(self._test_coordinates)
             self.form.addRow(test)
             if action.kind == "drag":
-                destination = QPushButton("Pick drag destination (3 seconds)")
+                destination = QPushButton("Pick destination (3 s)")
+                destination.setToolTip("Move to the drag destination; capture after 3 seconds.")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
                 self.form.addRow(destination)
         if action.kind in VISUAL:
-            color = QPushButton("Sample screen pixel (3 seconds)")
+            color = QPushButton("Sample pixel (3 s)")
+            color.setToolTip("Capture the pixel beneath the pointer after 3 seconds.")
             color.clicked.connect(lambda: self.pick_coordinates.emit("pixel"))
             self.form.addRow(color)
         if "condition_source" in self.controls:

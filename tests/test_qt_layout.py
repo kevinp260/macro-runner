@@ -45,8 +45,8 @@ class EditorLayoutTests(unittest.TestCase):
             panel = window.inspector
             self.assertEqual(panel.scroll.horizontalScrollBarPolicy(),
                              Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            for title in ("Pick start position", "Test move to position",
-                          "Pick drag destination"):
+            for title in ("Pick start (3 s)", "Test position",
+                          "Pick destination (3 s)"):
                 matching = [
                     child for child in panel.content.findChildren(QPushButton)
                     if title in child.text()
