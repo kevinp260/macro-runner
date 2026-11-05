@@ -7,10 +7,10 @@ name = "macro-runner-desktop"
 version = "1.5.5"
 description = "A small Tkinter mouse and keyboard automation app"
 requires-python = ">=3.9"
-dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9"]
+dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9", "opencv-python-headless>=4.8,<5"]
 
 [project.scripts]
 macro-runner = "macro_runner:main"
 
 [tool.setuptools]
-py-modules = ["macro_runner", "macro_model", "macro_playback"]
+py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision"]

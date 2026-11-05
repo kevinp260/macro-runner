@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end"]
 
 @dataclass
 class Action:
@@ -23,6 +23,21 @@ class Action:
     to_x: Optional[int] = None
     to_y: Optional[int] = None
     scroll_amount: int = -3
+    # Shared condition for Click Image, Wait Until, If and Repeat Until.
+    condition_source: str = "image"
+    match_mode: str = "matches"
+    image_path: str = ""
+    confidence: float = 0.9
+    region_x: Optional[int] = None
+    region_y: Optional[int] = None
+    region_w: Optional[int] = None
+    region_h: Optional[int] = None
+    pixel_x: int = 0
+    pixel_y: int = 0
+    pixel_color: str = "#00FF00"
+    pixel_tolerance: int = 10
+    timeout: float = 10.0
+    poll_interval: float = 0.3
 
 
 def _finite_nonnegative(value, field):
@@ -46,19 +61,61 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
     _positive_int(action.repeats, "Action repeats")
     if not isinstance(action.enabled, bool):
         raise ValueError("Enabled must be true or false.")
-    if action.kind in ("loop_start", "loop_end"):
-        # Loop markers control the sequence itself and cannot be disabled.
+    markers = ("loop_start", "loop_end", "if_start", "else", "if_end",
+               "until_start", "until_end")
+    if action.kind in markers:
         if not action.enabled:
-            raise ValueError("Loop markers must remain enabled.")
-        if action.kind == "loop_end" and action.repeats != 1:
-            raise ValueError("Loop End cannot have its own repeat count.")
+            raise ValueError("Control markers must remain enabled.")
+        if action.kind not in ("loop_start", "until_start") and action.repeats != 1:
+            raise ValueError("Only block starts can have a repeat count.")
+    if action.kind in ("click_image", "wait_until", "if_start", "until_start"):
+        if action.condition_source not in ("image", "pixel"):
+            raise ValueError("Condition source must be image or pixel.")
+        if action.match_mode not in ("matches", "not_matches"):
+            raise ValueError("Condition test must be matches or not_matches.")
+        if action.kind == "click_image" and (
+            action.condition_source != "image" or action.match_mode != "matches"
+        ):
+            raise ValueError("Click Image requires an image match.")
+        if action.kind == "click_image" and action.button not in ("left", "right", "middle"):
+            raise ValueError("Invalid image-click mouse button.")
+        if action.condition_source == "image":
+            if not isinstance(action.image_path, str) or not action.image_path.strip():
+                raise ValueError("Select a reference image.")
+            _finite_nonnegative(action.confidence, "Image confidence")
+            if not 0 < action.confidence <= 1:
+                raise ValueError("Image confidence must be greater than 0 and at most 1.")
+            region = (action.region_x, action.region_y, action.region_w, action.region_h)
+            if any(v is not None for v in region):
+                if any(isinstance(v, bool) or not isinstance(v, int) for v in region):
+                    raise ValueError("Image region requires four integers (x, y, w, h).")
+                if action.region_w < 1 or action.region_h < 1:
+                    raise ValueError("Image region width and height must be positive.")
+        else:
+            for field in ("pixel_x", "pixel_y"):
+                value = getattr(action, field)
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise ValueError(f"{field} must be an integer.")
+            if (not isinstance(action.pixel_color, str) or
+                len(action.pixel_color) != 7 or action.pixel_color[0] != "#" or
+                any(c not in "0123456789abcdefABCDEF" for c in action.pixel_color[1:])):
+                raise ValueError("Pixel color must be #RRGGBB.")
+            if (isinstance(action.pixel_tolerance, bool) or
+                not isinstance(action.pixel_tolerance, int) or
+                not 0 <= action.pixel_tolerance <= 255):
+                raise ValueError("Pixel tolerance must be 0 to 255.")
+        _finite_nonnegative(action.poll_interval, "Poll interval")
+        if action.poll_interval <= 0:
+            raise ValueError("Poll interval must be positive.")
+        if action.kind in ("click_image", "wait_until"):
+            _finite_nonnegative(action.timeout, "Timeout")
     if action.kind in ("click", "move", "drag"):
         for field, value in (("x", action.x), ("y", action.y)):
             if isinstance(value, bool) or not isinstance(value, int):
@@ -115,7 +172,8 @@ def parse_sequence(data) -> List[Action]:
     if not isinstance(data, list):
         raise ValueError("The sequence must be a JSON array of actions.")
     actions = [validate_action(action) for action in data]
-    loop_spans(actions)
+    from macro_flow import validate_flow
+    validate_flow(actions)
     return actions
 
 
@@ -128,7 +186,8 @@ def serialize_document(actions: List[Action], repeat_count: int, start_delay: fl
     _finite_nonnegative(start_delay, "Start delay")
     from dataclasses import asdict
     normalized = [validate_action(asdict(action)) for action in actions]
-    loop_spans(normalized)
+    from macro_flow import validate_flow
+    validate_flow(normalized)
     validated = [asdict(action) for action in normalized]
     return {
         "version": DOCUMENT_VERSION,
