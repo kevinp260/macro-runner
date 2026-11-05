@@ -85,6 +85,26 @@ Run through the functional checks on Windows, then repeat key input checks on Ub
 - [ ] **V13 — Start selection:** Verify Run from Selected refuses to begin in the middle of an If/Until block, and accepts its opening marker.
 - [ ] **V14 — Cross-platform:** Repeat a basic image and pixel test on Windows and Ubuntu Xorg; confirm failure messages for screenshot permission restrictions.
 
+## Keyboard actions, recording, and multi-selection (PR #11)
+
+- [ ] **K1 — Hold/Release:** Add Hold Shift, click a selectable item, Release Shift; confirm behavior matches manually holding Shift.
+- [ ] **K2 — Stop cleanup:** Begin a Hold modifier, interrupt execution before Release, and verify the modifier does not remain stuck.
+- [ ] **K3 — Error cleanup:** Trigger an error after a Hold and confirm the modifier is released.
+- [ ] **K4 — Invalid release:** Run Release for a key not held by the macro; verify playback aborts clearly without releasing another key.
+- [ ] **K5 — Repeated keydown:** Recording repeated keydown events (autorepeat) does not create repeated Hold actions.
+- [ ] **K6 — Opt-in privacy:** Confirm keyboard capture starts disabled and requires confirmation; cancel leaves capture disabled.
+- [ ] **K7 — Keyboard capture:** Record a harmless key sequence and Ctrl/Shift shortcuts in a scratch text editor; verify replayable Key/Hold/Release actions.
+- [ ] **K8 — Mixed capture:** Enable keyboard recording and mouse recording together; verify correct event order and optional wait actions.
+- [ ] **K9 — Stop recording:** Verify Stop Recording removes both listeners; keys typed afterward are not recorded.
+- [ ] **K10 — UI exclusion:** Keyboard input directed to MacroRunner's own editor and buttons is not recorded.
+- [ ] **K11 — Multi-select:** Ctrl-click and Shift-click multiple actions; move Up/Down, Duplicate and Delete while preserving relative order.
+- [ ] **K12 — Marker guard:** Duplicate selection containing a control marker; verify the operation is rejected without editing the list.
+- [ ] **K13 — Undo/Redo:** Add, edit, rename, duplicate, move, delete, disable and load actions, then undo and redo each change.
+- [ ] **K14 — Recording history:** Record several actions, then Undo once; verify the entire recording session is reverted and Redo restores it.
+- [ ] **K15 — History after edit:** Undo a change, make a new edit, verify Redo is cleared.
+- [ ] **K16 — Persistence:** Save/reload a macro containing Key Hold and Release; verify the saved representation and playback.
+- [ ] **K17 — Safety:** Try actions and Undo while playback/recording are active; verify the list cannot change.
+
 ## Result reporting
 
 Mark each check `[x]` when it passes. For any failure, record OS/version, Xorg vs Wayland, the action settings, expected behavior, actual behavior, and reproduction steps.
