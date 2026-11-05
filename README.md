@@ -1,6 +1,34 @@
+## MacroRunner 2 — Structured Qt workflow editor
+
+MacroRunner 2 uses **PySide6 / Qt Widgets**, replacing the previous Tkinter UI.
+Existing saved JSON version 2 macros and the Python automation engine are preserved.
+
+The new interface provides a searchable left action palette, a central structured
+drag-and-drop workflow tree, and a scrollable properties inspector on the right.
+Repeat blocks and If/Else branches are collapsible. Dragging a group moves all
+its contents. Invalid drops are rejected without changing the saved workflow.
+
+The toolbar includes Run, Pause, Stop, Step, Record, Save/Load, and Undo/Redo.
+The bottom row contains whole-workflow repeat count, start delay, and progress.
+Panel widths and window size persist, and the View menu switches dark/light themes.
+
+Keyboard capture remains opt-in with a privacy warning, a three-second countdown,
+and separate global mouse/keyboard listeners. Saved macros remain JSON version 2.
+
+On Ubuntu, update with `git pull origin main && make install`. The installer
+uses pipx and creates the same application launcher. On X11/Xorg install `scrot`
+for screenshots (`sudo apt install scrot`). On Wayland, simulated input and
+global keyboard hooks can be restricted.
+
+On Windows, build with `pyinstaller --clean --noconfirm MacroRunner.spec`
+and package with Inno Setup using `installer.iss`. Qt dependencies are bundled.
+
+CI runs core model tests and offscreen Qt widget smoke tests on Windows/Ubuntu.
+Live desktop mouse/keyboard interaction requires manual testing before release.
+
 # MacroRunner (Mouse/Keyboard Automator)
 
-A tiny desktop app that records and plays back mouse/keyboard actions. Great for repetitive tasks like:
+A PySide6 desktop app that records and plays back mouse/keyboard actions. Great for repetitive tasks like:
 
 - click at **X,Y** → wait **N** seconds → press a key → **repeat 80×**
 - quick data entry sequences

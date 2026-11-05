@@ -25,11 +25,11 @@ run:
 	$(VENV_PYTHON) macro_runner.py
 
 test:
-	$(VENV_PYTHON) -m unittest discover -s tests -v
+	QT_QPA_PLATFORM=offscreen $(VENV_PYTHON) -m unittest discover -s tests -v
 
 build:
 	$(VENV_PYTHON) -m pip install pyinstaller
-	$(VENV_PYTHON) -m PyInstaller --noconfirm --clean --onefile --windowed --name $(APP_NAME) --add-data 'macro_runner_icon.ico:.' macro_runner.py
+	$(VENV_PYTHON) -m PyInstaller --noconfirm --clean MacroRunner.spec
 	@echo 'Linux executable: dist/$(APP_NAME)'
 
 install:
