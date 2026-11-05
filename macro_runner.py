@@ -621,6 +621,7 @@ class MacroRunnerApp(tk.Tk):
             "kind": tk.StringVar(value="click_image"),
             "condition_source": tk.StringVar(value="image"),
             "match_mode": tk.StringVar(value="matches"),
+            "button": tk.StringVar(value="left"),
             "image_path": tk.StringVar(value=""),
             "confidence": tk.StringVar(value="0.90"),
             "region": tk.StringVar(value=""),
@@ -639,6 +640,7 @@ class MacroRunnerApp(tk.Tk):
                                   "else", "if_end", "until_start", "until_end")),
             ("Detect by", "condition_source", ("image", "pixel")),
             ("Condition", "match_mode", ("matches", "not_matches")),
+            ("Click button", "button", ("left", "right", "middle")),
             ("Reference image", "image_path", None),
             ("Min similarity (0–1)", "confidence", None),
             ("Search region x,y,w,h", "region", None),
@@ -701,6 +703,7 @@ class MacroRunnerApp(tk.Tk):
                 properties.update(
                     condition_source=v["condition_source"].get(),
                     match_mode="matches" if kind == "click_image" else v["match_mode"].get(),
+                    button=v["button"].get(),
                     image_path=v["image_path"].get().strip(),
                     confidence=float(v["confidence"].get()),
                     region_x=region[0], region_y=region[1],
@@ -1038,7 +1041,7 @@ class MacroRunnerApp(tk.Tk):
                      ("button", "Mouse button", str)),
             "loop_start": (),
             "loop_end": (),
-            "click_image": (),
+            "click_image": (("button", "Mouse button", str),),
             "wait_until": (),
             "if_start": (),
             "else": (),
@@ -1058,8 +1061,8 @@ class MacroRunnerApp(tk.Tk):
                         ("pixel_tolerance", "Pixel tolerance", int))
         visual_kinds = ("click_image", "wait_until", "if_start", "until_start")
         for k in visual_kinds:
-            field_specs[k] = (("condition_source", "Detect by", str),
-                              ("match_mode", "Condition", str))
+            field_specs[k] += (("condition_source", "Detect by", str),
+                               ("match_mode", "Condition", str))
             if k in ("click_image", "wait_until"):
                 field_specs[k] += (("timeout", "Timeout (s)", float),
                                    ("poll_interval", "Poll every (s)", float))
@@ -1087,6 +1090,9 @@ class MacroRunnerApp(tk.Tk):
 
         def rebuild_fields(*_):
             kind = kind_var.get()
+            if kind == "click_image" and fields["condition_source"].get() != "image":
+                fields["condition_source"].set("image")
+                return
             marker = kind in CONTROL
             count_enabled = kind in ("loop_start", "until_start") or kind not in CONTROL
             repeat_entry.configure(state="normal" if count_enabled else "disabled")
