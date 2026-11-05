@@ -7,6 +7,39 @@ app = QApplication.instance() or QApplication([])
 
 
 class WindowTests(unittest.TestCase):
+    def test_minimize_preference_persists_and_restores(self):
+        from PySide6.QtCore import QSettings
+        w = MacroWindow()
+        try:
+            w.minimize_on_run.setChecked(True)
+            self.assertTrue(QSettings("MacroRunner", "Desktop").value(
+                "minimize_on_run", False, type=bool))
+            w.show()
+            app.processEvents()
+            w._restore_after_run = True
+            w.showMinimized()
+            app.processEvents()
+            self.assertTrue(w.isMinimized())
+            w._finished(True, "Done")
+            app.processEvents()
+            self.assertFalse(w.isMinimized())
+            self.assertFalse(w._restore_after_run)
+        finally:
+            w.minimize_on_run.setChecked(False)
+            w.close()
+
+    def test_minimize_off_keeps_window_unchanged(self):
+        w = MacroWindow()
+        try:
+            w.show()
+            app.processEvents()
+            w._restore_after_run = False
+            w._finished(True, "Done")
+            self.assertFalse(w.isMinimized())
+        finally:
+            w.close()
+
+
     def test_pending_completion_keeps_editor_locked(self):
         w = MacroWindow()
         try:

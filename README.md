@@ -17,7 +17,10 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
   selected action. Click **Apply changes** after editing.
 - **Toolbar:** New, Open, Save, Run, Pause/Resume, Stop, Step,
   Run from Selected, Record, Undo and Redo.
-- **Footer:** Whole-workflow repeat count, start delay and progress.
+- **Footer:** Whole-workflow repeat count, start delay, optional **Minimize when running**
+  checkbox, and progress. When enabled, MacroRunner minimizes before the start
+  delay and restores after completion, Stop, or execution failure. This preference
+  is saved per device, independently of macro JSON.
 
 Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the
