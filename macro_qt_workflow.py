@@ -356,6 +356,21 @@ class WorkflowTree(QTreeWidget):
             parent = parent.parent()
         return parents
 
+    def toggle_enabled_selection(self):
+        chosen = self.selected_nodes()
+        if not chosen:
+            return
+        nodes = [unpack_node(item) for item in chosen]
+        if any(node.is_group for node in nodes):
+            self.invalid_change.emit("Select executable actions only; workflow groups cannot be disabled.")
+            return
+        previous = deepcopy(self._snapshot)
+        for item, node in zip(chosen, nodes):
+            node.action.enabled = not node.action.enabled
+            item.setData(0, NODE_ROLE, pack_node(node))
+            item.setText(0, description(node.action))
+        self._commit(previous)
+
     def duplicate_selection(self):
         chosen = self.selected_nodes()
         chosen = [item for item in chosen if not any(

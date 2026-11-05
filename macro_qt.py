@@ -218,6 +218,7 @@ class MacroWindow(QMainWindow):
         buttons = QHBoxLayout()
         for text, handler in [
             ("Duplicate", self.duplicate), ("Delete", self.delete),
+            ("Enable / Disable", self.tree.toggle_enabled_selection),
             ("Collapse all", self.tree.collapseAll),
             ("Expand all", self.tree.expandAll),
         ]:

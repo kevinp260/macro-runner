@@ -31,6 +31,22 @@ class TreeEditorTests(unittest.TestCase):
         self.assertEqual(w.actions(), actions)
         self.assertTrue(errors)
 
+    def test_bulk_toggle_enabled_and_reject_group_toggle(self):
+        w = WorkflowTree()
+        w.set_actions([Action(kind="wait"), Action(kind="key", keys="a")])
+        w.topLevelItem(0).setSelected(True)
+        w.topLevelItem(1).setSelected(True)
+        w.toggle_enabled_selection()
+        self.assertEqual([a.enabled for a in w.actions()], [False, False])
+        w.set_actions([Action(kind="loop_start"), Action(kind="wait"),
+                       Action(kind="loop_end")])
+        w.topLevelItem(0).setSelected(True)
+        errors = []
+        w.invalid_change.connect(errors.append)
+        w.toggle_enabled_selection()
+        self.assertTrue(errors)
+        self.assertTrue(w.actions()[0].enabled)
+
     def test_change_properties_and_nested_if(self):
         w = WorkflowTree()
         w.set_actions([Action(kind="wait", seconds=2)])
