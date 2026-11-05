@@ -15,6 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install Qt Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libxkbcommon0 libxcb-cursor0
       - name: Compile Python sources
         run: python -m compileall -q macro_runner.py macro_model.py macro_playback.py macro_flow.py macro_vision.py macro_keys.py macro_editing.py macro_runtime.py macro_workflow.py macro_qt.py macro_qt_workflow.py macro_qt_properties.py
       - name: Verify built wheel includes all runtime modules
