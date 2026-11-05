@@ -1006,7 +1006,9 @@ class MacroRunnerApp(tk.Tk):
 
         ttk.Label(form, text="Action type:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Combobox(form, width=25, textvariable=kind_var,
-                     values=("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end"),
+                     values=("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end",
+                             "click_image", "wait_until", "if_start", "else", "if_end",
+                             "until_start", "until_end"),
                      state="readonly").grid(row=0, column=1, sticky="ew", pady=4)
 
         ttk.Label(form, text="Name:").grid(row=1, column=0, sticky="w", pady=4)
@@ -1036,7 +1038,31 @@ class MacroRunnerApp(tk.Tk):
                      ("button", "Mouse button", str)),
             "loop_start": (),
             "loop_end": (),
+            "click_image": (),
+            "wait_until": (),
+            "if_start": (),
+            "else": (),
+            "if_end": (),
+            "until_start": (),
+            "until_end": (),
         }
+        vision_image = (("image_path", "Reference image", str),
+                        ("confidence", "Similarity (0–1)", float),
+                        ("region_x", "Region X (optional)", lambda x: int(x) if x not in ("", "None") else None),
+                        ("region_y", "Region Y (optional)", lambda x: int(x) if x not in ("", "None") else None),
+                        ("region_w", "Region width (optional)", lambda x: int(x) if x not in ("", "None") else None),
+                        ("region_h", "Region height (optional)", lambda x: int(x) if x not in ("", "None") else None))
+        vision_pixel = (("pixel_x", "Pixel X", int),
+                        ("pixel_y", "Pixel Y", int),
+                        ("pixel_color", "Pixel color #RRGGBB", str),
+                        ("pixel_tolerance", "Pixel tolerance", int))
+        visual_kinds = ("click_image", "wait_until", "if_start", "until_start")
+        for k in visual_kinds:
+            field_specs[k] = (("condition_source", "Detect by", str),
+                              ("match_mode", "Condition", str))
+            if k in ("click_image", "wait_until"):
+                field_specs[k] += (("timeout", "Timeout (s)", float),
+                                   ("poll_interval", "Poll every (s)", float))
         fields = {}
         for kind_fields in field_specs.values():
             for key, _, _ in kind_fields:
@@ -1050,29 +1076,54 @@ class MacroRunnerApp(tk.Tk):
         details.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(4, 10))
         details.columnconfigure(1, weight=1)
 
+        def current_fields():
+            kind = kind_var.get()
+            fields_for_kind = field_specs[kind]
+            if kind in visual_kinds:
+                source = fields["condition_source"].get()
+                fields_for_kind = fields_for_kind + (vision_image if source == "image"
+                                                     else vision_pixel)
+            return fields_for_kind
+
         def rebuild_fields(*_):
-            marker = kind_var.get() in ("loop_start", "loop_end")
-            repeat_entry.configure(state="disabled" if kind_var.get() == "loop_end" else "normal")
-            if kind_var.get() == "loop_end":
+            kind = kind_var.get()
+            marker = kind in CONTROL
+            count_enabled = kind in ("loop_start", "until_start") or kind not in CONTROL
+            repeat_entry.configure(state="normal" if count_enabled else "disabled")
+            if not count_enabled:
                 repeat_var.set("1")
             enabled_check.configure(state="disabled" if marker else "normal")
             if marker:
                 enabled_var.set(True)
             for child in details.winfo_children():
                 child.destroy()
-            for row, (field, label, _) in enumerate(field_specs[kind_var.get()]):
+            for row, (field, label, _) in enumerate(current_fields()):
                 ttk.Label(details, text=label + ":").grid(
                     row=row, column=0, sticky="w", padx=(0, 10), pady=4
                 )
-                if field in ("button", "key_mode"):
-                    choices = ("left", "right", "middle") if field == "button" else ("press", "type")
+                options = {
+                    "button": ("left", "right", "middle"),
+                    "key_mode": ("press", "type"),
+                    "condition_source": ("image", "pixel"),
+                    "match_mode": ("matches", "not_matches"),
+                }
+                if field in options:
                     widget = ttk.Combobox(details, width=24, textvariable=fields[field],
-                                          values=choices, state="readonly")
+                                          values=options[field], state="readonly")
                 else:
                     widget = ttk.Entry(details, width=25, textvariable=fields[field])
                 widget.grid(row=row, column=1, sticky="ew", pady=4)
+                if field == "image_path":
+                    def browse():
+                        path = filedialog.askopenfilename(parent=dialog,
+                            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp")])
+                        if path:
+                            fields["image_path"].set(path)
+                    ttk.Button(details, text="…", width=3, command=browse).grid(
+                        row=row, column=2, padx=4)
 
         kind_var.trace_add("write", rebuild_fields)
+        fields["condition_source"].trace_add("write", rebuild_fields)
         rebuild_fields()
 
         buttons = ttk.Frame(form)
@@ -1086,8 +1137,11 @@ class MacroRunnerApp(tk.Tk):
                 data = asdict(original)
                 data.update(kind=kind_var.get(), name=name_var.get().strip(),
                             repeats=int(repeat_var.get()), enabled=enabled_var.get())
-                for field, _, converter in field_specs[kind_var.get()]:
+                for field, _, converter in current_fields():
                     data[field] = converter(fields[field].get())
+                if kind_var.get() == "click_image":
+                    data["condition_source"] = "image"
+                    data["match_mode"] = "matches"
                 updated = validate_action(data)
             except (ValueError, TypeError, tk.TclError, KeyError) as exc:
                 messagebox.showerror("Invalid action", str(exc), parent=dialog)
@@ -1559,7 +1613,8 @@ class MacroRunnerApp(tk.Tk):
             self.events.put(("finished", "aborted", msg))
 
     def _check_visual_condition(self, action):
-        self._wait_or_stop(0)
+        if self.stop_flag.is_set():
+            raise RuntimeError("Stopped")
         return check_condition(action, pag.screenshot)
 
     def _execute_action(self, a: Action):
