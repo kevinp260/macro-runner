@@ -11,7 +11,7 @@ import time
 from dataclasses import asdict
 
 from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QToolBar, QLabel, QPushButton, QFileDialog, QMessageBox,
@@ -101,6 +101,12 @@ class MacroWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MacroRunner — Workflow editor")
+        icon_file = os.path.join(
+            getattr(sys, "_MEIPASS", os.path.dirname(__file__)),
+            "macro_runner_icon.ico"
+        )
+        if os.path.isfile(icon_file):
+            self.setWindowIcon(QIcon(icon_file))
         self.setMinimumSize(780, 520)
         self.resize(1180, 760)
         self.settings = QSettings("MacroRunner", "Desktop")
@@ -223,6 +229,8 @@ class MacroWindow(QMainWindow):
 
         self.inspector = PropertiesPanel()
         self.inspector.apply_action.connect(self._apply_property)
+        self.inspector.pick_coordinates.connect(self._pick_coordinates)
+        self.inspector.test_move.connect(self._test_move)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
@@ -513,6 +521,38 @@ class MacroWindow(QMainWindow):
         self._update_controls()
         if not success:
             QMessageBox.warning(self, "Workflow stopped", message)
+
+    def _test_move(self, x, y):
+        if self._busy():
+            return
+        try:
+            import pyautogui
+            pyautogui.moveTo(x, y, duration=.15)
+            self._set_status(f"Moved pointer to ({x}, {y}).")
+        except Exception as exc:
+            QMessageBox.warning(self, "Mouse movement unavailable", str(exc))
+
+    def _pick_coordinates(self, mode):
+        if self._busy():
+            return
+        self._set_status("Move the pointer to the target — capturing in 3 seconds…")
+
+        def finish():
+            if self._busy():
+                return
+            try:
+                import pyautogui
+                x, y = pyautogui.position()
+                color = None
+                if mode == "pixel":
+                    rgb = pyautogui.screenshot(region=(x, y, 1, 1)).convert("RGB").getpixel((0, 0))
+                    color = "#{:02X}{:02X}{:02X}".format(*rgb)
+                self.inspector.update_picked_coordinates(mode, x, y, color)
+                self._set_status(f"Captured ({x}, {y}). Choose Apply changes to save.")
+            except Exception as exc:
+                QMessageBox.warning(self, "Screen capture unavailable", str(exc))
+
+        QTimer.singleShot(3000, finish)
 
     def _start_hotkeys(self):
         try:

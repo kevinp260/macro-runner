@@ -64,6 +64,8 @@ def convert(field, text):
 
 class PropertiesPanel(QWidget):
     apply_action = Signal(object)
+    pick_coordinates = Signal(str)
+    test_move = Signal(int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -152,6 +154,21 @@ class PropertiesPanel(QWidget):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind in ("click", "move", "drag"):
+            pick = QPushButton("Pick start position (3 seconds)")
+            pick.clicked.connect(lambda: self.pick_coordinates.emit("start"))
+            self.form.addRow("", pick)
+            test = QPushButton("Test move to position")
+            test.clicked.connect(self._test_coordinates)
+            self.form.addRow("", test)
+            if action.kind == "drag":
+                destination = QPushButton("Pick drag destination (3 seconds)")
+                destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
+                self.form.addRow("", destination)
+        if action.kind in VISUAL:
+            color = QPushButton("Sample screen pixel (3 seconds)")
+            color.clicked.connect(lambda: self.pick_coordinates.emit("pixel"))
+            self.form.addRow("", color)
         if "condition_source" in self.controls:
             self.controls["condition_source"].currentTextChanged.connect(
                 self.update_visual_visibility
@@ -174,6 +191,27 @@ class PropertiesPanel(QWidget):
         for field in PIXEL_FIELDS:
             if field in self.controls:
                 self.controls[field].setEnabled(not image)
+
+    def update_picked_coordinates(self, kind, x, y, color=None):
+        fields = {
+            "start": ("x", "y"),
+            "destination": ("to_x", "to_y"),
+            "pixel": ("pixel_x", "pixel_y"),
+        }.get(kind, ())
+        if fields and all(field in self.controls for field in fields):
+            self.controls[fields[0]].setText(str(x))
+            self.controls[fields[1]].setText(str(y))
+        if kind == "pixel" and color and "pixel_color" in self.controls:
+            self.controls["pixel_color"].setText(color)
+
+    def _test_coordinates(self):
+        try:
+            x = int(self.controls["x"].text())
+            y = int(self.controls["y"].text())
+        except (ValueError, KeyError):
+            QMessageBox.warning(self, "Invalid coordinates", "Enter valid X/Y coordinates.")
+            return
+        self.test_move.emit(x, y)
 
     def browse_image(self, target):
         path, _ = QFileDialog.getOpenFileName(
