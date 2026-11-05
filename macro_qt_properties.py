@@ -5,7 +5,7 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QScrollArea, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QCheckBox, QSpinBox, QPushButton, QLabel, QFileDialog, QHBoxLayout,
-    QMessageBox
+    QMessageBox, QFrame
 )
 
 from macro_model import Action, validate_action
@@ -62,13 +62,16 @@ def convert(field, text):
     return text
 
 
-class PropertiesPanel(QWidget):
+class PropertiesPanel(QFrame):
     apply_action = Signal(object)
     pick_coordinates = Signal(str)
     test_move = Signal(int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("panel")
+        # The inspector needs room for both labels and inputs (plus browse).
+        self.setMinimumWidth(345)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
         self.heading = QLabel("Properties")
@@ -80,6 +83,7 @@ class PropertiesPanel(QWidget):
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         outer.addWidget(self.scroll, 1)
         self.content = QWidget()
         self.form = QFormLayout(self.content)
@@ -157,18 +161,18 @@ class PropertiesPanel(QWidget):
         if action.kind in ("click", "move", "drag"):
             pick = QPushButton("Pick start position (3 seconds)")
             pick.clicked.connect(lambda: self.pick_coordinates.emit("start"))
-            self.form.addRow("", pick)
+            self.form.addRow(pick)
             test = QPushButton("Test move to position")
             test.clicked.connect(self._test_coordinates)
-            self.form.addRow("", test)
+            self.form.addRow(test)
             if action.kind == "drag":
                 destination = QPushButton("Pick drag destination (3 seconds)")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
-                self.form.addRow("", destination)
+                self.form.addRow(destination)
         if action.kind in VISUAL:
             color = QPushButton("Sample screen pixel (3 seconds)")
             color.clicked.connect(lambda: self.pick_coordinates.emit("pixel"))
-            self.form.addRow("", color)
+            self.form.addRow(color)
         if "condition_source" in self.controls:
             self.controls["condition_source"].currentTextChanged.connect(
                 self.update_visual_visibility

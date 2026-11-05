@@ -13,4 +13,8 @@ dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9", "opencv-pytho
 macro-runner = "macro_runner:main"
 
 [tool.setuptools]
+packages = ["macro_ui_assets"]
 py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties"]
+
+[tool.setuptools.package-data]
+macro_ui_assets = ["*.svg"]

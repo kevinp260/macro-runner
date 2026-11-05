@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QToolBar, QLabel, QPushButton, QFileDialog, QMessageBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QDialog, QDialogButtonBox,
-    QFormLayout, QFrame, QProgressBar, QAbstractItemView
+    QFormLayout, QFrame, QProgressBar, QAbstractItemView, QGridLayout
 )
 
 from macro_model import Action, parse_document, serialize_document
@@ -25,6 +25,8 @@ from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
+from macro_ui_assets import ICON_DIR
+import PySide6.QtSvg  # Ensure SVG chevrons also work in PyInstaller distributions.
 
 
 DARK = """
@@ -54,7 +56,8 @@ QPushButton#primaryButton { background: #3276b3; color: white; }
 QPushButton#primaryButton:hover { background: #418ed2; }
 QToolBar { background: #1b222c; border-bottom: 1px solid #303a49;
            spacing: 8px; padding: 8px; }
-QSplitter::handle { background: #303a49; width: 5px; }
+QSplitter::handle { background: #15191f; }
+QSplitter::handle:hover { background: #34465d; }
 QStatusBar { background: #1b222c; color: #b8c8d8; }
 QScrollBar:vertical { background: #202834; width: 11px; }
 QScrollBar::handle:vertical { background: #4a596c; border-radius: 5px; }
@@ -84,8 +87,72 @@ QPushButton:hover, QToolButton:hover { background: #e1ecf7; }
 QPushButton:disabled, QToolButton:disabled { color: #9aa6b5; }
 QPushButton#primaryButton { background: #2675bb; color: white; }
 QToolBar { background: white; border-bottom: 1px solid #dce3ea; padding: 8px; }
-QSplitter::handle { background: #dce3ea; width: 5px; }
+QSplitter::handle { background: #f4f6f9; }
+QSplitter::handle:hover { background: #dce3ea; }
 QStatusBar { background: white; color: #4c5b6d; }
+"""
+
+
+def field_controls_style(theme):
+    """Use packaged SVG arrows and a single rounded border for each field."""
+    if theme not in ("dark", "light"):
+        raise ValueError("Unknown theme")
+    divider, button, hover = (
+        ("#3a4758", "#293746", "#38506a") if theme == "dark"
+        else ("#c9d3df", "#e9f1fa", "#d8e8f7")
+    )
+    up = (ICON_DIR / f"chevron-up-{theme}.svg").as_posix()
+    down = (ICON_DIR / f"chevron-down-{theme}.svg").as_posix()
+    return f"""
+QComboBox, QSpinBox, QDoubleSpinBox {{
+  padding-right: 29px;
+}}
+QComboBox::drop-down {{
+  subcontrol-origin: border;
+  subcontrol-position: top right;
+  width: 26px;
+  background: {button};
+  border-left: 1px solid {divider};
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+}}
+QComboBox::drop-down:hover {{ background: {hover}; }}
+QComboBox::down-arrow {{
+  image: url("{down}");
+  width: 12px;
+  height: 12px;
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+  subcontrol-origin: border;
+  subcontrol-position: top right;
+  width: 25px;
+  background: {button};
+  border-left: 1px solid {divider};
+  border-top-right-radius: 5px;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+  subcontrol-origin: border;
+  subcontrol-position: bottom right;
+  width: 25px;
+  background: {button};
+  border-left: 1px solid {divider};
+  border-top: 1px solid {divider};
+  border-bottom-right-radius: 5px;
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+  background: {hover};
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+  image: url("{up}");
+  width: 10px;
+  height: 10px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+  image: url("{down}");
+  width: 10px;
+  height: 10px;
+}}
 """
 
 
@@ -107,7 +174,8 @@ class MacroWindow(QMainWindow):
         )
         if os.path.isfile(icon_file):
             self.setWindowIcon(QIcon(icon_file))
-        self.setMinimumSize(780, 520)
+        # Enforce usable panel widths rather than letting the inspector clip.
+        self.setMinimumSize(1020, 620)
         self.resize(1180, 760)
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
@@ -175,9 +243,11 @@ class MacroWindow(QMainWindow):
         root.setSpacing(8)
         self.setCentralWidget(central)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setHandleWidth(12)  # A real gutter, not a line across rounded borders.
 
         palette_panel = QFrame()
         palette_panel.setObjectName("panel")
+        palette_panel.setMinimumWidth(195)
         palette_layout = QVBoxLayout(palette_panel)
         heading = QLabel("Actions")
         heading.setObjectName("panelHeading")
@@ -199,6 +269,7 @@ class MacroWindow(QMainWindow):
 
         editor_panel = QFrame()
         editor_panel.setObjectName("panel")
+        editor_panel.setMinimumWidth(410)
         editor_layout = QVBoxLayout(editor_panel)
         title_row = QHBoxLayout()
         label = QLabel("Workflow")
@@ -216,16 +287,20 @@ class MacroWindow(QMainWindow):
         self.tree.itemSelectionChanged.connect(self._selection_changed)
         editor_layout.addWidget(self.tree, 1)
 
-        buttons = QHBoxLayout()
-        for text, handler in [
+        # Two compact rows prevent toolbar labels being cropped at minimum size.
+        buttons = QGridLayout()
+        buttons.setSpacing(6)
+        for i, (text, handler) in enumerate([
             ("Duplicate", self.duplicate), ("Delete", self.delete),
             ("Enable / Disable", self.tree.toggle_enabled_selection),
             ("Collapse all", self.tree.collapseAll),
             ("Expand all", self.tree.expandAll),
-        ]:
+        ]):
             button = QPushButton(text)
             button.clicked.connect(handler)
-            buttons.addWidget(button)
+            buttons.addWidget(button, i // 3, i % 3)
+        for column in range(3):
+            buttons.setColumnStretch(column, 1)
         editor_layout.addLayout(buttons)
         self.splitter.addWidget(editor_panel)
 
@@ -305,11 +380,12 @@ class MacroWindow(QMainWindow):
         if state is not None:
             self.splitter.restoreState(state)
         else:
-            self.splitter.setSizes([220, 600, 340])
+            self.splitter.setSizes([205, 600, 365])
 
     def set_theme(self, name):
         app = QApplication.instance()
-        app.setStyleSheet(DARK if name == "dark" else LIGHT)
+        app.setStyleSheet((DARK if name == "dark" else LIGHT) +
+                          field_controls_style(name))
         self.settings.setValue("theme", name)
 
     def _filter_palette(self, text):
