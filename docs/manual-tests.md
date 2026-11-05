@@ -68,6 +68,23 @@ Run through the functional checks on Windows, then repeat key input checks on Ub
 - [ ] **R8 — Invalid file:** Try malformed/invalid JSON; verify an error appears and the current valid macro is not lost.
 - [ ] **R9 — Reopen and reuse:** Close/reopen the app, load a saved macro, execute it and verify the results.
 
+## Visual matching and conditional logic
+
+- [ ] **V1 — Image match:** Save a cropped image from a harmless desktop app, load it in Vision, configure 0.9 confidence and verify Click Image clicks the correct point.
+- [ ] **V2 — Missing image:** Hide the matching item, set a 2-second timeout, and verify Click Image aborts with a clear error without clicking.
+- [ ] **V3 — Image region:** Use a bounded search region and verify matching happens only inside it; check coordinates remain screen-relative.
+- [ ] **V4 — Wait for appearance:** Configure Wait Until (image matches), then make the target appear during polling.
+- [ ] **V5 — Wait for disappearance:** Use image not_matches and verify it waits until the item is hidden.
+- [ ] **V6 — Pixel matching:** Use a colored status indicator, configure its coordinates, hex RGB color and tolerance, then change the color to trigger the condition.
+- [ ] **V7 — If/Else:** Check both true and false branches, as well as an If without Else.
+- [ ] **V8 — Repeat Until:** Make a condition become true after several cycles and verify the block exits early and continues after End Until.
+- [ ] **V9 — Cycle limit:** Keep the condition false and verify Repeat Until aborts at the configured maximum cycles.
+- [ ] **V10 — Nested conditional and fixed loops:** Put If or Repeat Until inside a fixed Repeat Block, verify execution order, Pause and Stop.
+- [ ] **V11 — Validation:** Verify Save/Run rejects an incomplete or empty If/Until block, invalid pixel color, missing image and invalid confidence.
+- [ ] **V12 — Persistence:** Save/reload a vision macro including image path, region, pixel settings, thresholds and markers; verify values remain.
+- [ ] **V13 — Start selection:** Verify Run from Selected refuses to begin in the middle of an If/Until block, and accepts its opening marker.
+- [ ] **V14 — Cross-platform:** Repeat a basic image and pixel test on Windows and Ubuntu Xorg; confirm failure messages for screenshot permission restrictions.
+
 ## Result reporting
 
 Mark each check `[x]` when it passes. For any failure, record OS/version, Xorg vs Wayland, the action settings, expected behavior, actual behavior, and reproduction steps.

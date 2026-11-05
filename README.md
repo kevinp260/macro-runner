@@ -50,6 +50,7 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 - ✅ **Global Pause / Stop** hotkeys, **Step** and **Run from Selected** for debugging
 - ✅ **Scroll** and **Drag** actions
 - ✅ **Repeat Blocks** (Loop Start / Loop End) with independent cycle count
+- ✅ **Visual recognition** (image and pixel/color) with conditional Wait, If/Else and Repeat Until
 - ✅ **Per‑action repeat counters**
 - ✅ **Whole‑sequence Repeat count** (top bar)
 - ✅ **Recording (mouse clicks)** inside Click tab
@@ -371,6 +372,47 @@ them and are saved in the existing version-2 JSON format.
 
 Keyboard-event recording has intentionally been deferred: it requires a
 separate permission and input-safety review, and was not necessary for PR 3.
+
+## Visual matching and smart automation
+
+The **Vision** tab adds **Click Image**, **Wait Until**, **If / Else / End If**
+and **Repeat Until / End Until**. MacroRunner uses OpenCV template matching
+and pixel/color comparisons; it does not require an AI model.
+
+- **Image:** Select a cropped reference PNG/JPEG from your computer.
+  **Confidence** is a similarity threshold from 0–1 (default 0.90).
+  Optionally restrict recognition to a search region `x,y,width,height`.
+  When a match is found, Click Image clicks its center.
+- **Pixel:** Specify absolute screen coordinates, an RGB hex color
+  (`#RRGGBB`) and an allowable per-channel tolerance.
+- **Match/Not matches:** Wait Until and If can check for an image or
+  pixel condition being present or absent.
+- **Wait Until:** Polls until the condition becomes true or its timeout expires,
+  and aborts with an error on timeout.
+- **If / Else / End If:** Executes one branch depending on the current screen.
+  Else is optional.
+- **Repeat Until / End Until:** Executes the body, then tests the condition.
+  It repeats until the condition is true, or aborts after the configured
+  maximum number of cycles. It is **not** an unlimited loop.
+
+To add a block, select the first body action and insert **If** or
+**Repeat Until** (before the selection). Select the final body action and
+insert the corresponding **End** (after the selection). To insert **Else**,
+select the last action in the Then branch. Control blocks must be paired and
+nonempty. Nested If/Until inside a fixed Repeat Block is supported, while
+nested fixed Repeat Blocks remain unsupported.
+
+Reference image paths are saved as local filesystem paths; keep the original
+image files available when reloading a macro. Use your screen's actual
+resolution and scaling when taking reference images. Recognition may be
+less reliable under animations, different display scaling, occlusion, or
+Wayland. Use an Ubuntu Xorg/X11 session.
+
+For safety, test new macros using **Step** and an appropriate short
+timeout/max-cycle value before running many repetitions. When a macro includes
+conditional blocks, the UI displays `?` for its total step count because the
+actual path depends on the screen. **Run from Selected** cannot begin in the
+middle of a control block; select its opening marker or a standalone action.
 
 ## Repeat Blocks (subloops)
 

@@ -54,7 +54,9 @@ class VisionTests(unittest.TestCase):
         gate = Gate()
         probes = iter([False, False, True])
         self.assertTrue(poll_until(a, lambda: next(probes), gate))
-        self.assertEqual(gate.waits, [0, .2, 0, .1, 0])
+        self.assertEqual(len(gate.waits), 5)
+        for actual, expected in zip(gate.waits, [0, .2, 0, .1, 0]):
+            self.assertAlmostEqual(actual, expected)
         with self.assertRaises(TimeoutError):
             poll_until(a, lambda: False, Gate())
 
