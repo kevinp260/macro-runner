@@ -1064,7 +1064,7 @@ class MacroRunnerApp(tk.Tk):
                 field_specs[k] += (("timeout", "Timeout (s)", float),
                                    ("poll_interval", "Poll every (s)", float))
         fields = {}
-        for kind_fields in field_specs.values():
+        for kind_fields in (*field_specs.values(), vision_image, vision_pixel):
             for key, _, _ in kind_fields:
                 if key not in fields:
                     value = getattr(original, key)
