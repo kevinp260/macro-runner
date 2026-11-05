@@ -269,6 +269,8 @@ class MacroRunnerApp(tk.Tk):
                 elif kind == "global_stop":
                     if self._run_active:
                         self.request_stop()
+                elif kind == "cleanup_warning":
+                    messagebox.showwarning("Keyboard cleanup", event[1])
                 elif kind == "step_finished":
                     if self._run_active and self.playback.paused:
                         self.btn_step.config(state="normal")
@@ -866,6 +868,8 @@ class MacroRunnerApp(tk.Tk):
             ("Duplicate selected", acc("Ctrl+Shift+D")),
             ("Move selected", acc("Ctrl+↑ / Ctrl+↓")),
             ("Edit repeat", acc("Ctrl+E")),
+            ("Undo", acc("Ctrl+Z")),
+            ("Redo", acc("Ctrl+Y / Ctrl+Shift+Z")),
             ("Save sequence", acc("Ctrl+S")),
             ("Load sequence", acc("Ctrl+O")),
             ("Start/Stop recording", acc("Ctrl+R")),
@@ -1707,6 +1711,7 @@ class MacroRunnerApp(tk.Tk):
             return
 
         self.playback.reset()
+        self._held_keys = HeldKeys(pag.keyDown, pag.keyUp)
         if step_mode:
             self.playback.pause()
         self._progress_total = total
@@ -1765,6 +1770,12 @@ class MacroRunnerApp(tk.Tk):
         except Exception as exc:
             msg = "Stopped." if str(exc) == "Stopped" else f"Stopped: {exc}"
             self.events.put(("finished", "aborted", msg))
+        finally:
+            if self._held_keys is not None:
+                failures = self._held_keys.release_all()
+                self._held_keys = None
+                if failures:
+                    self.events.put(("cleanup_warning", "Unable to release some held keys."))
 
     def _check_visual_condition(self, action):
         if self.stop_flag.is_set():
@@ -1772,7 +1783,13 @@ class MacroRunnerApp(tk.Tk):
         return check_condition(action, pag.screenshot)
 
     def _execute_action(self, a: Action):
-        if a.kind == "click_image":
+        if a.kind == "key_down":
+            self._wait_or_stop(0)
+            self._held_keys.press(a.keys.lower())
+        elif a.kind == "key_up":
+            self._wait_or_stop(0)
+            self._held_keys.release(a.keys.lower())
+        elif a.kind == "click_image":
             match = poll_until(a, lambda: locate_image(a, pag.screenshot),
                                self.playback)
             self._wait_or_stop(0)
