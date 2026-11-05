@@ -17,7 +17,7 @@ class KeyTests(unittest.TestCase):
                               ("esc","esc"),("page_down","pgdn")]:
             self.assertEqual(normalize_event_key(SimpleNamespace(name=name)),expected)
         self.assertEqual(normalize_event_key(SimpleNamespace(char="A")),"a")
-        self.assertEqual(normalize_event_key(SimpleNamespace(char="\\x03")),"c")
+        self.assertEqual(normalize_event_key(SimpleNamespace(char=chr(3))),"c")
         self.assertEqual(normalize_event_key(SimpleNamespace(char=" ")),"space")
         self.assertIsNone(normalize_event_key(SimpleNamespace(char="☃")))
         self.assertFalse(valid_hold_key("ctrl+v"))

@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up"]
 
 @dataclass
 class Action:
@@ -61,7 +61,7 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -144,6 +144,12 @@ def validate_action(item):
     elif action.kind == "key":
         if action.key_mode not in ("press", "type") or not isinstance(action.keys, str) or not action.keys.strip():
             raise ValueError("Invalid key mode or empty key/text.")
+    elif action.kind in ("key_down", "key_up"):
+        from macro_keys import valid_hold_key
+        if not valid_hold_key(action.keys):
+            raise ValueError("Hold/Release requires one supported key name, not a combination.")
+        if action.repeats != 1:
+            raise ValueError("Hold/Release repeat count must be 1.")
     return action
 
 
