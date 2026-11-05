@@ -1575,14 +1575,33 @@ class MacroRunnerApp(tk.Tk):
             self.lst.selection_set(tk.END)
             self.lst.see(tk.END)
 
-    def _handle_recorded_key(self, name, pressed, timestamp):
-        # Never record MacroRunner's own controls.
-        if self.focus_get() is not None or self.keyboard_recorder is None:
+    def _handle_recorded_key(self, name, pressed, timestamp, flushing=False):
+        # Never record MacroRunner's own controls during normal event delivery.
+        if (not flushing and self.focus_get() is not None) or self.keyboard_recorder is None:
             return
         action = (self.keyboard_recorder.press(name) if pressed
                   else self.keyboard_recorder.release(name))
         if action is not None:
             self._record_action(action, timestamp)
+
+    def _flush_recording_events(self):
+        """Preserve final queued input transitions before stopping listeners."""
+        deferred = []
+        while True:
+            try:
+                event = self.events.get_nowait()
+            except queue.Empty:
+                break
+            if event[0] == "click" and event[-1] == self._record_token:
+                _, x, y, button, timestamp, _ = event
+                self._handle_recorded_click(x, y, button, timestamp)
+            elif event[0] == "record_key" and event[-1] == self._record_token:
+                _, name, pressed, timestamp, _ = event
+                self._handle_recorded_key(name, pressed, timestamp, flushing=True)
+            else:
+                deferred.append(event)
+        for event in deferred:
+            self.events.put(event)
 
     def _handle_recorded_click(self, x, y, button, timestamp):
         # Ignore interaction with the MacroRunner window.
@@ -1597,9 +1616,7 @@ class MacroRunnerApp(tk.Tk):
     def stop_recording(self):
         if not self.is_recording and not self._record_pending:
             return
-        self.is_recording = False
         self._record_pending = False
-        self._record_token += 1
         if self._record_after_id is not None:
             self.after_cancel(self._record_after_id)
             self._record_after_id = None
@@ -1615,10 +1632,14 @@ class MacroRunnerApp(tk.Tk):
             except Exception:
                 pass
             self.keyboard_listener = None
+        if self.is_recording:
+            self._flush_recording_events()
         if self.keyboard_recorder is not None:
             for action in self.keyboard_recorder.finish():
                 self._record_action(action, time.monotonic())
             self.keyboard_recorder = None
+        self.is_recording = False
+        self._record_token += 1
         self._record_keyboard = False
         self._record_history_pending = False
         self.rec_status.config(text="Ready")
