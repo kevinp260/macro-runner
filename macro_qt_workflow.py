@@ -400,8 +400,11 @@ class WorkflowTree(QTreeWidget):
                 item = parent.child(i) if parent is not None else self.topLevelItem(i)
                 value = item.data(0, NODE_ROLE)
                 if value == "else_branch":
-                    mapping[position] = item
-                    position += 1
+                    # A default empty Else drop target is only visual; it does
+                    # not create an Else marker in the flattened action list.
+                    if item.childCount():
+                        mapping[position] = item
+                        position += 1
                     walk(item)
                     continue
                 mapping[position] = item

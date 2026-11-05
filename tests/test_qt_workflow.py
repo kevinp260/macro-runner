@@ -31,6 +31,27 @@ class TreeEditorTests(unittest.TestCase):
         self.assertEqual(w.actions(), actions)
         self.assertTrue(errors)
 
+    def test_flat_indices_ignore_empty_else_drop_target(self):
+        w = WorkflowTree()
+        w.insert_kind("if_start")
+        flattened = w.actions()
+        self.assertEqual([a.kind for a in flattened],
+                         ["if_start", "wait", "if_end"])
+        self.assertEqual(len(w.index_map()), len(flattened))
+        self.assertIs(w.index_map()[2], w.topLevelItem(0))
+
+    def test_indices_with_actual_else_branch(self):
+        w = WorkflowTree()
+        w.set_actions([
+            Action(kind="if_start", condition_source="pixel"),
+            Action(kind="key", keys="a"),
+            Action(kind="else"),
+            Action(kind="key", keys="b"),
+            Action(kind="if_end"),
+        ])
+        self.assertEqual(len(w.index_map()), len(w.actions()))
+        self.assertEqual(w.index_map()[2].text(0)[:4], "ELSE")
+
     def test_bulk_toggle_enabled_and_reject_group_toggle(self):
         w = WorkflowTree()
         w.set_actions([Action(kind="wait"), Action(kind="key", keys="a")])
