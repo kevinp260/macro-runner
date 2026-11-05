@@ -4,12 +4,14 @@ Tree items represent executable Action objects or complete control blocks.
 The legacy flat marker layout exists only at the import/export boundary.
 """
 from copy import deepcopy
+from dataclasses import asdict
+import json
 
 from PySide6.QtCore import Qt, QByteArray, QMimeData, Signal
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QAbstractItemView, QListWidget, QTreeWidget, QTreeWidgetItem,
-    QMessageBox
+    QMessageBox, QFileDialog
 )
 
 from macro_model import Action
@@ -17,6 +19,34 @@ from macro_workflow import WorkflowNode, default_node, from_actions, to_actions
 from macro_flow import OPENERS
 
 NODE_ROLE = int(Qt.ItemDataRole.UserRole)
+
+
+def pack_node(node):
+    """Store JSON text so native Qt drag/drop can serialize the item safely."""
+    return json.dumps({
+        "action": asdict(node.action),
+        "else_marker": asdict(node.else_marker) if node.else_marker else None,
+        "end_marker": asdict(node.end_marker) if node.end_marker else None,
+    })
+
+
+def unpack_node(item):
+    payload = item.data(0, NODE_ROLE)
+    if payload == "else_branch":
+        return None
+    if not isinstance(payload, str):
+        raise ValueError("Unrecognized action item in workflow.")
+    try:
+        values = json.loads(payload)
+        return WorkflowNode(
+            Action(**values["action"]),
+            else_marker=Action(**values["else_marker"]) if values["else_marker"] else None,
+            end_marker=Action(**values["end_marker"]) if values["end_marker"] else None,
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError("Cannot restore dropped workflow item.") from exc
+
+
 PALETTE_MIME = "application/x-macrorunner-action-kind"
 KINDS = [
     ("Click", "click"), ("Click image", "click_image"),
@@ -108,11 +138,17 @@ class WorkflowTree(QTreeWidget):
 
     def _insert_node(self, parent, node):
         item = QTreeWidgetItem()
-        item.setData(0, NODE_ROLE, deepcopy(node))
+        item.setData(0, NODE_ROLE, pack_node(node))
         item.setText(0, description(node.action))
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled |
                       Qt.ItemFlag.ItemIsDropEnabled)
-        parent.addChild(item) if parent is not None else self.addTopLevelItem(item)
+        if parent is None:
+            self.addTopLevelItem(item)
+        elif (parent.childCount() and
+              parent.child(parent.childCount() - 1).data(0, NODE_ROLE) == "else_branch"):
+            parent.insertChild(parent.childCount() - 1, item)
+        else:
+            parent.addChild(item)
         for child in node.children:
             self._insert_node(item, child)
         if node.action.kind == "if_start" and node.otherwise is not None:
@@ -139,10 +175,9 @@ class WorkflowTree(QTreeWidget):
                                 else self.topLevelItem(i)) for i in range(count)]
 
     def _read_node(self, item):
-        data = item.data(0, NODE_ROLE)
-        if not isinstance(data, WorkflowNode):
+        result = unpack_node(item)
+        if result is None:
             raise ValueError("An Else branch cannot be moved outside an If group.")
-        result = deepcopy(data)
         result.children = []
         result.otherwise = None
         if result.is_group:
@@ -175,14 +210,28 @@ class WorkflowTree(QTreeWidget):
             self.actions_changed.emit(after)
         return True
 
+    def _prepare_node(self, kind):
+        node = default_node(kind)
+        if kind == "click_image":
+            filename, _ = QFileDialog.getOpenFileName(
+                self, "Choose reference image for Click Image", "",
+                "Images (*.png *.jpg *.jpeg *.bmp);;All files (*)"
+            )
+            if not filename:
+                return None
+            node.action.image_path = filename
+        return node
+
     def insert_kind(self, kind):
         try:
-            node = default_node(kind)
+            node = self._prepare_node(kind)
+            if node is None:
+                return
             current = self.currentItem()
             if current is None:
                 self._insert_node(None, node)
-            elif (isinstance(current.data(0, NODE_ROLE), WorkflowNode) and
-                  current.data(0, NODE_ROLE).is_group):
+            elif (unpack_node(current) is not None and
+                  unpack_node(current).is_group):
                 self._insert_node(current, node)
                 current.setExpanded(True)
             else:
@@ -216,7 +265,10 @@ class WorkflowTree(QTreeWidget):
         if event.mimeData().hasFormat(PALETTE_MIME):
             try:
                 kind = bytes(event.mimeData().data(PALETTE_MIME)).decode("utf-8")
-                node = default_node(kind)
+                node = self._prepare_node(kind)
+                if node is None:
+                    event.ignore()
+                    return
                 target = self.itemAt(event.position().toPoint())
                 if target is None:
                     self._insert_node(None, node)
@@ -224,9 +276,8 @@ class WorkflowTree(QTreeWidget):
                     indicator = self.dropIndicatorPosition()
                     if indicator == QAbstractItemView.DropIndicatorPosition.OnItem:
                         # Dropping onto leaf items inserts after them.
-                        data = target.data(0, NODE_ROLE)
-                        if data == "else_branch" or (isinstance(data, WorkflowNode)
-                            and data.is_group):
+                        data = unpack_node(target)
+                        if data is None or data.is_group:
                             self._insert_node(target, node)
                         else:
                             parent = target.parent()
@@ -262,22 +313,22 @@ class WorkflowTree(QTreeWidget):
 
     def selected_nodes(self):
         return [item for item in self.selectedItems()
-                if isinstance(item.data(0, NODE_ROLE), WorkflowNode)]
+                if item.data(0, NODE_ROLE) != "else_branch"]
 
     def selected_action(self):
         items = self.selected_nodes()
-        return items[0].data(0, NODE_ROLE).action if len(items) == 1 else None
+        return unpack_node(items[0]).action if len(items) == 1 else None
 
     def update_selected_action(self, action):
         items = self.selected_nodes()
         if len(items) != 1:
             raise ValueError("Select one action to edit its properties.")
         old = deepcopy(self._snapshot)
-        node = deepcopy(items[0].data(0, NODE_ROLE))
+        node = unpack_node(items[0])
         if node.action.kind != action.kind:
             raise ValueError("Change action type using the action palette.")
         node.action = deepcopy(action)
-        items[0].setData(0, NODE_ROLE, node)
+        items[0].setData(0, NODE_ROLE, pack_node(node))
         items[0].setText(0, description(action))
         self._commit(old)
 
@@ -311,9 +362,9 @@ class WorkflowTree(QTreeWidget):
             ancestor in chosen for ancestor in self._ancestors(item))]
         previous = deepcopy(self._snapshot)
         for item in reversed(chosen):
-            data = item.data(0, NODE_ROLE)
+            node = self._read_node(item)
             parent = item.parent()
-            new_item = self._insert_node(parent, deepcopy(data))
+            new_item = self._insert_node(parent, node)
             if parent is None:
                 self.takeTopLevelItem(self.indexOfTopLevelItem(new_item))
                 self.insertTopLevelItem(self.indexOfTopLevelItem(item) + 1, new_item)
@@ -340,7 +391,7 @@ class WorkflowTree(QTreeWidget):
                     continue
                 mapping[position] = item
                 position += 1
-                if isinstance(value, WorkflowNode) and value.is_group:
+                if unpack_node(item).is_group:
                     walk(item)
                     mapping[position] = item  # loop/if end marker
                     position += 1
