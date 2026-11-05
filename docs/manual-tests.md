@@ -45,8 +45,16 @@ Run through the functional checks on Windows, then repeat key input checks on Ub
 - [ ] **P8 — Lock edits/recording:** Try to edit, reorder, delete or record during playback; actions should not change, and a second run should not start.
 - [ ] **P9 — Completion/abort:** Verify Run/Pause/Stop buttons reset after successful completion, Stop and a PyAutoGUI failure; the app remains usable.
 - [ ] **P10 — Native drag limitation:** During a long Drag, expect pause/stop to take effect after the ongoing native drag completes; verify the macro does not continue afterward.
+- [ ] **P11 — Global Pause/Stop:** Focus another application; verify Ctrl+Alt+Shift+F6 pauses/resumes, and Ctrl+Alt+Shift+F8 stops the macro.
+- [ ] **P12 — Global shortcuts unavailable:** On a restricted desktop session, the app must still launch and local Pause/Stop continue to work.
+- [ ] **P13 — Step from idle:** Click Step; verify exactly one action executes, and repeat presses advance one action at a time, including through repeat blocks.
+- [ ] **P14 — Pause then Step:** Pause a running macro, press Step and verify one full action executes; Resume returns to continuous execution.
+- [ ] **P15 — Step and Stop:** Stop while waiting for the next Step; confirm the worker exits and buttons reset.
+- [ ] **P16 — Run from Selected:** Select a middle action and use Run from Selected; verify preceding actions are skipped, the remainder executes once, and start delay applies.
+- [ ] **P17 — Start inside repeat block:** Select an action inside a repeat block; verify execution starts there in the first cycle, completes later cycles normally, and respects total step counts.
+- [ ] **P18 — Selected Loop End:** Run from a Loop End marker; verify playback skips that block and proceeds to the next action, or reports no executable actions when none remain.
 
-**Shortcut scope:** F5/F6/Esc are Tkinter window shortcuts, not system-wide hotkeys. When another application has focus, use the MacroRunner controls or PyAutoGUI's top-left fail-safe.
+**Shortcut scope:** F5/F6/Esc remain Tkinter window shortcuts. Global Ctrl+Alt+Shift+F6 (Pause/Resume) and Ctrl+Alt+Shift+F8 (Stop) use pynput and require OS-level permissions; verify in Windows and Ubuntu Xorg. PyAutoGUI's top-left fail-safe remains available.
 
 ## Recording and persistence
 

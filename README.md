@@ -47,6 +47,7 @@ A **Recording (mouse clicks)** box lives inside the **Click** tab to capture rea
 
 - ✅ **Actions**: Click / Wait / Key (press or type) / Move / Scroll / Drag
 - ✅ **Pause / Resume** (button or F6), execution progress and active-action selection
+- ✅ **Global Pause / Stop** hotkeys, **Step** and **Run from Selected** for debugging
 - ✅ **Scroll** and **Drag** actions
 - ✅ **Repeat Blocks** (Loop Start / Loop End) with independent cycle count
 - ✅ **Per‑action repeat counters**
@@ -292,6 +293,8 @@ _single_instance_mutex()
 - **Run** — `F5`
 - **Stop** — `Esc`
 - **Pause / Resume** — `F6`
+- **Global Pause / Resume** — `Ctrl+Alt+Shift+F6`
+- **Global Stop** — `Ctrl+Alt+Shift+F8`
 - **Delete selected** — `Del`
 - **Duplicate selected** — `Ctrl+Shift+D` (`⌘⇧D` on macOS)
 - **Move selected** — `Ctrl+↑ / Ctrl+↓`
@@ -334,6 +337,28 @@ Captured actions are appended to the list; you can reorder, duplicate, or delete
 ## Playback controls
 
 Run a sequence with **F5**, pause/resume with **F6**, and stop with **Esc**.
+These shortcuts still require MacroRunner to have focus. While another app
+has focus, use **Ctrl+Alt+Shift+F6** to pause/resume and
+**Ctrl+Alt+Shift+F8** to stop. The latter chords are deliberately uncommon,
+to avoid interfering with typical application shortcuts. Global hotkeys
+require desktop-level keyboard access (Windows or Ubuntu Xorg/X11);
+they may be unavailable in Wayland, restricted sessions, or applications
+that intercept input. The top-left PyAutoGUI fail-safe remains active.
+
+**Step** starts a paused, single-pass debug run and executes exactly one
+action each time you press Step. If an action has an internal wait or click
+count, that whole action completes before the next pause. To single-step
+an already running macro, press Pause, then Step.
+
+**Run from Selected** starts at the selected list row through the end of
+the macro **once**, ignoring the whole-sequence repeat count but using the
+configured start delay. When starting inside a Repeat Block, only the
+first inner cycle starts at that action; subsequent inner cycles execute
+the complete block. Selecting Loop End starts after the block. **Step**
+also starts at the selected row if one is selected, without the start delay.
+
+These debug controls do not change saved macros.
+
 The progress label shows the current loop and executed action step, and the
 active action is selected in the list. Pause works between actions and during
 Wait/start-delay; an in-progress operating-system mouse drag or move cannot be

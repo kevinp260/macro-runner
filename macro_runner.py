@@ -15,7 +15,7 @@ from tkinter import ttk, messagebox, filedialog
 
 # pip install pyautogui pillow pynput
 import pyautogui as pag
-from pynput import mouse
+from pynput import mouse, keyboard
 
 # ---------- single instance (mutex) ----------
 def _single_instance_mutex():
@@ -58,6 +58,8 @@ class MacroRunnerApp(tk.Tk):
         self._progress_total = 0
         self.events = queue.Queue()
         self._run_active = False
+        self._global_hotkeys = None
+        self.global_hotkeys_available = False
         self.editor_buttons = []
         self._record_pending = False
         self._record_after_id = None
@@ -72,6 +74,7 @@ class MacroRunnerApp(tk.Tk):
         self.last_record_ts: Optional[float] = None
 
         self._build_ui()
+        self._start_global_hotkeys()
         self.after(50, self._drain_events)
         self.protocol("WM_DELETE_WINDOW", self._close)
 
@@ -105,6 +108,15 @@ class MacroRunnerApp(tk.Tk):
         self.btn_pause.grid(row=0, column=5, padx=4)
         self.btn_stop = ttk.Button(top, text="Stop", command=self.request_stop, state="disabled")
         self.btn_stop.grid(row=0, column=6, padx=4)
+
+        ttk.Label(top, text="Debug:").grid(row=1, column=0, sticky="e", pady=(7, 0))
+        self.btn_from_selected = ttk.Button(top, text="Run from Selected", command=self.run_from_selected)
+        self.btn_from_selected.grid(row=1, column=1, columnspan=2, sticky="w", pady=(7, 0))
+        self.btn_step = ttk.Button(top, text="Step", command=self.step_action)
+        self.btn_step.grid(row=1, column=3, sticky="w", pady=(7, 0))
+        ttk.Label(top, text="Step executes one action at a time").grid(
+            row=1, column=4, columnspan=5, sticky="w", padx=(8, 0), pady=(7, 0)
+        )
 
         ttk.Button(top, text="Save", command=self.save_sequence).grid(row=0, column=7, padx=4)
         ttk.Button(top, text="Load", command=self.load_sequence).grid(row=0, column=8, padx=4)
@@ -231,6 +243,15 @@ class MacroRunnerApp(tk.Tk):
                     _, x, y, button, timestamp, token = event
                     if self.is_recording and token == self._record_token:
                         self._handle_recorded_click(x, y, button, timestamp)
+                elif kind == "global_pause":
+                    self.toggle_pause()
+                elif kind == "global_stop":
+                    if self._run_active:
+                        self.request_stop()
+                elif kind == "step_finished":
+                    if self._run_active and self.playback.paused:
+                        self.btn_step.config(state="normal")
+                        self.progress_var.set("Paused — press Step or Resume")
                 elif kind == "countdown":
                     self.progress_var.set(event[1])
                 elif kind == "progress":
@@ -247,6 +268,8 @@ class MacroRunnerApp(tk.Tk):
                     self.btn_run.config(state="normal", text="Run")
                     self.btn_stop.config(state="disabled")
                     self.btn_pause.config(state="disabled", text="Pause")
+                    self.btn_step.config(state="normal")
+                    self.btn_from_selected.config(state="normal")
                     self._progress_index = None
                     self.progress_var.set("Ready" if status == "done" else message)
                     self.btn_rec.config(state="normal")
@@ -262,9 +285,28 @@ class MacroRunnerApp(tk.Tk):
             self.after(50, self._drain_events)
 
     def _close(self):
-        self.stop_flag.set()
+        self.playback.stop()
+        if self._global_hotkeys is not None:
+            self._global_hotkeys.stop()
         self.stop_recording()
         self.destroy()
+
+    def _start_global_hotkeys(self):
+        """Conservative global chords; listener callbacks only enqueue events."""
+        try:
+            self._global_hotkeys = keyboard.GlobalHotKeys({
+                "<ctrl>+<alt>+<shift>+<f6>":
+                    lambda: self.events.put(("global_pause",)),
+                "<ctrl>+<alt>+<shift>+<f8>":
+                    lambda: self.events.put(("global_stop",)),
+            })
+            self._global_hotkeys.start()
+            self.global_hotkeys_available = True
+        except Exception:
+            # Desktop/session permissions can prevent low-level keyboard hooks.
+            self._global_hotkeys = None
+            self.global_hotkeys_available = False
+            self.progress_var.set("Global hotkeys unavailable — use the app controls")
 
     # ---------- Tabs ----------
     def _build_click_tab(self, nb: ttk.Notebook):
@@ -646,6 +688,10 @@ class MacroRunnerApp(tk.Tk):
             ("Run", "F5"),
             ("Stop", "Esc"),
             ("Pause / Resume", "F6"),
+            ("Global Pause / Resume", "Ctrl+Alt+Shift+F6"),
+            ("Global Stop", "Ctrl+Alt+Shift+F8"),
+            ("Step (when paused)", "Step button"),
+            ("Run from Selected (once)", "Debug button"),
             ("Delete selected", "Del"),
             ("Duplicate selected", acc("Ctrl+Shift+D")),
             ("Move selected", acc("Ctrl+↑ / Ctrl+↓")),
@@ -654,6 +700,8 @@ class MacroRunnerApp(tk.Tk):
             ("Load sequence", acc("Ctrl+O")),
             ("Start/Stop recording", acc("Ctrl+R")),
         ]
+        if not self.global_hotkeys_available:
+            rows.append(("Global shortcuts", "Unavailable in this desktop session"))
         for i, (name, keys) in enumerate(rows):
             ttk.Label(frm, text=name).grid(row=i, column=0, sticky="w", padx=(0, 18), pady=4)
             ttk.Label(frm, text=keys, foreground="#444").grid(row=i, column=1, sticky="w", pady=4)
@@ -1245,18 +1293,44 @@ class MacroRunnerApp(tk.Tk):
     def request_stop(self):
         self.playback.stop()
 
+    def run_from_selected(self):
+        if self._run_active:
+            return
+        selection = self.lst.curselection()
+        if not selection:
+            messagebox.showinfo("Select an action", "Select an action to start from.")
+            return
+        self.start_run(from_selected=True)
+
+    def step_action(self):
+        if not self._run_active:
+            # Start a one-pass debug run, beginning at the selected action (if any).
+            self.start_run(step_mode=True)
+            if not self._run_active:
+                return
+        if not self.playback.paused or self.stop_flag.is_set():
+            return
+        try:
+            self.playback.step()
+        except RuntimeError:
+            return
+        self.btn_step.config(state="disabled")
+        self.progress_var.set("Stepping…")
+
     def toggle_pause(self):
         if not self._run_active or self.stop_flag.is_set():
             return
         if self.playback.paused:
             self.playback.resume()
             self.btn_pause.config(text="Pause")
+            self.btn_step.config(state="disabled")
         else:
             self.playback.pause()
             self.btn_pause.config(text="Resume")
+            self.btn_step.config(state="normal")
             self.progress_var.set("Paused")
 
-    def start_run(self):
+    def start_run(self, from_selected=False, step_mode=False):
         if self.is_recording or self._record_pending:
             messagebox.showwarning("Recording active", "Stop recording before running.")
             return
@@ -1275,29 +1349,44 @@ class MacroRunnerApp(tk.Tk):
                 raise ValueError("Repeat count must be positive and delay nonnegative.")
             snapshot = [validate_action(asdict(a)) for a in self.actions]
             loop_spans(snapshot)
+            selection = self.lst.curselection()
+            start_index = selection[0] if (from_selected or step_mode) and selection else 0
+            if from_selected and not selection:
+                raise ValueError("Select an action first.")
+            if from_selected or step_mode:
+                repeats = 1
+            if step_mode:
+                start_delay = 0.0
+            total = progress_total(snapshot, repeats, start_index)
+            if total == 0:
+                raise ValueError("No enabled executable actions at or after the selection.")
         except (ValueError, TypeError, tk.TclError) as exc:
             messagebox.showerror("Invalid settings", str(exc))
             return
 
         self.playback.reset()
-        self._progress_total = progress_total(snapshot, repeats)
+        if step_mode:
+            self.playback.pause()
+        self._progress_total = total
         self._run_active = True
         self.btn_run.config(state="disabled")
         self.btn_stop.config(state="normal")
-        self.btn_pause.config(state="normal", text="Pause")
-        self.progress_var.set("Starting…")
+        self.btn_pause.config(state="normal", text="Resume" if step_mode else "Pause")
+        self.btn_step.config(state="normal" if step_mode else "disabled")
+        self.btn_from_selected.config(state="disabled")
+        self.progress_var.set("Paused — press Step" if step_mode else "Starting…")
         self.btn_rec.config(state="disabled")
         self.btn_rec_stop.config(state="disabled")
         self._set_editing_enabled(False)
         self.run_thread = threading.Thread(
-            target=self._run_sequence, args=(snapshot, repeats, start_delay), daemon=True
+            target=self._run_sequence, args=(snapshot, repeats, start_delay, start_index), daemon=True
         )
         self.run_thread.start()
 
     def _wait_or_stop(self, duration):
         self.playback.wait(duration)
 
-    def _run_sequence(self, actions, repeats, start_delay):
+    def _run_sequence(self, actions, repeats, start_delay, start_index=0):
         try:
             remaining = start_delay
             while remaining > 0:
@@ -1305,16 +1394,23 @@ class MacroRunnerApp(tk.Tk):
                 step = min(0.2, remaining)
                 self._wait_or_stop(step)
                 remaining -= step
-            self.events.put(("countdown", "Run"))
+            if start_delay:
+                self.events.put(("countdown", "Run"))
 
             total = self._progress_total
             step = 0
             for loop in range(repeats):
-                for idx, action in iter_execution_steps(actions):
-                    self._wait_or_stop(0)
-                    step += 1
-                    self.events.put(("progress", loop + 1, repeats, idx, step, total))
-                    self._execute_action(action)
+                # Only the first outer cycle starts from a selected row.
+                begin = start_index if loop == 0 else 0
+                for idx, action in iter_execution_steps(actions, begin):
+                    self.playback.begin_action()
+                    try:
+                        step += 1
+                        self.events.put(("progress", loop + 1, repeats, idx, step, total))
+                        self._execute_action(action)
+                    finally:
+                        if self.playback.end_action():
+                            self.events.put(("step_finished",))
             self.events.put(("finished", "done", f"Finished {repeats} loop(s)."))
         except Exception as exc:
             msg = "Stopped." if str(exc) == "Stopped" else f"Stopped: {exc}"
