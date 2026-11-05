@@ -31,7 +31,7 @@ Repeat Until.
 
 An example workflow:
 
-\`\`\`text
+```text
 Click image: start.png
 Wait until: pixel becomes green
 Repeat 5 times
@@ -40,7 +40,7 @@ Repeat 5 times
     Else
         Wait 0.5 seconds
 Press Enter
-\`\`\`
+```
 
 Repeat and If containers correspond to the same legacy Start/End markers in
 the saved JSON. The editor **does not introduce a new macro format**.
@@ -93,66 +93,66 @@ System-wide hotkeys may be unavailable in restrictive environments.
 Recommended: **Ubuntu Xorg/X11**. Wayland restricts screenshot capture,
 simulated keyboard/mouse input and system-wide keyboard hooks.
 
-\`\`\`bash
+```bash
 sudo apt update
 sudo apt install make python3-dev python3-venv pipx scrot
 pipx ensurepath
 git pull origin main
 make install
-\`\`\`
+```
 
 Run MacroRunner from the application menu or
-\`~/.local/bin/macro-runner\`. The installer creates
-\`~/.local/share/applications/macro-runner.desktop\`.
+`~/.local/bin/macro-runner`. The installer creates
+`~/.local/share/applications/macro-runner.desktop`.
 
 To copy the launcher onto the desktop:
 
-\`\`\`bash
+```bash
 cp ~/.local/share/applications/macro-runner.desktop "$(xdg-user-dir DESKTOP)/"
 chmod +x "$(xdg-user-dir DESKTOP)/macro-runner.desktop"
-\`\`\`
+```
 
 Use **Allow Launching** if the desktop shows an untrusted launcher.
 
-\`make install\` reinstalls the app using pipx, so rebuilding a standalone
-binary is not needed when updating. Use \`make uninstall\` to remove the
+`make install` reinstalls the app using pipx, so rebuilding a standalone
+binary is not needed when updating. Use `make uninstall` to remove the
 installed application and app-menu launcher.
 
 For development:
 
-\`\`\`bash
+```bash
 make setup
 make run
 make test
-\`\`\`
+```
 
-\`make test\` runs the Qt UI smoke tests with the offscreen Qt platform plugin.
+`make test` runs the Qt UI smoke tests with the offscreen Qt platform plugin.
 
 ## Windows build
 
 Set up a Python environment and install project dependencies:
 
-\`\`\`powershell
+```powershell
 py -m venv .venv
 .venv\Scripts\python -m pip install -e .
 .venv\Scripts\python -m pip install pyinstaller
 .venv\Scripts\python -m PyInstaller --clean --noconfirm MacroRunner.spec
-\`\`\`
+```
 
-The existing Inno Setup configuration \`installer.iss\` packages
-\`dist\MacroRunner.exe\` and adds Start Menu/Desktop shortcuts. Verify the
+The existing Inno Setup configuration `installer.iss` packages
+`dist\MacroRunner.exe` and adds Start Menu/Desktop shortcuts. Verify the
 Windows build and keyboard hooks on a real desktop before distribution.
 
 ## Architecture
 
-- \`macro_runner.py\` — stable executable entrypoint.
-- \`macro_qt.py\` — Qt main window, actions, runtime feedback, recording.
-- \`macro_qt_workflow.py\` — draggable, validated workflow tree and palette.
-- \`macro_qt_properties.py\` — scrollable action inspector.
-- \`macro_workflow.py\` — pure tree-to-flat representation and validation.
-- \`macro_runtime.py\` — GUI-independent playback integration.
-- \`macro_model.py\`, \`macro_flow.py\`, \`macro_playback.py\`,
-  \`macro_vision.py\`, \`macro_keys.py\`, \`macro_editing.py\` — existing
+- `macro_runner.py` — stable executable entrypoint.
+- `macro_qt.py` — Qt main window, actions, runtime feedback, recording.
+- `macro_qt_workflow.py` — draggable, validated workflow tree and palette.
+- `macro_qt_properties.py` — scrollable action inspector.
+- `macro_workflow.py` — pure tree-to-flat representation and validation.
+- `macro_runtime.py` — GUI-independent playback integration.
+- `macro_model.py`, `macro_flow.py`, `macro_playback.py`,
+  `macro_vision.py`, `macro_keys.py`, `macro_editing.py` — existing
   automation, validation, vision, keyboard and history services.
 
 CI compiles and packages all runtime modules and runs model and offscreen Qt

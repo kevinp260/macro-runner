@@ -5,7 +5,7 @@ Automated CI does not exercise native OS input hooks or screenshot capture.
 
 ## Setup
 
-- [ ] Install/update from main with \`make install\` on Ubuntu Xorg/X11;
+- [ ] Install/update from main with `make install` on Ubuntu Xorg/X11;
       verify app-menu entry and desktop launcher still work.
 - [ ] Test from an extracted Windows build and from the Inno Setup installer.
 - [ ] Open on a display around 1280×720 and resize to the minimum allowed
