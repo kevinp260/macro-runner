@@ -114,6 +114,7 @@ class MacroWindow(QMainWindow):
         self.history = ActionHistory(60)
         self.current_file = None
         self.executor = None
+        self._restore_after_run = False
         self.run_signals = WorkerSignals()
         self.run_signals.progress.connect(self._progress)
         self.run_signals.finished.connect(self._finished)
@@ -253,6 +254,13 @@ class MacroWindow(QMainWindow):
         self.delay.setDecimals(1)
         self.delay.setValue(3.0)
         status_row.addWidget(self.delay)
+        status_row.addSpacing(12)
+        self.minimize_on_run = QCheckBox("Minimize when running")
+        self.minimize_on_run.setToolTip(
+            "Hide MacroRunner during playback and restore it when playback ends.")
+        self.minimize_on_run.toggled.connect(
+            lambda enabled: self.settings.setValue("minimize_on_run", enabled))
+        status_row.addWidget(self.minimize_on_run)
         status_row.addStretch()
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(False)
@@ -288,6 +296,8 @@ class MacroWindow(QMainWindow):
 
     def _restore_settings(self):
         self.set_theme(self.settings.value("theme", "dark"))
+        self.minimize_on_run.setChecked(
+            self.settings.value("minimize_on_run", False, type=bool))
         geometry = self.settings.value("geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -334,6 +344,7 @@ class MacroWindow(QMainWindow):
         self.inspector.setEnabled(not busy)
         self.repeats.setEnabled(not busy)
         self.delay.setEnabled(not busy)
+        self.minimize_on_run.setEnabled(not busy)
 
     def _changed(self, result):
         if result == self.actions:
@@ -453,7 +464,16 @@ class MacroWindow(QMainWindow):
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
                 start_index=begin, step_mode=step_mode,
             )
-            self.executor.start()
+            # Hide the editor before the start delay begins. Restore only if
+            # this run minimized the window, not if the user did so manually.
+            self._restore_after_run = self.minimize_on_run.isChecked() and not self.isMinimized()
+            if self._restore_after_run:
+                self.showMinimized()
+            try:
+                self.executor.start()
+            except Exception:
+                self._restore_run_window()
+                raise
             self.progress_bar.setRange(0, self.executor.total or 0)
             self.progress_bar.setValue(0)
             self._set_status("Paused — Step to advance" if step_mode else "Running…")
@@ -509,8 +529,16 @@ class MacroWindow(QMainWindow):
             self.tree.setCurrentItem(item)
             self.tree.scrollToItem(item)
 
+    def _restore_run_window(self):
+        if self._restore_after_run:
+            self._restore_after_run = False
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
     def _finished(self, success, message):
         self.executor = None
+        self._restore_run_window()
         self.toolbar_actions["pause"].setText("Pause")
         self._set_status(message)
         self.progress_bar.setRange(0, 1)
