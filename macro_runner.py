@@ -260,6 +260,10 @@ class MacroRunnerApp(tk.Tk):
                     _, x, y, button, timestamp, token = event
                     if self.is_recording and token == self._record_token:
                         self._handle_recorded_click(x, y, button, timestamp)
+                elif kind == "record_key":
+                    _, name, pressed, timestamp, token = event
+                    if self.is_recording and token == self._record_token:
+                        self._handle_recorded_key(name, pressed, timestamp)
                 elif kind == "global_pause":
                     self.toggle_pause()
                 elif kind == "global_stop":
@@ -1329,46 +1333,36 @@ class MacroRunnerApp(tk.Tk):
     def move_item(self, delta: int):
         if self._editing_locked():
             return
-        sel = self.lst.curselection()
-        if not sel:
-            return
-        idx = sel[0]
-        new = idx + delta
-        if new < 0 or new >= len(self.actions):
-            return
-        self.actions[idx], self.actions[new] = self.actions[new], self.actions[idx]
-        self.refresh_list()
-        self.lst.selection_set(new)
+        selection = self.lst.curselection()
+        if selection:
+            result, selected = move_selected(self.actions, selection, delta)
+            self._apply_actions(result, selected)
 
     def delete_item(self):
         if self._editing_locked():
             return
-        sel = self.lst.curselection()
-        if not sel:
-            return
-        del self.actions[sel[0]]
-        self.refresh_list()
+        selection = self.lst.curselection()
+        if selection:
+            result, selected = delete_selected(self.actions, selection)
+            self._apply_actions(result, selected)
 
     def duplicate_item(self):
         if self._editing_locked():
             return
-        sel = self.lst.curselection()
-        if not sel:
-            return
-        idx = sel[0]
-        if self.actions[idx].kind in CONTROL:
-            messagebox.showinfo("Duplicate block", "Duplicate executable actions, then insert the required block markers separately.")
-            return
-        self.actions.insert(idx + 1, Action(**asdict(self.actions[idx])))
-        self.refresh_list()
-        self.lst.selection_set(idx + 1)
+        selection = self.lst.curselection()
+        if selection:
+            try:
+                result, selected = duplicate_selected(self.actions, selection)
+            except ValueError as exc:
+                messagebox.showinfo("Cannot duplicate block marker", str(exc))
+                return
+            self._apply_actions(result, selected)
 
     def clear_items(self):
         if self._editing_locked():
             return
-        if messagebox.askyesno("Confirm", "Clear all actions?"):
-            self.actions.clear()
-            self.refresh_list()
+        if self.actions and messagebox.askyesno("Confirm", "Clear all actions?"):
+            self._apply_actions([], [])
 
     def edit_repeat_selected(self):
         if self._editing_locked():
@@ -1471,7 +1465,7 @@ class MacroRunnerApp(tk.Tk):
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             loaded, settings = parse_document(data)
-            self.actions = loaded
+            self._apply_actions(loaded, [])
             if settings is not None:
                 self.repeat_var.set(settings["repeat_count"])
                 self.start_delay_var.set(settings["start_delay"])
@@ -1495,6 +1489,17 @@ class MacroRunnerApp(tk.Tk):
         self._record_min_wait = min_wait
         self._record_repeats = repeats
         self._record_insert_waits = bool(self.rec_insert_waits_var.get())
+        self._record_keyboard = bool(self.rec_keyboard_var.get())
+        if self._record_keyboard:
+            if not messagebox.askyesno(
+                "Record keyboard input?",
+                "Keyboard capture will record key presses in other applications, "
+                "including anything typed in password fields.\n\n"
+                "Only record in a harmless test application. Stop recording "
+                "before entering any sensitive information. Continue?"
+            ):
+                return
+        self._record_history_pending = True
         self._record_token += 1
         token = self._record_token
         self._record_pending = True
@@ -1519,7 +1524,9 @@ class MacroRunnerApp(tk.Tk):
         self._record_pending = False
         self.is_recording = True
         self.last_record_ts = None
-        self.rec_status.config(text="Recording…")
+        self.keyboard_recorder = KeyboardRecorder() if self._record_keyboard else None
+        self.rec_status.config(text="Recording mouse + keyboard…" if self._record_keyboard
+                               else "Recording mouse…")
         token = self._record_token
 
         def on_click(x, y, button, pressed):
@@ -1531,9 +1538,47 @@ class MacroRunnerApp(tk.Tk):
         try:
             self.mouse_listener = mouse.Listener(on_click=on_click)
             self.mouse_listener.start()
+            if self._record_keyboard:
+                def on_press(key):
+                    name = normalize_event_key(key)
+                    if name:
+                        self.events.put(("record_key", name, True, time.monotonic(), token))
+                def on_release(key):
+                    name = normalize_event_key(key)
+                    if name:
+                        self.events.put(("record_key", name, False, time.monotonic(), token))
+                self.keyboard_listener = keyboard.Listener(
+                    on_press=on_press, on_release=on_release
+                )
+                self.keyboard_listener.start()
         except Exception as exc:
             self.stop_recording()
             messagebox.showerror("Recording unavailable", str(exc))
+
+    def _record_action(self, action, timestamp):
+        if self._record_history_pending:
+            self._remember_edit()
+            self._record_history_pending = False
+        if self._record_insert_waits and self.last_record_ts is not None:
+            gap = timestamp - self.last_record_ts
+            if gap >= self._record_min_wait:
+                self.actions.append(Action(kind="wait", seconds=round(gap, 3)))
+        self.last_record_ts = timestamp
+        self.actions.append(action)
+        self.refresh_list()
+        self.lst.selection_clear(0, tk.END)
+        if self.actions:
+            self.lst.selection_set(tk.END)
+            self.lst.see(tk.END)
+
+    def _handle_recorded_key(self, name, pressed, timestamp):
+        # Never record MacroRunner's own controls.
+        if self.focus_get() is not None or self.keyboard_recorder is None:
+            return
+        action = (self.keyboard_recorder.press(name) if pressed
+                  else self.keyboard_recorder.release(name))
+        if action is not None:
+            self._record_action(action, timestamp)
 
     def _handle_recorded_click(self, x, y, button, timestamp):
         # Ignore interaction with the MacroRunner window.
@@ -1542,17 +1587,8 @@ class MacroRunnerApp(tk.Tk):
             return
         if button not in ("left", "right", "middle"):
             return
-        if self._record_insert_waits and self.last_record_ts is not None:
-            gap = timestamp - self.last_record_ts
-            if gap >= self._record_min_wait:
-                self.actions.append(Action(kind="wait", seconds=round(gap, 3)))
-        self.last_record_ts = timestamp
-        self.actions.append(Action(kind="click", x=x, y=y, button=button,
-                                   repeats=self._record_repeats))
-        self.refresh_list()
-        self.lst.selection_clear(0, tk.END)
-        self.lst.selection_set(tk.END)
-        self.lst.see(tk.END)
+        self._record_action(Action(kind="click", x=x, y=y, button=button,
+                                   repeats=self._record_repeats), timestamp)
 
     def stop_recording(self):
         if not self.is_recording and not self._record_pending:
@@ -1569,6 +1605,18 @@ class MacroRunnerApp(tk.Tk):
             except Exception:
                 pass
             self.mouse_listener = None
+        if self.keyboard_listener is not None:
+            try:
+                self.keyboard_listener.stop()
+            except Exception:
+                pass
+            self.keyboard_listener = None
+        if self.keyboard_recorder is not None:
+            for action in self.keyboard_recorder.finish():
+                self._record_action(action, time.monotonic())
+            self.keyboard_recorder = None
+        self._record_keyboard = False
+        self._record_history_pending = False
         self.rec_status.config(text="Ready")
         self.btn_rec.config(state="normal")
         self.btn_rec_stop.config(state="disabled")
