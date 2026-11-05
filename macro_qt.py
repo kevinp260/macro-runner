@@ -31,8 +31,15 @@ import PySide6.QtSvg  # Ensure SVG chevrons also work in PyInstaller distributio
 
 DARK = """
 QMainWindow, QWidget { background: #15191f; color: #e6eaf0; }
-QLabel#panelHeading { font-size: 16px; font-weight: 700; }
-QLabel#muted { color: #94a1b1; }
+/* Text should sit directly on its parent panel, not paint opaque rectangles. */
+QLabel { background: transparent; border: none; padding: 1px 3px; }
+QLabel#panelHeading { font-size: 16px; font-weight: 700; padding: 4px 3px 2px 3px; }
+QLabel#muted, QLabel#panelHint { color: #94a1b1; }
+QLabel#panelHint { padding: 2px 3px 6px 3px; }
+QLabel#actionCount {
+  color: #b7c9df; background: #273241; border: 1px solid #394b60;
+  border-radius: 6px; padding: 3px 8px;
+}
 QFrame#panel { background: #1b222c; border: 1px solid #303a49; border-radius: 10px; }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
   background: #222b37; color: #eaf0f7; border: 1px solid #3a4758;
@@ -65,8 +72,15 @@ QCheckBox { spacing: 8px; }
 """
 LIGHT = """
 QMainWindow, QWidget { background: #f4f6f9; color: #263344; }
-QLabel#panelHeading { font-size: 16px; font-weight: 700; }
-QLabel#muted { color: #68788a; }
+/* Transparent labels preserve the panel background and its rounded corners. */
+QLabel { background: transparent; border: none; padding: 1px 3px; }
+QLabel#panelHeading { font-size: 16px; font-weight: 700; padding: 4px 3px 2px 3px; }
+QLabel#muted, QLabel#panelHint { color: #68788a; }
+QLabel#panelHint { padding: 2px 3px 6px 3px; }
+QLabel#actionCount {
+  color: #536b83; background: #eaf0f7; border: 1px solid #d7e1ec;
+  border-radius: 6px; padding: 3px 8px;
+}
 QFrame#panel { background: white; border: 1px solid #dce3ea; border-radius: 10px; }
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
   background: white; color: #253242; border: 1px solid #c9d3df;
@@ -277,7 +291,7 @@ class MacroWindow(QMainWindow):
         title_row.addWidget(label)
         title_row.addStretch()
         self.counter = QLabel("0 actions")
-        self.counter.setObjectName("muted")
+        self.counter.setObjectName("actionCount")
         title_row.addWidget(self.counter)
         editor_layout.addLayout(title_row)
         self.tree = WorkflowTree()
