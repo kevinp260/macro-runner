@@ -1,5 +1,5 @@
 #define MyAppName     "MacroRunner"
-#define MyAppVersion  "1.5.5"
+#define MyAppVersion  "2.0.0"
 #define MyAppId       "8F6B8A3D-5D6E-4E62-9C0D-0D0FBF9A8F22"  ; keep this GUID stable
 
 [Setup]

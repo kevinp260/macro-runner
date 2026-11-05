@@ -6,8 +6,13 @@ if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
 fi
 
 if ! command -v pipx >/dev/null 2>&1; then
-  echo "Install pipx and Tk first: sudo apt install pipx python3-tk python3-dev"
+  echo "Install pipx first: sudo apt install pipx python3-dev"
   exit 1
+fi
+
+if [[ "${XDG_SESSION_TYPE:-}" == "x11" ]] && ! command -v scrot >/dev/null 2>&1; then
+  echo "Warning: screenshot matching requires scrot on Xorg."
+  echo "Install with: sudo apt install scrot"
 fi
 
 cd "$(dirname "$0")"
