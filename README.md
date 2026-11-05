@@ -88,60 +88,21 @@ or sharing a workflow.
 
 System-wide hotkeys may be unavailable in restrictive environments.
 
-## Ubuntu installation
+## Installation on Ubuntu and Windows
 
-Recommended: **Ubuntu Xorg/X11**. Wayland restricts screenshot capture,
-simulated keyboard/mouse input and system-wide keyboard hooks.
+**Ready-to-install packages are built for both operating systems.**
 
-```bash
-sudo apt update
-sudo apt install make python3-dev python3-venv pipx scrot
-pipx ensurepath
-git pull origin main
-make install
-```
+- **Ubuntu 24.04 amd64:** Download the `.deb` installer from GitHub Actions
+  **Build desktop installers** and install it with `sudo apt install ./filename.deb`.
+  APT resolves the Qt and screenshot system dependencies automatically.
+- **Windows x64:** Download the `MacroRunner-Setup-*.exe` installer from the
+  same workflow. It bundles Python/Qt and installs Start Menu/Desktop shortcuts.
+- **Ubuntu development:** Run `git pull origin main && make install` in this
+  repository. The script checks for missing APT packages and asks permission
+  before installing them, then installs the application using pipx.
 
-Run MacroRunner from the application menu or
-`~/.local/bin/macro-runner`. The installer creates
-`~/.local/share/applications/macro-runner.desktop`.
-
-To copy the launcher onto the desktop:
-
-```bash
-cp ~/.local/share/applications/macro-runner.desktop "$(xdg-user-dir DESKTOP)/"
-chmod +x "$(xdg-user-dir DESKTOP)/macro-runner.desktop"
-```
-
-Use **Allow Launching** if the desktop shows an untrusted launcher.
-
-`make install` reinstalls the app using pipx, so rebuilding a standalone
-binary is not needed when updating. Use `make uninstall` to remove the
-installed application and app-menu launcher.
-
-For development:
-
-```bash
-make setup
-make run
-make test
-```
-
-`make test` runs the Qt UI smoke tests with the offscreen Qt platform plugin.
-
-## Windows build
-
-Set up a Python environment and install project dependencies:
-
-```powershell
-py -m venv .venv
-.venv\Scripts\python -m pip install -e .
-.venv\Scripts\python -m pip install pyinstaller
-.venv\Scripts\python -m PyInstaller --clean --noconfirm MacroRunner.spec
-```
-
-The existing Inno Setup configuration `installer.iss` packages
-`dist\MacroRunner.exe` and adds Start Menu/Desktop shortcuts. Verify the
-Windows build and keyboard hooks on a real desktop before distribution.
+See [installation and distribution instructions](docs/installation.md) for
+full setup, upgrading, uninstalling, building, and platform limitations.
 
 ## Architecture
 
