@@ -71,6 +71,108 @@ class PlaybackTests(unittest.TestCase):
         self.assertEqual(len(list(islice(iter_execution_steps(actions), 4))), 4)
         self.assertEqual(progress_total(actions, 2), 2 * 10**9)
 
+    def test_run_from_selected_skips_earlier_full_loop(self):
+        actions = [
+            Action(kind="key", keys="a"),
+            Action(kind="loop_start", repeats=10**9),
+            Action(kind="key", keys="b"),
+            Action(kind="loop_end"),
+            Action(kind="key", keys="c"),
+        ]
+        self.assertEqual(
+            [a.keys for _, a in iter_execution_steps(actions, start_index=4)], ["c"]
+        )
+        self.assertEqual(progress_total(actions, 1, start_index=4), 1)
+
+    def test_run_from_selected_inside_loop(self):
+        actions = [
+            Action(kind="key", keys="a"),
+            Action(kind="loop_start", repeats=3),
+            Action(kind="key", keys="b"),
+            Action(kind="key", keys="c", repeats=2),
+            Action(kind="loop_end"),
+            Action(kind="key", keys="d"),
+        ]
+        expected = ["c", "c", "b", "c", "c", "b", "c", "c", "d"]
+        self.assertEqual(
+            [a.keys for _, a in iter_execution_steps(actions, start_index=3)], expected
+        )
+        self.assertEqual(progress_total(actions, 1, 3), len(expected))
+        self.assertEqual(
+            [a.keys for _, a in iter_execution_steps(actions, start_index=4)], ["d"]
+        )
+        self.assertEqual(progress_total(actions, 1, 4), 1)
+
+    def test_step_permits_one_complete_action(self):
+        gate = PlaybackGate()
+        gate.pause()
+        completed = []
+        def worker():
+            for index in range(2):
+                gate.begin_action()
+                try:
+                    gate.wait(0.02)
+                    completed.append(index)
+                finally:
+                    gate.end_action()
+        thread = threading.Thread(target=worker)
+        thread.start()
+        time.sleep(0.04)
+        self.assertEqual(completed, [])
+        gate.step()
+        time.sleep(0.09)
+        self.assertEqual(completed, [0])
+        self.assertTrue(thread.is_alive())
+        gate.step()
+        thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(completed, [0, 1])
+
+    def test_stop_while_waiting_for_step(self):
+        gate = PlaybackGate()
+        gate.pause()
+        errors = []
+        def worker():
+            try:
+                gate.begin_action()
+            except RuntimeError as exc:
+                errors.append(str(exc))
+        thread = threading.Thread(target=worker)
+        thread.start()
+        time.sleep(0.04)
+        gate.stop()
+        thread.join(timeout=1)
+        self.assertEqual(errors, ["Stopped"])
+
+    def test_resume_exits_step_mode(self):
+        gate = PlaybackGate()
+        gate.pause()
+        gate.step()
+        gate.resume()
+        self.assertFalse(gate.paused)
+        gate.begin_action()
+        self.assertFalse(gate.end_action())
+        gate.begin_action()
+        self.assertFalse(gate.end_action())
+
+    def test_step_keeps_pause_during_long_wait(self):
+        gate = PlaybackGate()
+        gate.pause()
+        done = threading.Event()
+        def worker():
+            gate.begin_action()
+            try:
+                gate.wait(0.13)
+                done.set()
+            finally:
+                gate.end_action()
+        thread = threading.Thread(target=worker)
+        thread.start()
+        gate.step()
+        thread.join(timeout=1)
+        self.assertTrue(done.is_set())
+        self.assertTrue(gate.paused)
+
     def test_progress_ignores_disabled_actions(self):
         actions = [Action(kind="wait", repeats=3), Action(kind="wait", repeats=9, enabled=False)]
         self.assertEqual(progress_total(actions, 2), 6)
