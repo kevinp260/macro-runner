@@ -128,6 +128,35 @@ class PlaybackTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual(completed, [0, 1])
 
+    def test_step_completes_paused_in_progress_wait(self):
+        gate = PlaybackGate()
+        began = threading.Event()
+        finished = threading.Event()
+        def worker():
+            gate.begin_action()
+            try:
+                began.set()
+                gate.wait(0.25)
+                finished.set()
+            finally:
+                gate.end_action()
+        thread = threading.Thread(target=worker)
+        thread.start()
+        self.assertTrue(began.wait(0.5))
+        time.sleep(0.06)
+        gate.pause()
+        time.sleep(0.09)
+        self.assertFalse(finished.is_set())
+        gate.step()
+        thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(finished.is_set())
+        self.assertTrue(gate.paused)
+        # The step was spent on the old action, not queued for a new one.
+        with self.assertRaises(RuntimeError):
+            gate.stop()
+            gate.begin_action()
+
     def test_stop_while_waiting_for_step(self):
         gate = PlaybackGate()
         gate.pause()

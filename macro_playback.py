@@ -49,6 +49,7 @@ class PlaybackGate:
         self._paused = False
         self._step_tokens = 0
         self._step_active = False
+        self._in_action = False
 
     @property
     def paused(self):
@@ -72,7 +73,11 @@ class PlaybackGate:
                 raise RuntimeError("Pause before stepping.")
             if self.stopped.is_set():
                 raise RuntimeError("Stopped")
-            self._step_tokens += 1
+            if self._in_action:
+                # Finish the currently paused action, not the following one.
+                self._step_active = True
+            else:
+                self._step_tokens += 1
             self._condition.notify_all()
 
     def stop(self):
@@ -87,6 +92,7 @@ class PlaybackGate:
             self._paused = False
             self._step_tokens = 0
             self._step_active = False
+            self._in_action = False
             self._condition.notify_all()
 
     def begin_action(self):
@@ -96,6 +102,7 @@ class PlaybackGate:
                 self._condition.wait(0.05)
             if self.stopped.is_set():
                 raise RuntimeError("Stopped")
+            self._in_action = True
             if self._paused:
                 self._step_tokens -= 1
                 self._step_active = True
@@ -107,6 +114,7 @@ class PlaybackGate:
         with self._condition:
             was_step = self._step_active
             self._step_active = False
+            self._in_action = False
             self._condition.notify_all()
             return was_step and self._paused
 
