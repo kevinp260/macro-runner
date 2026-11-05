@@ -8,6 +8,8 @@ from dataclasses import asdict
 from typing import List, Optional
 
 from macro_model import Action, loop_spans, parse_document, serialize_document, validate_action
+from macro_flow import CONTROL, has_smart_actions, iter_flow_steps, validate_flow, validate_start_selection
+from macro_vision import locate_image, check_condition, poll_until
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 
 import tkinter as tk
@@ -173,6 +175,7 @@ class MacroRunnerApp(tk.Tk):
         self._build_scroll_tab(right)
         self._build_drag_tab(right)
         self._build_loop_tab(right)
+        self._build_vision_tab(right)
 
         # Bottom: action bar (fixed-width buttons, spans full window)
         bottom = ttk.Frame(self, padding=(12, 8))
@@ -257,7 +260,9 @@ class MacroRunnerApp(tk.Tk):
                 elif kind == "progress":
                     _, loop, loops, idx, step, total = event
                     self._progress_index = idx
-                    self.progress_var.set(f"Loop {loop}/{loops} · Step {step}/{total}")
+                    self.progress_var.set(
+                        f"Loop {loop}/{loops} · Step {step}/{total if total is not None else '?'}"
+                    )
                     self.lst.selection_clear(0, tk.END)
                     self.lst.selection_set(idx)
                     self.lst.activate(idx)
@@ -608,6 +613,119 @@ class MacroRunnerApp(tk.Tk):
             return
         self._insert_loop_marker(Action(kind="loop_end"), before_selected=False)
 
+    def _build_vision_tab(self, nb):
+        tab = ttk.Frame(nb, padding=10)
+        nb.add(tab, text="Vision")
+        tab.columnconfigure(1, weight=1)
+        self.vision_vars = {
+            "kind": tk.StringVar(value="click_image"),
+            "condition_source": tk.StringVar(value="image"),
+            "match_mode": tk.StringVar(value="matches"),
+            "image_path": tk.StringVar(value=""),
+            "confidence": tk.StringVar(value="0.90"),
+            "region": tk.StringVar(value=""),
+            "pixel_x": tk.StringVar(value="0"),
+            "pixel_y": tk.StringVar(value="0"),
+            "pixel_color": tk.StringVar(value="#00FF00"),
+            "pixel_tolerance": tk.StringVar(value="10"),
+            "timeout": tk.StringVar(value="10"),
+            "poll_interval": tk.StringVar(value="0.3"),
+            "repeats": tk.StringVar(value="5"),
+            "name": tk.StringVar(value=""),
+        }
+        v = self.vision_vars
+        rows = [
+            ("Action", "kind", ("click_image", "wait_until", "if_start",
+                                  "else", "if_end", "until_start", "until_end")),
+            ("Detect by", "condition_source", ("image", "pixel")),
+            ("Condition", "match_mode", ("matches", "not_matches")),
+            ("Reference image", "image_path", None),
+            ("Min similarity (0–1)", "confidence", None),
+            ("Search region x,y,w,h", "region", None),
+            ("Pixel X", "pixel_x", None),
+            ("Pixel Y", "pixel_y", None),
+            ("Pixel color #RRGGBB", "pixel_color", None),
+            ("Color tolerance (0–255)", "pixel_tolerance", None),
+            ("Timeout (seconds)", "timeout", None),
+            ("Poll interval (seconds)", "poll_interval", None),
+            ("Max cycles (Repeat Until)", "repeats", None),
+            ("Label", "name", None),
+        ]
+        for i, (label, key, choices) in enumerate(rows):
+            ttk.Label(tab, text=label + ":").grid(row=i, column=0, sticky="w", pady=2)
+            if choices:
+                widget = ttk.Combobox(tab, width=22, textvariable=v[key],
+                                      values=choices, state="readonly")
+            else:
+                widget = ttk.Entry(tab, width=25, textvariable=v[key])
+            widget.grid(row=i, column=1, sticky="ew", pady=2, padx=(4, 0))
+            if key == "image_path":
+                ttk.Button(tab, text="…", width=3, command=self.pick_vision_image).grid(
+                    row=i, column=2, padx=(4, 0))
+        ttk.Label(tab, text="Image: choose a cropped PNG. Region is optional.\n"
+                            "Block starts insert before selection; ends after.",
+                  justify="left").grid(row=len(rows), column=0, columnspan=3,
+                                       sticky="w", pady=(5, 4))
+        self._editor_button(tab, text="Add Vision / Flow Action",
+                            command=self.add_vision_action).grid(
+            row=len(rows) + 1, column=0, columnspan=3, sticky="ew"
+        )
+
+    def pick_vision_image(self):
+        path = filedialog.askopenfilename(
+            title="Choose a cropped reference image",
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")]
+        )
+        if path:
+            self.vision_vars["image_path"].set(path)
+
+    @staticmethod
+    def _vision_region(text):
+        text = text.strip()
+        if not text:
+            return (None, None, None, None)
+        parts = [part.strip() for part in text.split(",")]
+        if len(parts) != 4:
+            raise ValueError("Region must be x,y,width,height or blank.")
+        return tuple(int(part) for part in parts)
+
+    def add_vision_action(self):
+        if self._editing_locked():
+            return
+        v = self.vision_vars
+        kind = v["kind"].get()
+        try:
+            properties = {"kind": kind, "name": v["name"].get().strip()}
+            if kind in ("click_image", "wait_until", "if_start", "until_start"):
+                region = self._vision_region(v["region"].get())
+                properties.update(
+                    condition_source=v["condition_source"].get(),
+                    match_mode="matches" if kind == "click_image" else v["match_mode"].get(),
+                    image_path=v["image_path"].get().strip(),
+                    confidence=float(v["confidence"].get()),
+                    region_x=region[0], region_y=region[1],
+                    region_w=region[2], region_h=region[3],
+                    pixel_x=int(v["pixel_x"].get()), pixel_y=int(v["pixel_y"].get()),
+                    pixel_color=v["pixel_color"].get().strip(),
+                    pixel_tolerance=int(v["pixel_tolerance"].get()),
+                    timeout=float(v["timeout"].get()),
+                    poll_interval=float(v["poll_interval"].get())
+                )
+            if kind == "click_image":
+                properties["condition_source"] = "image"
+            if kind == "until_start":
+                properties["repeats"] = int(v["repeats"].get())
+            action = validate_action(asdict(Action(**properties)))
+            selected = self.lst.curselection()
+            before_selected = kind in ("if_start", "until_start")
+            index = (selected[0] + (0 if before_selected else 1)
+                     if selected else len(self.actions))
+            self.actions.insert(index, action)
+            self.refresh_list()
+            self._select_action(index)
+        except (ValueError, TypeError, tk.TclError) as exc:
+            messagebox.showerror("Invalid vision action", str(exc))
+
     # ---------- Keyboard shortcuts ----------
     def _bind_shortcuts(self):
         # List editing
@@ -825,6 +943,16 @@ class MacroRunnerApp(tk.Tk):
             return f"{label}┌ Repeat block ×{a.repeats}"
         if a.kind == "loop_end":
             return f"{label}└ End block"
+        if a.kind in ("click_image", "wait_until", "if_start", "until_start"):
+            target = (a.image_path.rsplit("/", 1)[-1].rsplit("\\\\", 1)[-1]
+                      if a.condition_source == "image"
+                      else f"pixel ({a.pixel_x},{a.pixel_y}) {a.pixel_color}")
+            label_kind = {"click_image": "Click image", "wait_until": "Wait until",
+                          "if_start": "IF", "until_start": "Repeat until"}[a.kind]
+            count = f" (max {a.repeats} cycles)" if a.kind == "until_start" else ""
+            return f"{label}{label_kind} {a.match_mode} {target}{count}"
+        if a.kind in ("else", "if_end", "until_end"):
+            return f"{label}{a.kind.replace('_', ' ').upper()}"
         return str(a)
     
     def _double_click_action(self, event):
@@ -845,8 +973,8 @@ class MacroRunnerApp(tk.Tk):
             return
         index = selected[0]
         action = self.actions[index]
-        if action.kind in ("loop_start", "loop_end"):
-            messagebox.showinfo("Loop marker", "Loop markers cannot be disabled. Disable actions inside the loop instead.")
+        if action.kind in CONTROL:
+            messagebox.showinfo("Control marker", "Control markers cannot be disabled. Disable actions inside the block instead.")
             return
         action.enabled = not action.enabled
         self.refresh_list()
@@ -1072,8 +1200,8 @@ class MacroRunnerApp(tk.Tk):
         if not sel:
             return
         idx = sel[0]
-        if self.actions[idx].kind in ("loop_start", "loop_end"):
-            messagebox.showinfo("Duplicate loop", "Duplicate the actions inside the block, then add a separate Loop Start and Loop End.")
+        if self.actions[idx].kind in CONTROL:
+            messagebox.showinfo("Duplicate block", "Duplicate executable actions, then insert the required block markers separately.")
             return
         self.actions.insert(idx + 1, Action(**asdict(self.actions[idx])))
         self.refresh_list()
@@ -1094,8 +1222,8 @@ class MacroRunnerApp(tk.Tk):
             return
         idx = sel[0]
         a = self.actions[idx]
-        if a.kind == "loop_end":
-            messagebox.showinfo("Loop End", "Edit the repeat count on Loop Start instead.")
+        if a.kind in CONTROL and a.kind not in ("loop_start", "until_start"):
+            messagebox.showinfo("Control marker", "Only Loop Start and Repeat Until have cycle counts.")
             return
 
         dlg = tk.Toplevel(self)
@@ -1339,8 +1467,9 @@ class MacroRunnerApp(tk.Tk):
         if not self.actions:
             messagebox.showerror("No actions", "Add at least one action.")
             return
-        if not any(action.enabled for action in self.actions):
-            messagebox.showwarning("No enabled actions", "Enable at least one action before running.")
+        if not any(action.enabled and action.kind not in CONTROL
+                   for action in self.actions):
+            messagebox.showwarning("No executable actions", "Add at least one enabled executable action.")
             return
         try:
             repeats = int(self.repeat_var.get())
@@ -1348,7 +1477,8 @@ class MacroRunnerApp(tk.Tk):
             if repeats < 1 or not 0 <= start_delay < float("inf"):
                 raise ValueError("Repeat count must be positive and delay nonnegative.")
             snapshot = [validate_action(asdict(a)) for a in self.actions]
-            loop_spans(snapshot)
+            validate_flow(snapshot)
+            smart = has_smart_actions(snapshot)
             selection = self.lst.curselection()
             start_index = selection[0] if (from_selected or step_mode) and selection else 0
             if from_selected and not selection:
@@ -1357,9 +1487,13 @@ class MacroRunnerApp(tk.Tk):
                 repeats = 1
             if step_mode:
                 start_delay = 0.0
-            total = progress_total(snapshot, repeats, start_index)
-            if total == 0:
-                raise ValueError("No enabled executable actions at or after the selection.")
+            if smart:
+                validate_start_selection(snapshot, start_index)
+                total = None  # Conditional paths have an unknown execution length.
+            else:
+                total = progress_total(snapshot, repeats, start_index)
+                if total == 0:
+                    raise ValueError("No enabled executable actions at or after the selection.")
         except (ValueError, TypeError, tk.TclError) as exc:
             messagebox.showerror("Invalid settings", str(exc))
             return
@@ -1379,14 +1513,15 @@ class MacroRunnerApp(tk.Tk):
         self.btn_rec_stop.config(state="disabled")
         self._set_editing_enabled(False)
         self.run_thread = threading.Thread(
-            target=self._run_sequence, args=(snapshot, repeats, start_delay, start_index), daemon=True
+            target=self._run_sequence,
+            args=(snapshot, repeats, start_delay, start_index, smart), daemon=True
         )
         self.run_thread.start()
 
     def _wait_or_stop(self, duration):
         self.playback.wait(duration)
 
-    def _run_sequence(self, actions, repeats, start_delay, start_index=0):
+    def _run_sequence(self, actions, repeats, start_delay, start_index=0, smart=False):
         try:
             remaining = start_delay
             while remaining > 0:
@@ -1402,7 +1537,14 @@ class MacroRunnerApp(tk.Tk):
             for loop in range(repeats):
                 # Only the first outer cycle starts from a selected row.
                 begin = start_index if loop == 0 else 0
-                for idx, action in iter_execution_steps(actions, begin):
+                if smart:
+                    steps = iter_flow_steps(
+                        actions, self._check_visual_condition,
+                        self.stop_flag.is_set, begin
+                    )
+                else:
+                    steps = iter_execution_steps(actions, begin)
+                for idx, action in steps:
                     self.playback.begin_action()
                     try:
                         step += 1
@@ -1416,8 +1558,19 @@ class MacroRunnerApp(tk.Tk):
             msg = "Stopped." if str(exc) == "Stopped" else f"Stopped: {exc}"
             self.events.put(("finished", "aborted", msg))
 
+    def _check_visual_condition(self, action):
+        self._wait_or_stop(0)
+        return check_condition(action, pag.screenshot)
+
     def _execute_action(self, a: Action):
-        if a.kind == "click":
+        if a.kind == "click_image":
+            match = poll_until(a, lambda: locate_image(a, pag.screenshot),
+                               self.playback)
+            self._wait_or_stop(0)
+            pag.click(match[0], match[1], button=a.button)
+        elif a.kind == "wait_until":
+            poll_until(a, lambda: self._check_visual_condition(a), self.playback)
+        elif a.kind == "click":
             if a.x is not None and a.y is not None:
                 pag.moveTo(a.x, a.y, duration=0)
             for index in range(a.clicks):
