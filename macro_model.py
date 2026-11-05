@@ -84,6 +84,8 @@ def validate_action(item):
             action.condition_source != "image" or action.match_mode != "matches"
         ):
             raise ValueError("Click Image requires an image match.")
+        if action.kind == "click_image" and action.button not in ("left", "right", "middle"):
+            raise ValueError("Invalid image-click mouse button.")
         if action.condition_source == "image":
             if not isinstance(action.image_path, str) or not action.image_path.strip():
                 raise ValueError("Select a reference image.")

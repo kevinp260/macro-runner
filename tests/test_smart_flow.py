@@ -83,6 +83,7 @@ class SmartFlowTests(unittest.TestCase):
             {"kind": "click_image", "image_path": ""},
             {"kind": "click_image", "image_path": "x.png", "confidence": 2},
             {"kind": "click_image", "image_path": "x.png", "match_mode": "not_matches"},
+            {"kind": "click_image", "image_path": "x.png", "button": "invalid"},
             {"kind": "wait_until", "condition_source": "pixel", "pixel_color": "red"},
             {"kind": "wait_until", "condition_source": "pixel", "pixel_tolerance": 256},
             {"kind": "if_start", "image_path": "x.png", "region_x": 3},
