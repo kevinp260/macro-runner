@@ -5,7 +5,7 @@ a = Analysis(
     ['macro_runner.py'],
     pathex=[],
     binaries=[],
-    datas=[('macro_runner_icon.ico', '.')],
+    datas=[('macro_runner_icon.ico', '.'), ('macro_ui_assets', 'macro_ui_assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

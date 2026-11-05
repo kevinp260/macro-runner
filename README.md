@@ -22,6 +22,11 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
   delay and restores after completion, Stop, or execution failure. This preference
   is saved per device, independently of macro JSON.
 
+The three panels have independent rounded borders, an unobtrusive draggable
+splitter gutter, and enforced minimum widths so action fields remain usable.
+Mouse position pickers and other long inspector buttons span the full form.
+Number-field and dropdown arrows have consistent styling in both themes.
+
 Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the
 properties panel scrolls instead of clipping long action forms.
