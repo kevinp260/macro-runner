@@ -23,7 +23,7 @@ from macro_model import Action, parse_document, serialize_document
 from macro_flow import CONTROL
 from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
-from macro_qt_properties import PropertiesPanel
+from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -119,11 +119,14 @@ def field_controls_style(theme):
     up = (ICON_DIR / f"chevron-up-{theme}.svg").as_posix()
     down = (ICON_DIR / f"chevron-down-{theme}.svg").as_posix()
     return f"""
-/* Match the text inset of ordinary QLineEdit fields, while reserving
-   space on the right for the spinner/dropdown button. */
+/* QComboBox draws its label itself, while spinboxes use an embedded
+   QLineEdit. Give the combo its own inset and set the spinbox editor's
+   margin in Python (QSS on the outer spinbox alone does not move its text). */
 QLineEdit {{ padding-left: 10px; }}
-QComboBox, QSpinBox, QDoubleSpinBox {{
-  padding: 7px 29px 7px 10px;
+QComboBox {{ padding: 7px 29px 7px 11px; }}
+QSpinBox, QDoubleSpinBox {{ padding: 7px 29px 7px 0px; }}
+QSpinBox > QLineEdit, QDoubleSpinBox > QLineEdit {{
+  padding: 0; border: none; background: transparent;
 }}
 QComboBox::drop-down {{
   subcontrol-origin: border;
@@ -339,6 +342,7 @@ class MacroWindow(QMainWindow):
         self.repeats = QSpinBox()
         self.repeats.setRange(1, 1000000)
         self.repeats.setValue(1)
+        pad_spinbox_text(self.repeats)
         status_row.addWidget(self.repeats)
         status_row.addSpacing(12)
         status_row.addWidget(QLabel("Start delay (s)"))
@@ -346,6 +350,7 @@ class MacroWindow(QMainWindow):
         self.delay.setRange(0, 3600)
         self.delay.setDecimals(1)
         self.delay.setValue(3.0)
+        pad_spinbox_text(self.delay)
         status_row.addWidget(self.delay)
         status_row.addSpacing(12)
         self.minimize_on_run = QCheckBox("Minimize when running")
