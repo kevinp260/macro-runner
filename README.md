@@ -34,6 +34,8 @@ with consistent padding, while the workflow action count uses a rounded badge.
 Mouse position pickers and other long inspector buttons span the full form.
 Number-field and dropdown arrows have consistent styling in both themes, and
 text values align horizontally across text, number and select fields.
+Numeric spinboxes apply the inset to their embedded text editor rather than
+relying on outer-widget CSS padding, which Qt platform styles handle differently.
 
 Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the

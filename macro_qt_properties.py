@@ -45,6 +45,25 @@ FLOAT = frozenset(("interval", "seconds", "move_duration", "timeout",
 OPTIONAL = frozenset(("region_x", "region_y", "region_w", "region_h"))
 
 
+def pad_spinbox_text(spinbox, left=11):
+    """Inset the actual numeric editor, not only its outer Qt stylesheet box.
+
+    QSpinBox/QDoubleSpinBox render their value through an embedded QLineEdit.
+    The parent widget's QSS padding does not reliably move that text on all
+    Qt platform styles (notably Linux/XCB).
+    """
+    editor = spinbox.findChild(QLineEdit)
+    if editor is not None:
+        editor.setTextMargins(left, 0, 0, 0)
+
+
+def pad_spinbox_text(spinbox, left=11):
+    """Inset the embedded numeric editor, not just the outer Qt widget."""
+    editor = spinbox.findChild(QLineEdit)
+    if editor is not None:
+        editor.setTextMargins(left, 0, 0, 0)
+
+
 def fields_for_kind(kind):
     fields = SPECS.get(kind, [])
     if kind in VISUAL:
@@ -132,6 +151,8 @@ class PropertiesPanel(QFrame):
             repeats = QSpinBox()
             repeats.setRange(1, 1000000)
             repeats.setValue(action.repeats)
+            pad_spinbox_text(repeats)
+            pad_spinbox_text(repeats)
             self.controls["repeats"] = repeats
             self.form.addRow("Repeat count", repeats)
         if action.kind not in CONTROL:
