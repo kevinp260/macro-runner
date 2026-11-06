@@ -11,7 +11,7 @@ import time
 from dataclasses import asdict
 
 from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint
-from PySide6.QtGui import QAction, QKeySequence, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QToolBar, QLabel, QPushButton, QFileDialog, QMessageBox,
@@ -223,6 +223,8 @@ class MacroWindow(QMainWindow):
         self.keyboard_listener = None
         self.hotkeys = None
         self.region_picker = None
+        self._screen_selection_active = False
+        self._screen_selection_restore = None
         self._build_ui()
         self._restore_settings()
         self._start_hotkeys()
@@ -397,6 +399,29 @@ class MacroWindow(QMainWindow):
         view.addAction(dark)
         self.dark_action = dark
 
+        # A device preference, not part of the saved workflow. Hide by default
+        # so screen targets behind the editor can be selected naturally.
+        self.selection_mode_menu = view.addMenu("During screen selection")
+        self.selection_mode_group = QActionGroup(self)
+        self.selection_mode_group.setExclusive(True)
+        for mode, label in (
+            ("show", "Keep MacroRunner visible"),
+            ("minimize", "Minimize MacroRunner"),
+            ("hide", "Hide MacroRunner"),
+        ):
+            action = QAction(label, self, checkable=True)
+            action.setChecked(self._selection_window_mode() == mode)
+            action.triggered.connect(
+                lambda checked, selected=mode:
+                    self.settings.setValue("selection_window_mode", selected)
+            )
+            self.selection_mode_group.addAction(action)
+            self.selection_mode_menu.addAction(action)
+
+    def _selection_window_mode(self):
+        mode = self.settings.value("selection_window_mode", "hide")
+        return mode if mode in ("show", "minimize", "hide") else "hide"
+
     def _restore_settings(self):
         self.set_theme(self.settings.value("theme", "dark"))
         self.minimize_on_run.setChecked(
@@ -426,7 +451,8 @@ class MacroWindow(QMainWindow):
 
     def _busy(self):
         # Wait for the queued completion signal before allowing edits.
-        return self.recording or self.record_pending or self.executor is not None
+        return (self.recording or self.record_pending or self.executor is not None
+                or self._screen_selection_active)
 
     def _update_controls(self):
         busy = self._busy()
@@ -449,6 +475,7 @@ class MacroWindow(QMainWindow):
         self.repeats.setEnabled(not busy)
         self.delay.setEnabled(not busy)
         self.minimize_on_run.setEnabled(not busy)
+        self.selection_mode_menu.setEnabled(not busy)
 
     def _update_action_count(self, actions):
         disabled = sum(not action.enabled for action in actions
@@ -669,31 +696,84 @@ class MacroWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, "Mouse movement unavailable", str(exc))
 
-    def _pick_region(self):
-        if self._busy() or self.region_picker is not None:
+    def _begin_screen_selection(self):
+        """Temporarily change editor visibility for a point or region pick."""
+        if self._busy():
+            return False
+        self._screen_selection_active = True
+        self._screen_selection_restore = None
+        mode = self._selection_window_mode()
+        # Do not reveal a window that was already hidden or minimized.
+        if self.isVisible() and not self.isMinimized() and mode != "show":
+            self._screen_selection_restore = self.windowState()
+            if mode == "minimize":
+                self.showMinimized()
+            else:
+                self.hide()
+        self._update_controls()
+        return True
+
+    def _end_screen_selection(self, restore=True):
+        if not self._screen_selection_active:
             return
+        state = self._screen_selection_restore
+        self._screen_selection_active = False
+        self._screen_selection_restore = None
+        if restore and state is not None:
+            if state & Qt.WindowState.WindowFullScreen:
+                self.showFullScreen()
+            elif state & Qt.WindowState.WindowMaximized:
+                self.showMaximized()
+            else:
+                self.showNormal()
+            self.raise_()
+            self.activateWindow()
+        self._update_controls()
+
+    def _pick_region(self):
+        if not self._begin_screen_selection():
+            return
+        self._set_status("Drag to select a region · Esc to cancel.")
 
         def selected(x, y, width, height):
             self.region_picker = None
+            self._end_screen_selection()
             self.inspector.update_picked_region(x, y, width, height)
             self._set_status(
                 f"Selected region ({x}, {y}), {width}×{height}. "
                 "Choose Apply changes to save.")
+
         def cancelled():
             self.region_picker = None
+            self._end_screen_selection()
             self._set_status("Region selection cancelled.")
 
-        self.region_picker = RegionPicker(selected, cancelled)
-        self.region_picker.show()
+        def launch():
+            if not self._screen_selection_active:
+                return
+            try:
+                self.region_picker = RegionPicker(selected, cancelled)
+                self.region_picker.show()
+            except Exception as exc:
+                if self.region_picker is not None:
+                    self.region_picker.cancel(notify=False)
+                    self.region_picker = None
+                self._end_screen_selection()
+                QMessageBox.warning(self, "Region selection unavailable", str(exc))
+
+        # Let the window manager finish hiding/minimizing the editor before
+        # displaying the overlay (important on Windows and composited desktops).
+        QTimer.singleShot(150, launch)
 
     def _pick_coordinates(self, mode):
-        if self._busy():
+        if not self._begin_screen_selection():
             return
         self._set_status("Move the pointer to the target — capturing in 3 seconds…")
 
         def finish():
-            if self._busy():
+            if not self._screen_selection_active:
                 return
+            error = None
             try:
                 import pyautogui
                 x, y = pyautogui.position()
@@ -704,7 +784,11 @@ class MacroWindow(QMainWindow):
                 self.inspector.update_picked_coordinates(mode, x, y, color)
                 self._set_status(f"Captured ({x}, {y}). Choose Apply changes to save.")
             except Exception as exc:
-                QMessageBox.warning(self, "Screen capture unavailable", str(exc))
+                error = exc
+            finally:
+                self._end_screen_selection()
+            if error is not None:
+                QMessageBox.warning(self, "Screen capture unavailable", str(error))
 
         QTimer.singleShot(3000, finish)
 
@@ -883,6 +967,11 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def closeEvent(self, event):
+        if self.region_picker is not None:
+            self.region_picker.cancel(notify=False)
+            self.region_picker = None
+        # Invalidate any delayed selection callbacks without reopening the UI.
+        self._end_screen_selection(restore=False)
         if self.recording or self.record_pending:
             self.stop_recording()
         if self.executor is not None:

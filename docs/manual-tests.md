@@ -12,6 +12,17 @@ Automated CI does not exercise native OS input hooks or screenshot capture.
       dimensions; all controls must remain reachable.
 - [ ] Resize each splitter pane, close/reopen, and confirm geometry is restored.
 - [ ] Switch light/dark mode and restart, checking theme persistence.
+- [ ] In View → During screen selection, test Show, Minimize, and Hide modes
+      for Draw screen region, Pick start, Pick destination, and Sample pixel.
+- [ ] In Hide mode, verify the desktop is unobstructed before drawing or
+      picking, then MacroRunner restores automatically with captured values.
+- [ ] In Minimize mode, verify MacroRunner goes to the taskbar/dock during
+      selection and restores afterward; Show mode should leave it visible.
+- [ ] Press Escape to cancel region drawing and confirm the window restores
+      without changing the region. Check restoration after a failed pixel
+      capture and when starting with the window maximized.
+- [ ] Restart and confirm the screen-selection visibility choice persists,
+      independently of Minimize when running.
 
 ## Structured workflow editing
 

@@ -43,6 +43,15 @@ Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the
 properties panel scrolls instead of clipping long action forms.
 
+**View → During screen selection** controls the MacroRunner window while
+drawing a region, picking mouse coordinates (start/destination), or sampling
+a pixel. Choose **Keep MacroRunner visible**, **Minimize MacroRunner**, or
+**Hide MacroRunner** (the default, like a screenshot tool). The editor is
+restored automatically after a successful pick, Escape/cancel, or capture
+failure, without changing its previous maximized/normal state. If the editor
+was already minimized or hidden, it stays that way. The preference is saved
+locally and is separate from **Minimize when running**.
+
 ## Actions and workflows
 
 Supported actions include mouse click, move, scroll, drag, wait, keyboard

@@ -190,7 +190,8 @@ class PropertiesPanel(QFrame):
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
         if action.kind in ("click", "move", "drag"):
             pick = QPushButton("Pick start (3 s)")
-            pick.setToolTip("Move the pointer to the start position; capture after 3 seconds.")
+            pick.setToolTip("Move the pointer to the start position; capture after 3 seconds. "
+                            "Set window visibility in View → During screen selection.")
             pick.clicked.connect(lambda: self.pick_coordinates.emit("start"))
             self.form.addRow(pick)
             test = QPushButton("Test position")
@@ -199,12 +200,14 @@ class PropertiesPanel(QFrame):
             self.form.addRow(test)
             if action.kind == "drag":
                 destination = QPushButton("Pick destination (3 s)")
-                destination.setToolTip("Move to the drag destination; capture after 3 seconds.")
+                destination.setToolTip("Move to the drag destination; capture after 3 seconds. "
+                                   "Set window visibility in View → During screen selection.")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
                 self.form.addRow(destination)
         if action.kind == "watch_start":
             draw = QPushButton("Draw screen region…")
-            draw.setToolTip("Drag a rectangle on your desktop; Esc cancels.")
+            draw.setToolTip("Drag a rectangle on your desktop; Esc cancels. "
+                            "Set window visibility in View → During screen selection.")
             draw.clicked.connect(self.pick_region.emit)
             self.form.addRow(draw)
             info = QLabel("0 maximum changes = keep watching until Stop. "
@@ -215,7 +218,8 @@ class PropertiesPanel(QFrame):
             self.form.addRow(info)
         if action.kind in VISUAL:
             color = QPushButton("Sample pixel (3 s)")
-            color.setToolTip("Capture the pixel beneath the pointer after 3 seconds.")
+            color.setToolTip("Capture the pixel beneath the pointer after 3 seconds. "
+                             "Set window visibility in View → During screen selection.")
             color.clicked.connect(lambda: self.pick_coordinates.emit("pixel"))
             self.form.addRow(color)
         if "condition_source" in self.controls:
