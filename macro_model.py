@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end"]
 
 @dataclass
 class Action:
@@ -38,6 +38,11 @@ class Action:
     pixel_tolerance: int = 10
     timeout: float = 10.0
     poll_interval: float = 0.3
+    # Watch region: 0 means keep watching until Stop.
+    watch_max_changes: int = 0
+    watch_change_percent: float = 5.0
+    watch_pixel_tolerance: int = 15
+    watch_confirmations: int = 2
 
 
 def _finite_nonnegative(value, field):
@@ -61,7 +66,7 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -69,12 +74,40 @@ def validate_action(item):
     if not isinstance(action.enabled, bool):
         raise ValueError("Enabled must be true or false.")
     markers = ("loop_start", "loop_end", "if_start", "else", "if_end",
-               "until_start", "until_end")
+               "until_start", "until_end", "watch_start", "watch_end")
     if action.kind in markers:
         if not action.enabled:
             raise ValueError("Control markers must remain enabled.")
         if action.kind not in ("loop_start", "until_start") and action.repeats != 1:
             raise ValueError("Only block starts can have a repeat count.")
+    if action.kind == "watch_start":
+        region = (action.region_x, action.region_y, action.region_w, action.region_h)
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in region):
+            raise ValueError("Watch region needs integer X, Y, width and height. Use Draw region.")
+        if action.region_x < 0 or action.region_y < 0:
+            # PyAutoGUI screenshot(region=...) does not support negative origins
+            # consistently across operating systems.
+            raise ValueError("Watch region must use nonnegative screen coordinates.")
+        if not 1 <= action.region_w <= 10000 or not 1 <= action.region_h <= 10000:
+            raise ValueError("Watch region width and height must be 1–10000 pixels.")
+        _finite_nonnegative(action.poll_interval, "Watch polling interval")
+        if not 0.1 <= action.poll_interval <= 60:
+            raise ValueError("Watch polling interval must be 0.1–60 seconds.")
+        _finite_nonnegative(action.watch_change_percent, "Changed pixels percentage")
+        if not 0 < action.watch_change_percent <= 100:
+            raise ValueError("Changed pixels percentage must be greater than 0 and at most 100.")
+        if (isinstance(action.watch_pixel_tolerance, bool) or
+            not isinstance(action.watch_pixel_tolerance, int) or
+            not 0 <= action.watch_pixel_tolerance <= 255):
+            raise ValueError("Pixel tolerance must be an integer from 0 to 255.")
+        if (isinstance(action.watch_confirmations, bool) or
+            not isinstance(action.watch_confirmations, int) or
+            not 1 <= action.watch_confirmations <= 10):
+            raise ValueError("Confirmations must be an integer from 1 to 10.")
+        if (isinstance(action.watch_max_changes, bool) or
+            not isinstance(action.watch_max_changes, int) or
+            not 0 <= action.watch_max_changes <= 1000000):
+            raise ValueError("Maximum changes must be 0 (unlimited) to 1000000.")
     if action.kind in ("click_image", "wait_until", "if_start", "until_start"):
         if action.condition_source not in ("image", "pixel"):
             raise ValueError("Condition source must be image or pixel.")

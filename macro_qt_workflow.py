@@ -56,6 +56,7 @@ KINDS = [
     ("Scroll", "scroll"), ("Drag", "drag"),
     ("Repeat block", "loop_start"),
     ("If / Else", "if_start"), ("Repeat until", "until_start"),
+    ("Watch region changes", "watch_start"),
 ]
 
 TITLES = {
@@ -64,7 +65,7 @@ TITLES = {
     "key": "Keyboard", "key_down": "Hold key", "key_up": "Release key",
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
     "loop_start": "Repeat block", "if_start": "Condition",
-    "until_start": "Repeat until"
+    "until_start": "Repeat until", "watch_start": "Watch region changes"
 }
 
 
@@ -82,6 +83,11 @@ def description(action):
         detail = f"{action.match_mode.replace('_', ' ')} · {target}"
     elif kind in ("key", "key_down", "key_up"):
         detail = action.keys
+    elif kind == "watch_start":
+        detail = (f"({action.region_x}, {action.region_y}) "
+                  f"{action.region_w}×{action.region_h} · "
+                  f"every {action.poll_interval:g}s · "
+                  f"{action.watch_change_percent:g}% changed")
     elif kind == "loop_start":
         detail = f"{action.repeats} cycles"
     elif kind == "scroll":

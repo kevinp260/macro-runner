@@ -8,7 +8,7 @@ from macro_flow import has_smart_actions, iter_flow_steps, validate_flow, valida
 from macro_model import validate_action
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 from macro_keys import HeldKeys
-from macro_vision import locate_image, check_condition, poll_until
+from macro_vision import locate_image, check_condition, poll_until, watch_region_change
 from dataclasses import asdict
 
 
@@ -20,7 +20,7 @@ class MacroExecutor:
         if not self.actions:
             raise ValueError("The workflow has no actions.")
         if not any(a.enabled and a.kind not in ("loop_start", "loop_end", "if_start",
-                "if_end", "else", "until_start", "until_end") for a in self.actions):
+                "if_end", "else", "until_start", "until_end", "watch_start", "watch_end") for a in self.actions):
             raise ValueError("The workflow has no enabled executable actions.")
         if not isinstance(repeat_count, int) or repeat_count < 1:
             raise ValueError("Repeat count must be positive.")
@@ -77,6 +77,15 @@ class MacroExecutor:
             raise RuntimeError("Stopped")
         return check_condition(action, self._pag().screenshot)
 
+    def _watch_region(self, action):
+        # Watch only on the worker thread. Step mode can grant one watch cycle,
+        # and Stop interrupts the polling gate immediately.
+        self.gate.begin_action()
+        try:
+            return watch_region_change(action, self._pag().screenshot, self.gate)
+        finally:
+            self.gate.end_action()
+
     def _execute(self, a):
         pag = self._pag()
         self.gate.wait(0)
@@ -131,7 +140,8 @@ class MacroExecutor:
             for repeat in range(self.repeat_count):
                 start = self.start_index if repeat == 0 else 0
                 iterator = (iter_flow_steps(self.actions, self._condition,
-                            self.gate.stopped.is_set, start) if self.smart
+                            self.gate.stopped.is_set, start,
+                            watch=self._watch_region) if self.smart
                             else iter_execution_steps(self.actions, start))
                 for idx, action in iterator:
                     self.gate.begin_action()

@@ -19,7 +19,9 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
   disabled directly. Ctrl/Shift-click selects multiple items; Delete and
   Duplicate apply to selected nodes. Undo/Redo restores up to 60 snapshots.
 - **Properties (right):** Scrollable inspector with relevant fields for the
-  selected action. Click **Apply changes** after editing.
+  selected action. Click **Apply changes** after editing. Watch Region Changes
+  includes **Draw screen region…**: drag a rectangle on the desktop to fill
+  X/Y/width/height automatically; press Escape to cancel.
 - **Toolbar:** New, Open, Save, Run, Pause/Resume, Stop, Step,
   Run from Selected, Record, Undo and Redo.
 - **Footer:** Whole-workflow repeat count, start delay, optional **Minimize when running**
@@ -63,6 +65,17 @@ Press Enter
 Repeat and If containers correspond to the same legacy Start/End markers in
 the saved JSON. The editor **does not introduce a new macro format**.
 Existing JSON version 2 macros remain supported, as do legacy action arrays.
+
+**Watch Region Changes** monitors a selected rectangle by taking screenshots
+at a configurable interval (default 0.5 s). A change triggers its nested
+actions when the percentage of pixels differing from the current baseline
+exceeds the configured threshold for the requested number of consecutive
+captures. The watcher pauses while nested actions execute, then takes a
+fresh baseline before monitoring again. Set maximum changes to 0 to watch
+until Stop, or choose a finite trigger count. Pausing and Stop are supported.
+The screen selection overlay uses Qt global coordinates; on multi-monitor
+mixed-DPI systems and restrictive Wayland sessions, screen capture and
+coordinates may depend on desktop permissions and display scaling.
 
 Repeat Until requires a finite maximum number of cycles. Visual Wait and
 Click Image have configurable timeouts. Image matching uses OpenCV with
