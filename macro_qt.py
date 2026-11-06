@@ -23,7 +23,7 @@ from macro_model import Action, parse_document, serialize_document
 from macro_flow import CONTROL
 from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
-from macro_qt_properties import PropertiesPanel, pad_spinbox_text
+from macro_qt_properties import PropertiesPanel, pad_spinbox_text, pad_spinbox_text
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -343,6 +343,7 @@ class MacroWindow(QMainWindow):
         self.repeats.setRange(1, 1000000)
         self.repeats.setValue(1)
         pad_spinbox_text(self.repeats)
+        pad_spinbox_text(self.repeats)
         status_row.addWidget(self.repeats)
         status_row.addSpacing(12)
         status_row.addWidget(QLabel("Start delay (s)"))
@@ -350,6 +351,7 @@ class MacroWindow(QMainWindow):
         self.delay.setRange(0, 3600)
         self.delay.setDecimals(1)
         self.delay.setValue(3.0)
+        pad_spinbox_text(self.delay)
         pad_spinbox_text(self.delay)
         status_row.addWidget(self.delay)
         status_row.addSpacing(12)

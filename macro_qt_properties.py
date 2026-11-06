@@ -57,6 +57,13 @@ def pad_spinbox_text(spinbox, left=11):
         editor.setTextMargins(left, 0, 0, 0)
 
 
+def pad_spinbox_text(spinbox, left=11):
+    """Inset the embedded numeric editor, not just the outer Qt widget."""
+    editor = spinbox.findChild(QLineEdit)
+    if editor is not None:
+        editor.setTextMargins(left, 0, 0, 0)
+
+
 def fields_for_kind(kind):
     fields = SPECS.get(kind, [])
     if kind in VISUAL:
@@ -144,6 +151,7 @@ class PropertiesPanel(QFrame):
             repeats = QSpinBox()
             repeats.setRange(1, 1000000)
             repeats.setValue(action.repeats)
+            pad_spinbox_text(repeats)
             pad_spinbox_text(repeats)
             self.controls["repeats"] = repeats
             self.form.addRow("Repeat count", repeats)

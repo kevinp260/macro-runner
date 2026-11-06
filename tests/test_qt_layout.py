@@ -4,7 +4,7 @@ import unittest
 from PySide6.QtCore import Qt
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QPushButton, QFormLayout, QLineEdit,
+    QApplication, QFrame, QPushButton, QFormLayout, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit,
     QSpinBox, QDoubleSpinBox, QComboBox
 )
 
@@ -132,6 +132,21 @@ class EditorLayoutTests(unittest.TestCase):
                 standalone.findChild(QLineEdit).textMargins().left(), 11)
             self.assertEqual(window.repeats.value(), 1)
             self.assertEqual(window.delay.value(), 3.0)
+        finally:
+            window.close()
+
+    def test_numeric_editor_text_insets(self):
+        window = MacroWindow()
+        try:
+            window.inspector.show_action(Action(kind="click", x=1, y=2))
+            for widget in (window.repeats, window.delay,
+                           window.inspector.controls["repeats"]):
+                editor = widget.findChild(QLineEdit)
+                self.assertIsNotNone(editor)
+                self.assertEqual(editor.textMargins().left(), 11)
+            self.assertIsInstance(window.repeats, QSpinBox)
+            self.assertIsInstance(window.delay, QDoubleSpinBox)
+            self.assertIsInstance(window.inspector.controls["button"], QComboBox)
         finally:
             window.close()
 
