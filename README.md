@@ -24,6 +24,8 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
 
 The three panels have independent rounded borders, an unobtrusive draggable
 splitter gutter, and enforced minimum widths so action fields remain usable.
+Panel headings, helper text, and other labels sit on transparent backgrounds
+with consistent padding, while the workflow action count uses a rounded badge.
 Mouse position pickers and other long inspector buttons span the full form.
 Number-field and dropdown arrows have consistent styling in both themes.
 

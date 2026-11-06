@@ -60,6 +60,36 @@ class EditorLayoutTests(unittest.TestCase):
         finally:
             window.close()
 
+    def test_labels_have_transparent_padding_and_consistent_panel_styles(self):
+        from PySide6.QtWidgets import QLabel
+        window = MacroWindow()
+        try:
+            window.show()
+            app.processEvents()
+            self.assertEqual(window.inspector.heading.objectName(), "panelHeading")
+            self.assertEqual(window.inspector.hint.objectName(), "panelHint")
+            self.assertEqual(window.counter.objectName(), "actionCount")
+            headings = window.findChildren(QLabel, "panelHeading")
+            self.assertGreaterEqual(len(headings), 3)  # Actions, Workflow, Properties
+
+            for theme in ("dark", "light"):
+                with self.subTest(theme=theme):
+                    window.set_theme(theme)
+                    stylesheet = app.styleSheet()
+                    self.assertIn(
+                        "QLabel { background: transparent; border: none; padding: 1px 3px; }",
+                        stylesheet)
+                    self.assertIn("QLabel#panelHint { padding: 2px 3px 6px 3px; }",
+                                  stylesheet)
+                    self.assertIn("QLabel#actionCount {", stylesheet)
+                    self.assertIn("border-radius: 6px; padding: 3px 8px;",
+                                  stylesheet)
+                    window.inspector.show_action(Action(kind="click", x=1, y=2))
+                    app.processEvents()
+                    self.assertTrue(window.inspector.hint.text())
+        finally:
+            window.close()
+
     def test_both_theme_arrow_resources_and_styles(self):
         window = MacroWindow()
         try:
