@@ -111,7 +111,7 @@ class RegionPicker:
         self._close()
         self._selected(x, y, width, height)
 
-    def cancel(self):
+    def cancel(self, notify=True):
         self._close()
-        if self._cancelled:
+        if notify and self._cancelled:
             self._cancelled()

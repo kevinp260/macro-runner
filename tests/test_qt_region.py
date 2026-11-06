@@ -52,6 +52,11 @@ class RegionUITests(unittest.TestCase):
         picker2.cancel()
         self.assertEqual(cancelled, [True])
         self.assertEqual(len(selected), 1)
+        picker3 = RegionPicker(lambda *rect: selected.append(rect),
+                               lambda: cancelled.append(True))
+        picker3.cancel(notify=False)
+        self.assertEqual(cancelled, [True])
+        self.assertFalse(picker3.overlays)
 
 
 if __name__ == "__main__":
