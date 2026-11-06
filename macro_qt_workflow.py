@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import asdict
 import json
 
-from PySide6.QtCore import Qt, QByteArray, QMimeData, Signal
+from PySide6.QtCore import Qt, QByteArray, QMimeData, QSignalBlocker, Signal
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QAbstractItemView, QListWidget, QTreeWidget, QTreeWidgetItem,
@@ -135,6 +135,36 @@ class WorkflowTree(QTreeWidget):
         self.setIndentation(22)
         self._snapshot = []
         self.setAlternatingRowColors(False)
+        self.itemChanged.connect(self._check_state_changed)
+
+    @staticmethod
+    def _decorate_leaf(item, action):
+        """Show disabled commands without making them unselectable/editable."""
+        font = item.font(0)
+        font.setStrikeOut(not action.enabled)
+        font.setItalic(not action.enabled)
+        item.setFont(0, font)
+        item.setToolTip(0, ("Enabled — uncheck to skip this action."
+                            if action.enabled else
+                            "Disabled — check to include this action."))
+
+    def _check_state_changed(self, item, column):
+        """Persist a checkbox change through the normal history/change path."""
+        if column != 0 or item.data(0, NODE_ROLE) == "else_branch":
+            return
+        node = unpack_node(item)
+        if node.is_group:
+            return
+        enabled = item.checkState(0) == Qt.CheckState.Checked
+        if node.action.enabled == enabled:
+            return
+        previous = deepcopy(self._snapshot)
+        node.action.enabled = enabled
+        with QSignalBlocker(self):
+            item.setData(0, NODE_ROLE, pack_node(node))
+            item.setText(0, description(node.action))
+            self._decorate_leaf(item, node.action)
+        self._commit(previous)
 
     def _insert_node(self, parent, node):
         item = QTreeWidgetItem()
@@ -142,6 +172,14 @@ class WorkflowTree(QTreeWidget):
         item.setText(0, description(node.action))
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled |
                       Qt.ItemFlag.ItemIsDropEnabled)
+        if node.is_group:
+            # Control blocks cannot be disabled; their child actions can.
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+        else:
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, (Qt.CheckState.Checked if node.action.enabled
+                                   else Qt.CheckState.Unchecked))
+            self._decorate_leaf(item, node.action)
         if parent is None:
             self.addTopLevelItem(item)
         elif (parent.childCount() and
@@ -156,7 +194,7 @@ class WorkflowTree(QTreeWidget):
             branch.setText(0, "ELSE  ·  alternate branch")
             branch.setData(0, NODE_ROLE, "else_branch")
             branch.setFlags((branch.flags() | Qt.ItemFlag.ItemIsDropEnabled) &
-                            ~Qt.ItemFlag.ItemIsDragEnabled)
+                            ~(Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsUserCheckable))
             item.addChild(branch)
             for child in node.otherwise:
                 self._insert_node(branch, child)
@@ -164,10 +202,13 @@ class WorkflowTree(QTreeWidget):
         return item
 
     def set_actions(self, actions):
-        self._snapshot = deepcopy(actions)
-        self.clear()
-        for node in from_actions(actions):
-            self._insert_node(None, node)
+        # Programmatic population must not generate individual checkbox edits.
+        nodes = from_actions(actions)
+        with QSignalBlocker(self):
+            self._snapshot = deepcopy(actions)
+            self.clear()
+            for node in nodes:
+                self._insert_node(None, node)
 
     def _read_children(self, parent):
         count = parent.childCount() if parent is not None else self.topLevelItemCount()
@@ -328,8 +369,14 @@ class WorkflowTree(QTreeWidget):
         if node.action.kind != action.kind:
             raise ValueError("Change action type using the action palette.")
         node.action = deepcopy(action)
-        items[0].setData(0, NODE_ROLE, pack_node(node))
-        items[0].setText(0, description(action))
+        with QSignalBlocker(self):
+            items[0].setData(0, NODE_ROLE, pack_node(node))
+            items[0].setText(0, description(action))
+            if not node.is_group:
+                items[0].setCheckState(
+                    0, Qt.CheckState.Checked if action.enabled
+                    else Qt.CheckState.Unchecked)
+                self._decorate_leaf(items[0], action)
         self._commit(old)
 
     def delete_selection(self):
@@ -365,10 +412,15 @@ class WorkflowTree(QTreeWidget):
             self.invalid_change.emit("Select executable actions only; workflow groups cannot be disabled.")
             return
         previous = deepcopy(self._snapshot)
-        for item, node in zip(chosen, nodes):
-            node.action.enabled = not node.action.enabled
-            item.setData(0, NODE_ROLE, pack_node(node))
-            item.setText(0, description(node.action))
+        with QSignalBlocker(self):
+            for item, node in zip(chosen, nodes):
+                node.action.enabled = not node.action.enabled
+                item.setData(0, NODE_ROLE, pack_node(node))
+                item.setText(0, description(node.action))
+                item.setCheckState(
+                    0, Qt.CheckState.Checked if node.action.enabled
+                    else Qt.CheckState.Unchecked)
+                self._decorate_leaf(item, node.action)
         self._commit(previous)
 
     def duplicate_selection(self):

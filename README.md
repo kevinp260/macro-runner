@@ -11,8 +11,13 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
 - **Workflow editor (center):** Sequential action cards and collapsible Repeat,
   If/Else and Repeat Until groups. Drag to reorder actions or complete groups,
   including moving between compatible groups. Invalid moves revert immediately.
-  Ctrl/Shift-click selects multiple items; Delete and Duplicate apply to
-  selected nodes. Undo/Redo restores up to 60 snapshots.
+  Each executable action has a checkbox: checked actions run, unchecked
+  actions are skipped and appear muted with a strike-through and [disabled]
+  label. Check/uncheck directly in the workflow, or use the inspector's
+  Enabled setting or bulk Enable / Disable action. The counter also reports
+  how many actions are disabled. Groups remain structural and cannot be
+  disabled directly. Ctrl/Shift-click selects multiple items; Delete and
+  Duplicate apply to selected nodes. Undo/Redo restores up to 60 snapshots.
 - **Properties (right):** Scrollable inspector with relevant fields for the
   selected action. Click **Apply changes** after editing.
 - **Toolbar:** New, Open, Save, Run, Pause/Resume, Stop, Step,
@@ -27,7 +32,8 @@ splitter gutter, and enforced minimum widths so action fields remain usable.
 Panel headings, helper text, and other labels sit on transparent backgrounds
 with consistent padding, while the workflow action count uses a rounded badge.
 Mouse position pickers and other long inspector buttons span the full form.
-Number-field and dropdown arrows have consistent styling in both themes.
+Number-field and dropdown arrows have consistent styling in both themes, and
+text values align horizontally across text, number and select fields.
 
 Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the
