@@ -23,7 +23,8 @@ from macro_model import Action, parse_document, serialize_document
 from macro_flow import CONTROL
 from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
-from macro_qt_properties import PropertiesPanel, pad_spinbox_text, pad_spinbox_text
+from macro_qt_properties import PropertiesPanel, pad_spinbox_text
+from macro_qt_region import RegionPicker
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -221,6 +222,7 @@ class MacroWindow(QMainWindow):
         self.mouse_listener = None
         self.keyboard_listener = None
         self.hotkeys = None
+        self.region_picker = None
         self._build_ui()
         self._restore_settings()
         self._start_hotkeys()
@@ -329,6 +331,7 @@ class MacroWindow(QMainWindow):
         self.inspector.apply_action.connect(self._apply_property)
         self.inspector.pick_coordinates.connect(self._pick_coordinates)
         self.inspector.test_move.connect(self._test_move)
+        self.inspector.pick_region.connect(self._pick_region)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
@@ -665,6 +668,23 @@ class MacroWindow(QMainWindow):
             self._set_status(f"Moved pointer to ({x}, {y}).")
         except Exception as exc:
             QMessageBox.warning(self, "Mouse movement unavailable", str(exc))
+
+    def _pick_region(self):
+        if self._busy() or self.region_picker is not None:
+            return
+
+        def selected(x, y, width, height):
+            self.region_picker = None
+            self.inspector.update_picked_region(x, y, width, height)
+            self._set_status(
+                f"Selected region ({x}, {y}), {width}×{height}. "
+                "Choose Apply changes to save.")
+        def cancelled():
+            self.region_picker = None
+            self._set_status("Region selection cancelled.")
+
+        self.region_picker = RegionPicker(selected, cancelled)
+        self.region_picker.show()
 
     def _pick_coordinates(self, mode):
         if self._busy():

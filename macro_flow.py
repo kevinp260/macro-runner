@@ -6,11 +6,11 @@ cycle count is mandatory, preventing an unbounded unattended loop.
 from macro_model import loop_spans
 
 OPENERS = {"loop_start": "loop_end", "if_start": "if_end",
-           "until_start": "until_end"}
+           "until_start": "until_end", "watch_start": "watch_end"}
 CLOSERS = {v: k for k, v in OPENERS.items()}
 CONTROL = frozenset((*OPENERS, *CLOSERS, "else"))
 SMART = frozenset(("click_image", "wait_until", "if_start", "else",
-                   "if_end", "until_start", "until_end"))
+                   "if_end", "until_start", "until_end", "watch_start", "watch_end"))
 
 
 def has_smart_actions(actions):
@@ -61,7 +61,7 @@ def validate_start_selection(actions, start_index):
             )
 
 
-def iter_flow_steps(actions, check, stopped, start_index=0):
+def iter_flow_steps(actions, check, stopped, start_index=0, watch=None):
     """Yield (list_index, action), evaluating conditions using check(action)."""
     validate_start_selection(actions, start_index)
     ends, alternatives, else_ends = validate_flow(actions)
@@ -73,8 +73,27 @@ def iter_flow_steps(actions, check, stopped, start_index=0):
         action = actions[pc]
         kind = action.kind
         if kind in ("loop_start", "until_start"):
+
             frames.append([kind, pc, 1])
             pc += 1
+        elif kind == "watch_start":
+            if watch is None:
+                raise RuntimeError("Watch region requires a screen capture provider.")
+            frames.append([kind, pc, 0])
+            watch(action)
+            pc += 1
+        elif kind == "watch_end":
+            frame = frames[-1]
+            start = actions[frame[1]]
+            frame[2] += 1
+            if start.watch_max_changes and frame[2] >= start.watch_max_changes:
+                frames.pop()
+                pc += 1
+            else:
+                # The next watch captures a fresh baseline after the body.
+                # Actions in the body never trigger their own watcher.
+                watch(start)
+                pc = frame[1] + 1
         elif kind == "loop_end":
             frame = frames[-1]
             start = actions[frame[1]]

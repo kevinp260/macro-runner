@@ -93,6 +93,12 @@ def to_actions(nodes):
 def default_node(kind):
     """Create a usable workflow block, or a valid non-visual leaf."""
     if kind in OPENERS:
+        if kind == "watch_start":
+            action = Action(kind=kind, region_x=0, region_y=0,
+                            region_w=200, region_h=100, poll_interval=0.5,
+                            watch_max_changes=0)
+            return WorkflowNode(action, [WorkflowNode(Action(kind="wait", seconds=0.5))],
+                                end_marker=Action(kind="watch_end"))
         kwargs = {"condition_source": "pixel", "pixel_color": "#00FF00"}
         action = (Action(kind=kind, repeats=5) if kind == "loop_start" else
                   Action(kind=kind, repeats=5, **kwargs) if kind == "until_start" else
@@ -103,7 +109,7 @@ def default_node(kind):
     if kind in ("click", "move", "drag"):
         return WorkflowNode(Action(kind=kind, x=0, y=0,
                                    **({"to_x": 0, "to_y": 0} if kind == "drag" else {})))
-    if kind in ("if_end", "loop_end", "else", "until_end"):
+    if kind in ("if_end", "loop_end", "else", "until_end", "watch_end"):
         raise ValueError("Add the whole workflow block, not an individual marker.")
     if kind == "click_image":
         # A path is selected interactively before this action is inserted.

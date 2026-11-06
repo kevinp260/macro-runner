@@ -26,6 +26,10 @@ SPECS = {
     "loop_start": [],
     "if_start": [],
     "until_start": [],
+    "watch_start": ["region_x", "region_y", "region_w", "region_h",
+                    "poll_interval", "watch_change_percent",
+                    "watch_pixel_tolerance", "watch_confirmations",
+                    "watch_max_changes"],
 }
 VISUAL = frozenset(("click_image", "wait_until", "if_start", "until_start"))
 IMAGE_FIELDS = ["image_path", "confidence", "region_x", "region_y", "region_w", "region_h"]
@@ -39,9 +43,11 @@ COMBOS = {
 }
 INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "pixel_x", "pixel_y", "pixel_tolerance",
-                     "region_x", "region_y", "region_w", "region_h"))
+                     "region_x", "region_y", "region_w", "region_h",
+                     "watch_pixel_tolerance", "watch_confirmations",
+                     "watch_max_changes"))
 FLOAT = frozenset(("interval", "seconds", "move_duration", "timeout",
-                   "poll_interval", "confidence"))
+                   "poll_interval", "confidence", "watch_change_percent"))
 OPTIONAL = frozenset(("region_x", "region_y", "region_w", "region_h"))
 
 
@@ -85,6 +91,7 @@ class PropertiesPanel(QFrame):
     apply_action = Signal(object)
     pick_coordinates = Signal(str)
     test_move = Signal(int, int)
+    pick_region = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,6 +202,17 @@ class PropertiesPanel(QFrame):
                 destination.setToolTip("Move to the drag destination; capture after 3 seconds.")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
                 self.form.addRow(destination)
+        if action.kind == "watch_start":
+            draw = QPushButton("Draw screen region…")
+            draw.setToolTip("Drag a rectangle on your desktop; Esc cancels.")
+            draw.clicked.connect(self.pick_region.emit)
+            self.form.addRow(draw)
+            info = QLabel("0 maximum changes = keep watching until Stop. "
+                          "Monitoring pauses while the child actions execute; "
+                          "each new watch uses a fresh baseline.")
+            info.setWordWrap(True)
+            info.setObjectName("panelHint")
+            self.form.addRow(info)
         if action.kind in VISUAL:
             color = QPushButton("Sample pixel (3 s)")
             color.setToolTip("Capture the pixel beneath the pointer after 3 seconds.")
@@ -234,6 +252,12 @@ class PropertiesPanel(QFrame):
             self.controls[fields[1]].setText(str(y))
         if kind == "pixel" and color and "pixel_color" in self.controls:
             self.controls["pixel_color"].setText(color)
+
+    def update_picked_region(self, x, y, width, height):
+        for field, value in zip(("region_x", "region_y", "region_w", "region_h"),
+                                (x, y, width, height)):
+            if field in self.controls:
+                self.controls[field].setText(str(value))
 
     def _test_coordinates(self):
         try:

@@ -71,3 +71,42 @@ def poll_until(action, probe, gate):
         interval = min(action.poll_interval, remaining)
         gate.wait(interval)
         remaining -= interval
+
+
+def changed_pixel_percent(baseline, candidate, tolerance=15):
+    """Percent of RGB pixels changed beyond per-channel tolerance."""
+    before = np.asarray(baseline.convert("RGB"), dtype=np.int16)
+    after = np.asarray(candidate.convert("RGB"), dtype=np.int16)
+    if before.shape != after.shape:
+        raise ValueError("Screen region dimensions changed while watching.")
+    changed = np.any(np.abs(before - after) > tolerance, axis=2)
+    return 100.0 * float(np.count_nonzero(changed)) / changed.size
+
+
+def watch_region_change(action, screenshot, gate):
+    """Wait for a stable change against a freshly captured region baseline.
+
+    During playback the caller runs its body only after this returns, and
+    calls again after the body to establish a fresh reference image. A stable
+    change requires consecutive matching candidate screenshots, which avoids
+    flicker and intermediate animation frames becoming the accepted state.
+    """
+    region = (action.region_x, action.region_y, action.region_w, action.region_h)
+    gate.wait(0)
+    baseline = screenshot(region=region).convert("RGB")
+    pending = None
+    confirmations = 0
+    while True:
+        gate.wait(action.poll_interval)
+        current = screenshot(region=region).convert("RGB")
+        if changed_pixel_percent(baseline, current, action.watch_pixel_tolerance) < action.watch_change_percent:
+            pending = None
+            confirmations = 0
+            continue
+        if pending is None or changed_pixel_percent(pending, current, action.watch_pixel_tolerance) >= action.watch_change_percent:
+            pending = current
+            confirmations = 1
+        else:
+            confirmations += 1
+        if confirmations >= action.watch_confirmations:
+            return current

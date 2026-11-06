@@ -21,11 +21,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libopengl0 libxkbcommon0 libxcb-cursor0
       - name: Compile Python sources
-        run: python -m compileall -q macro_runner.py macro_model.py macro_playback.py macro_flow.py macro_vision.py macro_keys.py macro_editing.py macro_runtime.py macro_workflow.py macro_qt.py macro_qt_workflow.py macro_qt_properties.py
+        run: python -m compileall -q macro_runner.py macro_model.py macro_playback.py macro_flow.py macro_vision.py macro_keys.py macro_editing.py macro_runtime.py macro_workflow.py macro_qt.py macro_qt_workflow.py macro_qt_properties.py macro_qt_region.py
       - name: Verify built wheel includes all runtime modules
         run: |
           python -m pip wheel --no-deps --wheel-dir wheelhouse .
-          python -c "from pathlib import Path; import zipfile; w=next(Path('wheelhouse').glob('*.whl')); names=set(zipfile.ZipFile(w).namelist()); assert {'macro_runner.py', 'macro_model.py', 'macro_playback.py', 'macro_flow.py', 'macro_vision.py', 'macro_keys.py', 'macro_editing.py', 'macro_runtime.py', 'macro_workflow.py', 'macro_qt.py', 'macro_qt_workflow.py', 'macro_qt_properties.py', 'macro_ui_assets/__init__.py', 'macro_ui_assets/chevron-up-dark.svg', 'macro_ui_assets/chevron-down-dark.svg', 'macro_ui_assets/chevron-up-light.svg', 'macro_ui_assets/chevron-down-light.svg'} <= names"
+          python -c "from pathlib import Path; import zipfile; w=next(Path('wheelhouse').glob('*.whl')); names=set(zipfile.ZipFile(w).namelist()); assert {'macro_runner.py', 'macro_model.py', 'macro_playback.py', 'macro_flow.py', 'macro_vision.py', 'macro_keys.py', 'macro_editing.py', 'macro_runtime.py', 'macro_workflow.py', 'macro_qt.py', 'macro_qt_workflow.py', 'macro_qt_properties.py', 'macro_qt_region.py', 'macro_ui_assets/__init__.py', 'macro_ui_assets/chevron-up-dark.svg', 'macro_ui_assets/chevron-down-dark.svg', 'macro_ui_assets/chevron-up-light.svg', 'macro_ui_assets/chevron-down-light.svg'} <= names"
       - name: Install vision test dependencies
         run: python -m pip install pillow opencv-python-headless PySide6
       - name: Run pure-model tests
