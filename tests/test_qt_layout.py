@@ -90,6 +90,28 @@ class EditorLayoutTests(unittest.TestCase):
         finally:
             window.close()
 
+    def test_disabled_action_count_and_undo_redo(self):
+        window = MacroWindow()
+        try:
+            window._replace_actions([Action(kind="wait", seconds=1),
+                                     Action(kind="click", x=3, y=4)])
+            self.assertNotIn("disabled", window.counter.text())
+            first = window.tree.topLevelItem(0)
+            first.setCheckState(0, Qt.CheckState.Unchecked)
+            self.assertFalse(window.actions[0].enabled)
+            self.assertIn("1 disabled", window.counter.text())
+            self.assertTrue(window.history.can_undo)
+            window.undo()
+            self.assertTrue(window.actions[0].enabled)
+            self.assertEqual(window.tree.topLevelItem(0).checkState(0),
+                             Qt.CheckState.Checked)
+            window.redo()
+            self.assertFalse(window.actions[0].enabled)
+            self.assertEqual(window.tree.topLevelItem(0).checkState(0),
+                             Qt.CheckState.Unchecked)
+        finally:
+            window.close()
+
     def test_both_theme_arrow_resources_and_styles(self):
         window = MacroWindow()
         try:
@@ -100,6 +122,8 @@ class EditorLayoutTests(unittest.TestCase):
                     self.assertIn("QSpinBox::up-arrow", stylesheet)
                     self.assertIn("QDoubleSpinBox::down-arrow", stylesheet)
                     self.assertIn("QComboBox::down-arrow", stylesheet)
+                    self.assertIn("QLineEdit { padding-left: 10px; }", stylesheet)
+                    self.assertIn("padding: 7px 29px 7px 10px;", stylesheet)
                     for direction in ("up", "down"):
                         path = ICON_DIR / f"chevron-{direction}-{theme}.svg"
                         self.assertTrue(path.is_file())

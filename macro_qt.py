@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from macro_model import Action, parse_document, serialize_document
+from macro_flow import CONTROL
 from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel
@@ -118,8 +119,11 @@ def field_controls_style(theme):
     up = (ICON_DIR / f"chevron-up-{theme}.svg").as_posix()
     down = (ICON_DIR / f"chevron-down-{theme}.svg").as_posix()
     return f"""
+/* Match the text inset of ordinary QLineEdit fields, while reserving
+   space on the right for the spinner/dropdown button. */
+QLineEdit {{ padding-left: 10px; }}
 QComboBox, QSpinBox, QDoubleSpinBox {{
-  padding-right: 29px;
+  padding: 7px 29px 7px 10px;
 }}
 QComboBox::drop-down {{
   subcontrol-origin: border;
@@ -436,12 +440,20 @@ class MacroWindow(QMainWindow):
         self.delay.setEnabled(not busy)
         self.minimize_on_run.setEnabled(not busy)
 
+    def _update_action_count(self, actions):
+        disabled = sum(not action.enabled for action in actions
+                       if action.kind not in CONTROL)
+        summary = f"{len(actions)} raw actions"
+        if disabled:
+            summary += f" · {disabled} disabled"
+        self.counter.setText(summary)
+
     def _changed(self, result):
         if result == self.actions:
             return
         self.history.record(self.actions)
         self.actions = result
-        self.counter.setText(f"{len(result)} raw actions")
+        self._update_action_count(result)
         self._selection_changed()
         self._update_controls()
 
@@ -452,7 +464,7 @@ class MacroWindow(QMainWindow):
             self.history.record(self.actions)
         self.actions = result
         self.tree.set_actions(result)
-        self.counter.setText(f"{len(result)} raw actions")
+        self._update_action_count(result)
         self._selection_changed()
         self._update_controls()
 
