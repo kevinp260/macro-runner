@@ -60,7 +60,8 @@ class FileActionQtTests(unittest.TestCase):
         self.assertEqual(action.file_path, str(self.src))
         self.assertEqual(action.file_destination, str(self.dst))
         self.assertFalse(action.file_overwrite)
-        checkbox.setChecked(True)
+        # Applying rebuilds the inspector; edit its current checkbox.
+        panel.controls["file_overwrite"].setChecked(True)
         panel.commit()
         self.assertTrue(self.editor.actions[0].file_overwrite)
         self.assertEqual(
