@@ -5,6 +5,9 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added editor-only F9 breakpoints before enabled actions, step/resume
+  debugging through nested flows, and a local slow-playback gap (Issue #39).
+
 - Added pre-run workflow validation, blocking errors and acknowledged warnings,
   with direct navigation to offending workflow actions (Issue #38).
 
