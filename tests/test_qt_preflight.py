@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 """Offscreen Qt pre-run confirmation and navigation tests."""
 import sys
 import unittest
@@ -69,7 +70,7 @@ class PreflightUITests(unittest.TestCase):
             self.assertIs(window.tree.currentItem(), window.tree.index_map()[1])
             self.assertEqual(window.inspector.current.kind, "click")
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_run_and_step_cannot_start_when_blocked_or_cancelled(self):
         window = MacroWindow()
@@ -84,7 +85,7 @@ class PreflightUITests(unittest.TestCase):
                 self.assertIsNone(window.executor)
                 self.assertIsNone(window._run_session)
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_main_window_confirmed_warning_does_not_create_extra_editor_changes(self):
         window = MacroWindow()
@@ -101,7 +102,7 @@ class PreflightUITests(unittest.TestCase):
                 self.assertEqual(shown.call_args.args[0][0].severity, "warning")
             self.assertEqual(window.actions, history_before)
         finally:
-            window.close()
+            close_test_window(window)
 
 
 if __name__ == "__main__":
