@@ -18,7 +18,7 @@ if [[ ! -f dist/MacroRunner ]]; then
   echo "Missing dist/MacroRunner: run 'make build' first." >&2
   exit 1
 fi
-version=$(python3 -c 'import pathlib,re; s=pathlib.Path("pyproject.toml").read_text(); print(re.search(r"(?m)^version = \"([^\"]+)\"",s).group(1))')
+version=$(python3 -m macro_version)
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid project version: $version" >&2
   exit 1

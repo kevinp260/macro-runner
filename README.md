@@ -6,6 +6,11 @@ and a **structured workflow editor**, replacing the former Tkinter interface.
 
 ## Interface
 
+See **Help → About MacroRunner** for the installed application version and
+repository link. `pyproject.toml` defines the version shared by Ubuntu and
+Windows installers. Versioned releases are documented in [CHANGELOG.md](CHANGELOG.md).
+
+
 - **Action palette (left):** Search actions, double-click to add, or drag into
   the workflow. Click Image opens a reference-image picker.
 - **Workflow editor (center):** Sequential action cards and collapsible Repeat,

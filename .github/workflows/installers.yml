@@ -4,12 +4,28 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  version-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate version and optional release tag
+        shell: bash
+        run: |
+          python -m macro_version
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            python -m macro_version --check-tag "$GITHUB_REF_NAME"
+          fi
+
   ubuntu-deb:
     runs-on: ubuntu-24.04
     steps:
@@ -22,6 +38,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dpkg-dev xvfb libegl1 libopengl0 libxkbcommon0 libxcb-cursor0 scrot
           python -m pip install -e . pyinstaller
+      - name: Run full tests for tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -v
       - name: Build Ubuntu installer
         run: |
           python -m PyInstaller --clean --noconfirm MacroRunner.spec
@@ -30,6 +51,7 @@ jobs:
         run: |
           package=$(find dist -maxdepth 1 -name 'macrorunner_*_amd64.deb' -print -quit)
           test -n "$package"
+          test "$(dpkg-deb -f "$package" Version)" = "$(python -m macro_version)"
           sudo apt-get install -y "./$package"
           test -x /usr/bin/macro-runner
           test -f /usr/share/applications/macrorunner.desktop
@@ -52,6 +74,12 @@ jobs:
         run: |
           python -m pip install -e . pyinstaller
           choco install innosetup --yes --no-progress
+      - name: Run full tests for tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest discover -s tests -v
       - name: Build Windows executable
         shell: pwsh
         run: |
@@ -75,11 +103,45 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found" }
-          & $iscc installer.iss
+          $version = (& python -m macro_version).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Could not read project version" }
+          & $iscc "/DMyAppVersion=$version" installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-          if (!(Get-ChildItem Output/MacroRunner-Setup-*.exe -ErrorAction SilentlyContinue)) { throw "Missing installer" }
+          if (!(Test-Path "Output/MacroRunner-Setup-$version.exe")) { throw "Missing versioned installer" }
       - uses: actions/upload-artifact@v4
         with:
           name: macrorunner-windows-x64
           path: Output/MacroRunner-Setup-*.exe
           if-no-files-found: error
+
+  publish-release:
+    name: Publish versioned installers
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version-check, ubuntu-deb, windows-installer]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macrorunner-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify both release installers
+        shell: bash
+        run: |
+          version=$(python3 -m macro_version)
+          test -f "release-assets/macrorunner_${version}_amd64.deb"
+          test -f "release-assets/MacroRunner-Setup-${version}.exe"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version=$(python3 -m macro_version)
+          gh release create "$GITHUB_REF_NAME" \
+            "release-assets/macrorunner_${version}_amd64.deb" \
+            "release-assets/MacroRunner-Setup-${version}.exe" \
+            --title "MacroRunner v${version}" \
+            --generate-notes --verify-tag

@@ -1,5 +1,9 @@
 #define MyAppName     "MacroRunner"
-#define MyAppVersion  "2.0.0"
+; Pass /DMyAppVersion=<version from pyproject.toml> when invoking ISCC.
+; Fail rather than publishing an installer with a stale version.
+#ifndef MyAppVersion
+#error MyAppVersion is required. Use ISCC /DMyAppVersion=2.x.y installer.iss
+#endif
 #define MyAppId       "8F6B8A3D-5D6E-4E62-9C0D-0D0FBF9A8F22"  ; keep this GUID stable
 
 [Setup]

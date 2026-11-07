@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "macro-runner-desktop"
-version = "2.0.0"
+version = "2.1.0"
 description = "PySide6 structured workflow automation desktop app"
 requires-python = ">=3.9"
 dependencies = ["pyautogui>=0.9.54", "pynput>=1.7.7", "Pillow>=9", "opencv-python-headless>=4.8,<5", "PySide6>=6.6,<7"]
@@ -14,7 +14,7 @@ macro-runner = "macro_runner:main"
 
 [tool.setuptools]
 packages = ["macro_ui_assets"]
-py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region"]
+py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region", "macro_version"]
 
 [tool.setuptools.package-data]
 macro_ui_assets = ["*.svg"]

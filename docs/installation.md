@@ -63,10 +63,15 @@ Windows: install Python, PyInstaller and Inno Setup 6, then run:
 py -m venv .venv
 .venv\Scripts\python -m pip install -e . pyinstaller
 .venv\Scripts\python -m PyInstaller --clean --noconfirm MacroRunner.spec
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+$version = (& .venv\Scripts\python -m macro_version).Trim()
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" installer.iss
 ```
 
 GitHub Actions builds both formats and uploads separate downloadable artifacts.
+On an approved version tag (such as `v2.1.0`), CI verifies the tag matches
+`pyproject.toml`, runs tests, and publishes both installers on GitHub Releases.
+Merging a branch alone never publishes a release. See [release process](releasing.md)
+and [changelog](../CHANGELOG.md).
 Ubuntu CI installs the .deb and launches the app under a virtual X display;
 Windows CI compiles the setup executable. Manual desktop QA remains necessary
 for recording, screenshots, global hotkeys, and workflow drag-and-drop.

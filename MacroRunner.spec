@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import copy_metadata
 
 
 a = Analysis(
     ['macro_runner.py'],
     pathex=[],
     binaries=[],
-    datas=[('macro_runner_icon.ico', '.'), ('macro_ui_assets', 'macro_ui_assets')],
+    datas=[('macro_runner_icon.ico', '.'), ('macro_ui_assets', 'macro_ui_assets'),
+           *copy_metadata('macro-runner-desktop')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
