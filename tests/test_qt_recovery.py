@@ -217,6 +217,32 @@ class QtRecoveryTests(unittest.TestCase):
         self.assertFalse(self.window._is_dirty())
         self.assertFalse(self.path.exists())
 
+    def test_unreadable_recovery_can_be_preserved_without_overwrite(self):
+        w = self.window
+        self.path.write_text("{incomplete", encoding="utf-8")
+        with patch("macro_qt.QMessageBox.question",
+                   return_value=QMessageBox.StandardButton.Cancel):
+            w.offer_recovery()
+        self.assertTrue(w._recovery_locked)
+        w._replace_actions([Action(kind="key", keys="new work")])
+        w._write_recovery()
+        self.assertEqual(self.path.read_text(), "{incomplete")
+        self.assertTrue(w._is_dirty())
+        w._mark_clean()
+        self.assertEqual(self.path.read_text(), "{incomplete")
+
+    def test_unreadable_recovery_requires_explicit_discard(self):
+        w = self.window
+        self.path.write_text("{damaged", encoding="utf-8")
+        with patch("macro_qt.QMessageBox.question",
+                   return_value=QMessageBox.StandardButton.Discard):
+            w.offer_recovery()
+        self.assertFalse(w._recovery_locked)
+        self.assertFalse(self.path.exists())
+        w._replace_actions([Action(kind="key", keys="new work")])
+        w._write_recovery()
+        self.assertEqual(w.recovery_store.read().actions, w.actions)
+
     def test_recovery_permission_error_keeps_unsaved_state(self):
         w = self.window
         w._replace_actions([Action(kind="key", keys="not lost")])
