@@ -73,41 +73,84 @@ def poll_until(action, probe, gate):
         remaining -= interval
 
 
-def changed_pixel_percent(baseline, candidate, tolerance=15):
-    """Percent of RGB pixels changed beyond per-channel tolerance."""
+def changed_pixel_mask(baseline, candidate, tolerance=15):
+    """Boolean mask of changed RGB pixels, shared by runtime and debugger.
+
+    A pixel differs when any RGB channel exceeds the tolerance. The screenshot
+    comparison deliberately ignores alpha, as the runtime has always done.
+    """
     before = np.asarray(baseline.convert("RGB"), dtype=np.int16)
     after = np.asarray(candidate.convert("RGB"), dtype=np.int16)
     if before.shape != after.shape:
         raise ValueError("Screen region dimensions changed while watching.")
-    changed = np.any(np.abs(before - after) > tolerance, axis=2)
-    return 100.0 * float(np.count_nonzero(changed)) / changed.size
+    return np.any(np.abs(before - after) > tolerance, axis=2)
+
+
+def changed_pixel_percent(baseline, candidate, tolerance=15):
+    """Percent of RGB pixels changed beyond per-channel tolerance."""
+    mask = changed_pixel_mask(baseline, candidate, tolerance)
+    return 100.0 * float(np.count_nonzero(mask)) / mask.size
+
+
+class RegionChangeDetector:
+    """Shared state machine for real playback and the visual monitor tester.
+
+    Only a *confirmed* screenshot replaces the baseline, so A -> B -> A is
+    observed as two changes. Temporary flicker resets the confirmation count.
+    """
+
+    def __init__(self, action, baseline):
+        self.action = action
+        self.baseline = baseline.convert("RGB")
+        self.pending = None
+        self.confirmations = 0
+        self.triggers = 0
+
+    def observe(self, candidate):
+        """Return (percentage, confirmation count, triggered, old baseline, mask).
+
+        The old baseline and mask are exposed for a diagnostic preview; the
+        same decision path is used for real actions and test monitoring.
+        """
+        candidate = candidate.convert("RGB")
+        prior = self.baseline
+        mask = changed_pixel_mask(prior, candidate, self.action.watch_pixel_tolerance)
+        percentage = 100.0 * float(np.count_nonzero(mask)) / mask.size
+
+        if percentage < self.action.watch_change_percent:
+            self.pending = None
+            self.confirmations = 0
+            return percentage, 0, False, prior, mask
+
+        if (self.pending is None or
+                changed_pixel_percent(self.pending, candidate,
+                                      self.action.watch_pixel_tolerance)
+                >= self.action.watch_change_percent):
+            self.pending = candidate
+            self.confirmations = 1
+        else:
+            self.confirmations += 1
+
+        count = self.confirmations
+        if count >= self.action.watch_confirmations:
+            self.baseline = candidate
+            self.pending = None
+            self.confirmations = 0
+            self.triggers += 1
+            return percentage, count, True, prior, mask
+        return percentage, count, False, prior, mask
 
 
 def watch_region_change(action, screenshot, gate, baseline=None):
-    """Wait for a stable change from the last *accepted* screen state.
-
-    The first invocation captures an initial baseline. Subsequent invocations
-    must pass the previously accepted image: taking a new baseline after the
-    nested actions would silently discard changes that occurred during them.
-    Consecutive similar captures confirm the new state before it is accepted.
-    """
+    """Wait until a stable change from the last accepted screenshot occurs."""
     region = (action.region_x, action.region_y, action.region_w, action.region_h)
     gate.wait(0)
     if baseline is None:
         baseline = screenshot(region=region).convert("RGB")
-    pending = None
-    confirmations = 0
+    detector = RegionChangeDetector(action, baseline)
     while True:
         gate.wait(action.poll_interval)
         current = screenshot(region=region).convert("RGB")
-        if changed_pixel_percent(baseline, current, action.watch_pixel_tolerance) < action.watch_change_percent:
-            pending = None
-            confirmations = 0
-            continue
-        if pending is None or changed_pixel_percent(pending, current, action.watch_pixel_tolerance) >= action.watch_change_percent:
-            pending = current
-            confirmations = 1
-        else:
-            confirmations += 1
-        if confirmations >= action.watch_confirmations:
-            return current
+        _, _, triggered, _, _ = detector.observe(current)
+        if triggered:
+            return detector.baseline

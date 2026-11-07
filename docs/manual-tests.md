@@ -46,6 +46,26 @@ Automated CI does not exercise native OS input hooks or screenshot capture.
       image paths, conditions and grouped order.
 - [ ] Open macros saved before version 2; verify version-2 JSON compatibility.
 
+## Live screen-region diagnostics (Issue #35)
+
+- [ ] Select a Watch Region Changes block, edit its region/threshold fields
+      **without clicking Apply changes**, then choose **Test monitoring…**.
+      Verify the live tester uses the form values but the saved macro does not change.
+- [ ] On Ubuntu X11 and Windows, confirm baseline/latest/mask previews update,
+      changed percentage matches obvious changes, and the confirmation counter
+      reaches the configured threshold only after stable captures.
+- [ ] Test A→B→A, a blinking cursor (below/above sensitivity), and a large
+      watched region containing a small changing target.
+- [ ] Recapture baseline, then confirm no immediate trigger until a new
+      meaningful change occurs. Stop testing, restart, and close while active.
+- [ ] Turn on **Minimize when running** and verify MacroRunner minimizes
+      during the test and restores on close; make sure the independent preview
+      does not overlap the watched area.
+- [ ] Simulate screenshot permission/display failures and confirm a clear
+      diagnostic message; verify the app remains responsive and no inputs fire.
+- [ ] Verify Wayland limitation messaging and state test results separately
+      from Windows/X11. Confirm both dark and light themes and small screens.
+
 ## Playback and visual automation
 
 - [ ] Run / Pause / Resume / Stop / Step, including while a Wait is active.

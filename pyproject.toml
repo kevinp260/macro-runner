@@ -14,7 +14,7 @@ macro-runner = "macro_runner:main"
 
 [tool.setuptools]
 packages = ["macro_ui_assets"]
-py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region", "macro_version"]
+py-modules = ["macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region", "macro_qt_monitor", "macro_version"]
 
 [tool.setuptools.package-data]
 macro_ui_assets = ["*.svg"]
