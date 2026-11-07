@@ -42,8 +42,10 @@ class FileActionTests(unittest.TestCase):
         self.target = self.root / "target with spaces.txt"
 
     def action(self, kind, **kwargs):
-        return Action(kind=kind, file_path=str(self.source),
-                      file_destination=str(self.target), **kwargs)
+        values = {"kind": kind, "file_path": str(self.source),
+                  "file_destination": str(self.target)}
+        values.update(kwargs)
+        return Action(**values)
 
     def test_file_exists_and_wait_until_exists(self):
         run_file_action(self.action("file_check"), Gate())
