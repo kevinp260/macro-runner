@@ -74,9 +74,11 @@ To use a variable, select an action and choose **Bind ...** in Properties,
 then **Apply changes**. Compatible typed variables are listed for supported
 fields only. A coordinate variable can replace a full X/Y point for
 Click/Move or the source/destination of Drag. Number variables can replace
-Wait seconds, Scroll amount, or Click Image offsets. Text variables can
-provide keyboard text, clipboard text, local file paths, application paths,
-and image filenames. Boolean variables can control clipboard restoration
+Wait seconds, Scroll amount, Click Image offsets and image/pixel-condition
+coordinates, confidence or timeout. Text variables can provide keyboard
+text, clipboard text, local file paths, application paths, image filenames,
+and pixel-condition expected colors. If/Else and Repeat Until conditions
+can use these bindings when evaluating their current screen probes. Boolean variables can control clipboard restoration
 or file overwrite. The entire field is substituted as one typed value;
 there is **no template interpolation, Python, shell, or expression engine**.
 Incorrect types, undefined names, and invalid resolved action values fail
