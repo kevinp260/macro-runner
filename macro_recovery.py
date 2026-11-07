@@ -26,11 +26,11 @@ class RecoverySnapshot:
     saved_at: str
 
 
-def atomic_json_write(path, payload, max_bytes=MAX_RECOVERY_BYTES):
+def atomic_json_write(path, payload, max_bytes=None):
     """Write valid UTF-8 JSON via an adjacent private temp file and os.replace."""
     path = Path(path)
     encoded = (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    if len(encoded) > max_bytes:
+    if max_bytes is not None and len(encoded) > max_bytes:
         raise ValueError("Workflow is too large for local recovery (10 MB limit).")
     temporary = None
     try:
@@ -61,7 +61,7 @@ class RecoveryStore:
             "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source_file": str(source_file) if source_file else None,
             "document": document,
-        })
+        }, max_bytes=MAX_RECOVERY_BYTES)
 
     def read(self):
         if not self.path.exists():
