@@ -77,6 +77,7 @@ class VariableModelTests(unittest.TestCase):
             definition("A", "number", True), definition("x", "boolean", 1),
             definition("x", "coordinates", [1.0, 2]),
             definition("x", "number", float("inf")),
+            definition("x", "number", 10 ** 1000),
         ]
         for entry in invalid:
             with self.subTest(entry=entry), self.assertRaises(ValueError):
