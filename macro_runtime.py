@@ -163,14 +163,15 @@ class MacroExecutor:
         try:
             bound = self._bound_action(action)
             screenshot = self._pag().screenshot
-            if self.window_binding is not None and self.window_binding.spec["relative"]:
-                # Re-resolve the target for each watch capture; window movement
-                # between polling cycles must not leave the old region behind.
+            if self.window_binding is not None:
+                # Recheck foreground on every capture. In relative mode also
+                # re-resolve the rectangle after each window move.
                 def screenshot(region=None):
                     current = self._bound_action(action)
-                    target_region = (current.region_x, current.region_y,
-                                     current.region_w, current.region_h)
-                    return self._pag().screenshot(region=target_region)
+                    if self.window_binding.spec["relative"]:
+                        region = (current.region_x, current.region_y,
+                                  current.region_w, current.region_h)
+                    return self._pag().screenshot(region=region)
             result = watch_region_change(bound, screenshot, self.gate,
                                          baseline=baseline)
             self._emit("watch_trigger", action=action, result=True)
