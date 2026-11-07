@@ -223,7 +223,9 @@ class MacroExecutor:
         return True
 
     def _execute(self, a):
-        pag = self._pag()
+        # Opening apps/files/URLs and setting clipboard text do not need
+        # PyAutoGUI or a configured global input session.
+        pag = self._pag() if a.kind not in ("wait", "clipboard_set", "launch") else None
         self.gate.wait(0)
         # Set clipboard does not send input, so it must not steal focus.
         bound = self._bound_action(a) if a.kind not in (
@@ -324,8 +326,14 @@ class MacroExecutor:
     def run(self):
         success, message = False, "Stopped."
         try:
-            pag = self._pag()
-            self.held = HeldKeys(pag.keyDown, pag.keyUp)
+            # Launch-only workflows can work without an available display
+            # automation backend; input, screen watchers and conditions still
+            # load PyAutoGUI as before.
+            no_desktop = {"wait", "clipboard_set", "launch", "loop_start",
+                          "loop_end", "else", "if_end", "until_end", "watch_end"}
+            if any(a.enabled and a.kind not in no_desktop for a in self.actions):
+                pag = self._pag()
+                self.held = HeldKeys(pag.keyDown, pag.keyUp)
             remaining = self.start_delay
             while remaining > 0:
                 chunk = min(.2, remaining)
