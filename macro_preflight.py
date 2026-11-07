@@ -15,6 +15,7 @@ from PIL import Image
 from macro_flow import CONTROL, has_smart_actions, validate_flow, validate_start_selection
 from macro_model import validate_action
 from macro_launch import LaunchError, validate_launch
+from macro_files import FILE_KINDS, validate_file_action
 from macro_windows import WindowBinding, WindowManager, WindowUnavailable
 
 
@@ -258,6 +259,26 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
                 validate_launch(action, check_files=True, platform_name=platform_name)
             except LaunchError as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
+        if required and action.kind in FILE_KINDS:
+            try:
+                src, dest = validate_file_action(action, require_paths=True)
+            except ValueError as exc:
+                findings.append(PreflightFinding("error", index, str(exc)))
+            else:
+                # Paths may be produced by earlier workflow steps, so
+                # filesystem absence is advisory until action execution.
+                if action.kind in ("file_check", "file_copy", "file_move") and (
+                        not src.is_file()):
+                    findings.append(PreflightFinding(
+                        "warning", index,
+                        "Source file is not present yet. Ensure an earlier "
+                        "step creates it, or verify the selected file path."))
+                if (action.kind in ("file_copy", "file_move")
+                        and dest.exists() and not action.file_overwrite):
+                    findings.append(PreflightFinding(
+                        "warning", index,
+                        "Destination file already exists. Copy/Move refuses "
+                        "to overwrite unless explicitly enabled."))
         if (action.kind in ("click_image", "wait_until", "if_start", "until_start")
                 and action.condition_source == "image"):
             # Disabled image actions have no runtime dependency on their file.
