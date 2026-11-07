@@ -26,6 +26,7 @@ class WindowInfo:
     y: int
     width: int
     height: int
+    minimized: bool = False
 
 
 def validate_target(value):
@@ -135,7 +136,7 @@ class _Windows:
 
         def collect(hwnd, unused):
             u = self.user
-            if not u.IsWindowVisible(hwnd) or u.IsIconic(hwnd):
+            if not u.IsWindowVisible(hwnd):
                 return True
             length = u.GetWindowTextLengthW(hwnd)
             if not 0 < length <= 1024:
@@ -156,7 +157,8 @@ class _Windows:
             pid = wintypes.DWORD()
             u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             result.append(WindowInfo(int(hwnd), title_buffer.value, class_buffer.value,
-                                     int(pid.value), origin.x, origin.y, width, height))
+                                     int(pid.value), origin.x, origin.y, width, height,
+                                     bool(u.IsIconic(hwnd))))
             return True
 
         callback = callback_t(collect)
@@ -275,7 +277,7 @@ class _X11:
         attrs = self.Attributes()
         if not self.x.XGetWindowAttributes(display, window, ctypes.byref(attrs)):
             return None
-        if attrs.map_state != 2 or attrs.width < 1 or attrs.height < 1:
+        if attrs.width < 1 or attrs.height < 1:
             return None
         x, y, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
         if not self.x.XTranslateCoordinates(display, window, root, 0, 0,
@@ -309,7 +311,8 @@ class _X11:
         pid_prop = self._property(display, window, "_NET_WM_PID")
         pid = int(pid_prop[0]) if isinstance(pid_prop, list) and pid_prop else 0
         return WindowInfo(window, title, classname[:1024], pid,
-                          x.value, y.value, attrs.width, attrs.height)
+                          x.value, y.value, attrs.width, attrs.height,
+                          attrs.map_state != 2)
 
     def windows(self):
         display = self._open()
@@ -392,7 +395,7 @@ class WindowBinding:
         window = self.resolve()
         if window.width < 1 or window.height < 1:
             raise WindowUnavailable("Target window has no usable client area.")
-        if self.manager.foreground_handle() != window.handle:
+        if self.manager.foreground_handle() != window.handle or window.minimized:
             if not self.spec["activate"]:
                 raise WindowUnavailable(
                     "Target window is not foreground. Enable 'Activate target' "
@@ -410,6 +413,11 @@ class WindowBinding:
             else:
                 raise WindowUnavailable(
                     "Could not activate the selected window. No input was sent.")
+            # A restored window may have a different client origin/size
+            # than its minimized placeholder geometry.
+            window = self.resolve()
+            if window.minimized:
+                raise WindowUnavailable("Target window could not be restored.")
         return window
 
     def point(self, x, y, window):
