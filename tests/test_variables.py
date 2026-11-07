@@ -298,6 +298,28 @@ class VariableRuntimeTests(unittest.TestCase):
         self.assertFalse(outcome[0][0])
         self.assertEqual(board.writes, [])
 
+    def test_condition_reads_typed_values_from_prior_results(self):
+        defs = [definition("expected", "text", "#112233"),
+                definition("pixel_x", "number", 12.0)]
+        desktop = FakeDesktop()
+        if_action = Action(
+            kind="if_start", condition_source="pixel", match_mode="matches",
+            pixel_color="#000000",
+            bindings={"pixel_color":"expected", "pixel_x":"pixel_x"})
+        steps = [
+            if_action,
+            Action(kind="wait", seconds=0),
+            Action(kind="if_end"),
+        ]
+        seen = []
+        def matches(action, screenshot):
+            seen.append((action.pixel_color, action.pixel_x))
+            return True
+        with patch("macro_runtime.check_condition", side_effect=matches):
+            _, outcome, _ = self.run_actions(steps, defs, automation=desktop)
+        self.assertTrue(outcome[0][0], outcome)
+        self.assertEqual(seen, [("#112233", 12)])
+
     def test_files_can_use_typed_text_variables(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = str(Path(tmp) / "folder with spaces")
