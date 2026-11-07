@@ -138,7 +138,7 @@ class VariableModelTests(unittest.TestCase):
                          "wait")
         with self.assertRaisesRegex(ValueError, "undefined variable"):
             serialize_document(actions, 2, 0, variables=[])
-        with self.assertRaisesRegex(ValueError, "must be coordinates"):
+        with self.assertRaisesRegex(ValueError, "expects coordinates"):
             serialize_document(actions, 2, 0, variables=[
                 definition("center","text","wrong"),
                 definition("message","text")])
