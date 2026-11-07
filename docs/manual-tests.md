@@ -69,6 +69,31 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Unsaved changes and crash recovery (Issue #40)
+
+- [ ] Change actions, enabled flags, undo/redo, whole-workflow repeats and
+      start delay. Confirm the unsaved title indicator appears/disappears
+      correctly and Save clears it.
+- [ ] With pending edits, try New, Open and Close; verify Save, Discard and
+      Cancel behaviors, including cancellation of Save As and Open pickers.
+- [ ] Save a file, edit it, then open a corrupt/unsupported or inaccessible
+      macro file. Confirm the current edits, title and recovery remain intact.
+- [ ] Make edits, allow the recovery snapshot to appear in the application-data
+      folder, simulate a crash, restart and choose Restore. Verify full nested
+      action settings/Unicode, repeat count and start delay are restored as
+      an **unsaved copy**; original user file is untouched until explicitly saved.
+- [ ] On restart choose Discard recovery and verify snapshot deletion without
+      changing the last saved user file. Verify canceled Close retains edits.
+- [ ] Corrupt the recovery JSON, restart, and choose Cancel: the damaged file
+      must remain untouched even after a clean Close or subsequent edits.
+      Explicit Discard should delete it and allow autosaving again.
+- [ ] Test unwriteable recovery directory and failed normal Save: warning,
+      current edits retained, and an existing file not truncated.
+- [ ] Perform multiple edits quickly and confirm only one recovery snapshot
+      remains, no temporary files leak, and successful Save removes it.
+- [ ] On both Windows and Ubuntu/X11 check dialogs, file timestamps, privacy
+      of typed text/image paths in local snapshots, and legacy JSON import.
+
 ## Breakpoints and slow-motion debugging (Issue #39)
 
 - [ ] Set/clear a breakpoint with F9 or the toolbar on nested executable

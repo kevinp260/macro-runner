@@ -9,6 +9,7 @@ import queue
 import sys
 import time
 from dataclasses import asdict
+from copy import deepcopy
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint, QStandardPaths
@@ -32,6 +33,7 @@ from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_preflight import inspect_workflow
+from macro_recovery import RecoveryStore, atomic_json_write
 from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -223,6 +225,11 @@ class MacroWindow(QMainWindow):
         self._pending_failure_capture = None
         self.run_history_dialog = None
         self.current_file = None
+        self._recovery_source_file = None
+        self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
+        self._saved_state = None
+        self._recovery_warning_shown = False
+        self._recovery_locked = False
         self.executor = None
         self._restore_after_run = False
         self._debug_window_visible = False
@@ -253,6 +260,14 @@ class MacroWindow(QMainWindow):
         self._screen_selection_restore = None
         self._build_ui()
         self._restore_settings()
+        self.recovery_timer = QTimer(self)
+        self.recovery_timer.setSingleShot(True)
+        self.recovery_timer.setInterval(1000)
+        self.recovery_timer.timeout.connect(self._write_recovery)
+        self._saved_state = deepcopy(self._document_state())
+        self._refresh_unsaved()
+        self.repeats.valueChanged.connect(self._after_edit)
+        self.delay.valueChanged.connect(self._after_edit)
         self._start_hotkeys()
         self.global_pause.connect(self.pause_run)
         self.global_stop.connect(self.stop_run)
@@ -542,6 +557,127 @@ class MacroWindow(QMainWindow):
     def _set_status(self, text):
         self.status.setText(text)
 
+    def _document_state(self):
+        return (tuple(self.actions), self.repeats.value(), self.delay.value())
+
+    def _is_dirty(self):
+        return self._saved_state is None or self._document_state() != self._saved_state
+
+    def _refresh_unsaved(self):
+        name = Path(self.current_file).name if self.current_file else "Untitled workflow"
+        self.setWindowTitle(("* " if self._is_dirty() else "") +
+                            f"MacroRunner — {name}")
+
+    def _recovery_error(self, error):
+        if self._recovery_warning_shown:
+            return
+        self._recovery_warning_shown = True
+        QMessageBox.warning(
+            self, "Recovery unavailable",
+            "MacroRunner could not update its local recovery snapshot. "
+            "Your edits are still in memory; save your workflow to a file.\n\n"
+            + str(error))
+
+    def _clear_recovery(self):
+        if self._recovery_locked:
+            return
+        try:
+            self.recovery_store.clear()
+        except OSError as exc:
+            self._recovery_error(exc)
+
+    def _write_recovery(self):
+        if not self._is_dirty() or self._recovery_locked:
+            return
+        try:
+            self.recovery_store.write(
+                self.actions, self.repeats.value(), self.delay.value(),
+                self.current_file or self._recovery_source_file)
+            self._recovery_warning_shown = False
+        except (OSError, ValueError, TypeError) as exc:
+            self._recovery_error(exc)
+
+    def _after_edit(self, *_args):
+        self._refresh_unsaved()
+        if self._is_dirty():
+            if not self.recovery_timer.isActive():
+                self.recovery_timer.start()
+        else:
+            self.recovery_timer.stop()
+            self._clear_recovery()
+
+    def _mark_clean(self):
+        self._saved_state = deepcopy(self._document_state())
+        self.recovery_timer.stop()
+        self._refresh_unsaved()
+        self._clear_recovery()
+
+    def _confirm_unsaved(self):
+        if not self._is_dirty():
+            return True
+        choice = QMessageBox.question(
+            self, "Unsaved workflow",
+            "Save changes to the current workflow before continuing?",
+            QMessageBox.StandardButton.Save |
+            QMessageBox.StandardButton.Discard |
+            QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel)
+        if choice == QMessageBox.StandardButton.Save:
+            return self.save_workflow()
+        return choice == QMessageBox.StandardButton.Discard
+
+    def offer_recovery(self):
+        """Called at startup, after the main window exists, before regular editing."""
+        try:
+            snapshot = self.recovery_store.read()
+        except (OSError, ValueError, TypeError) as exc:
+            choice = QMessageBox.question(
+                self, "Recovery snapshot unreadable",
+                "The local recovery file cannot be read. It might contain "
+                "unsaved work.\n\n"
+                "Discard the damaged snapshot to resume autosaving? "
+                "Cancel keeps it untouched, but disables new recovery "
+                "snapshots until that file is removed.\n\n" + str(exc),
+                QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel)
+            if choice == QMessageBox.StandardButton.Discard:
+                self._clear_recovery()
+                if self.recovery_store.path.exists():
+                    self._recovery_locked = True
+            else:
+                self._recovery_locked = True
+            return
+        if snapshot is None:
+            return
+        source = snapshot.source_file or "Untitled workflow"
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Recover unsaved workflow?")
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setText("A local autosave from an earlier session was found.")
+        dialog.setInformativeText(
+            f"Original file: {source}\nSnapshot (UTC): {snapshot.saved_at}\n\n"
+            "Restore opens an unsaved copy. Your original file will NOT be "
+            "overwritten; use Save to choose where to save the recovered work.")
+        dialog.addButton("Restore", QMessageBox.ButtonRole.AcceptRole)
+        discard = dialog.addButton("Discard recovery", QMessageBox.ButtonRole.DestructiveRole)
+        dialog.exec()
+        # Closing the prompt also restores, rather than risking a silent
+        # overwrite of the existing snapshot during subsequent editing.
+        if dialog.clickedButton() is not discard:
+            self._replace_actions(snapshot.actions, remember=False)
+            self.repeats.setValue(snapshot.repeat_count)
+            self.delay.setValue(snapshot.start_delay)
+            self.current_file = None  # Recovery never silently writes the source.
+            self._recovery_source_file = snapshot.source_file
+            self.history = ActionHistory(60)
+            self._saved_state = None
+            self._after_edit()
+            self._update_controls()
+            self._set_status("Recovered as an unsaved workflow. Use Save to choose a file.")
+        else:
+            self._clear_recovery()
+
     def _busy(self):
         # Wait for the queued completion signal before allowing edits.
         return (self.recording or self.record_pending or self.executor is not None
@@ -587,6 +723,7 @@ class MacroWindow(QMainWindow):
         self.actions = result
         self._update_action_count(result)
         self._selection_changed()
+        self._after_edit()
         self._update_controls()
 
     def _replace_actions(self, result, remember=True):
@@ -598,6 +735,7 @@ class MacroWindow(QMainWindow):
         self.tree.set_actions(result)
         self._update_action_count(result)
         self._selection_changed()
+        self._after_edit()
         self._update_controls()
 
     def _selection_changed(self):
@@ -638,16 +776,17 @@ class MacroWindow(QMainWindow):
             self._replace_actions(result, remember=False)
 
     def new_workflow(self):
-        if self._busy():
+        if self._busy() or not self._confirm_unsaved():
             return
-        if self.actions and QMessageBox.question(
-            self, "New workflow", "Discard the current workflow?",
-        ) != QMessageBox.StandardButton.Yes:
-            return
-        self._replace_actions([])
+        self._replace_actions([], remember=False)
+        self.history = ActionHistory(60)
         self.current_file = None
+        self._recovery_source_file = None
         self.repeats.setValue(1)
         self.delay.setValue(3.0)
+        self._mark_clean()
+        self._update_controls()
+        self._set_status("New workflow.")
 
     def open_workflow(self):
         if self._busy():
@@ -656,41 +795,55 @@ class MacroWindow(QMainWindow):
             self, "Open workflow", "", "Macro files (*.json)")
         if not filename:
             return
+        # Read and validate FIRST. A failed import must not discard edits or
+        # recovery data from the current document.
         try:
             with open(filename, "r", encoding="utf-8") as file:
                 actions, settings = parse_document(json.load(file))
-            self.tree.clear_breakpoints()
-            self._replace_actions(actions)
-            if settings is not None:
-                self.repeats.setValue(settings["repeat_count"])
-                self.delay.setValue(settings["start_delay"])
-            self.current_file = filename
-            self._set_status(f"Opened {os.path.basename(filename)}")
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, UnicodeError, RecursionError) as exc:
             QMessageBox.warning(self, "Cannot open macro", str(exc))
+            return
+        if not self._confirm_unsaved():
+            return
+        self._replace_actions(actions, remember=False)
+        self.tree.clear_breakpoints()
+        self.history = ActionHistory(60)
+        if settings is not None:
+            self.repeats.setValue(settings["repeat_count"])
+            self.delay.setValue(settings["start_delay"])
+        self.current_file = filename
+        self._recovery_source_file = None
+        self._mark_clean()
+        self._update_controls()
+        self._set_status(f"Opened {os.path.basename(filename)}")
 
     def save_workflow(self):
         if self._busy():
-            return
+            return False
         try:
             document = serialize_document(self.tree.actions(),
                                           self.repeats.value(), self.delay.value())
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Invalid workflow", str(exc))
-            return
+            return False
         filename = self.current_file
         if not filename:
             filename, _ = QFileDialog.getSaveFileName(
                 self, "Save macro", "", "Macro files (*.json)")
         if not filename:
-            return
+            return False
         try:
-            with open(filename, "w", encoding="utf-8") as file:
-                json.dump(document, file, indent=2)
-            self.current_file = filename
-            self._set_status(f"Saved {os.path.basename(filename)}")
-        except OSError as exc:
+            # Also make normal saves atomic so a failed write never truncates
+            # an existing workflow (the recovery file remains separate).
+            atomic_json_write(filename, document)
+        except (OSError, ValueError) as exc:
             QMessageBox.warning(self, "Cannot save macro", str(exc))
+            return False
+        self.current_file = filename
+        self._recovery_source_file = None
+        self._mark_clean()
+        self._set_status(f"Saved {os.path.basename(filename)}")
+        return True
 
     def _validate_before_run(self, start_index):
         # Use the same physical coordinates as PyAutoGUI, not Qt's
@@ -1131,6 +1284,7 @@ class MacroWindow(QMainWindow):
         self.actions = updated
         self.tree.set_actions(updated)
         self.counter.setText(f"{len(updated)} raw actions")
+        self._after_edit()
 
     def _drain_capture(self):
         events = []
@@ -1189,6 +1343,11 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def closeEvent(self, event):
+        if self.recording:
+            self._drain_capture()
+        if not self._confirm_unsaved():
+            event.ignore()
+            return
         if self.region_monitor is not None:
             self._close_after_monitor = True
             self.region_monitor.close()
@@ -1217,6 +1376,8 @@ class MacroWindow(QMainWindow):
             self.hotkeys.stop()
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("splitter", self.splitter.saveState())
+        self.recovery_timer.stop()
+        self._clear_recovery()
         event.accept()
 
 
@@ -1254,6 +1415,7 @@ def main():
     try:
         window = MacroWindow()
         window.show()
+        window.offer_recovery()
         return app.exec()
     finally:
         if mutex is not None:

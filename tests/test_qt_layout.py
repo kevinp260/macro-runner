@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 """Regression coverage for three-panel sizing and custom field controls."""
 import unittest
 
@@ -37,7 +38,7 @@ class EditorLayoutTests(unittest.TestCase):
             self.assertGreaterEqual(window.inspector.width(), 345)
             self.assertIn("QSplitter::handle", app.styleSheet())
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_long_inspector_buttons_use_full_form_width(self):
         window = MacroWindow()
@@ -62,7 +63,7 @@ class EditorLayoutTests(unittest.TestCase):
                 self.assertEqual(role, QFormLayout.ItemRole.SpanningRole)
                 self.assertGreaterEqual(button.width(), button.sizeHint().width())
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_labels_have_transparent_padding_and_consistent_panel_styles(self):
         from PySide6.QtWidgets import QLabel
@@ -92,7 +93,7 @@ class EditorLayoutTests(unittest.TestCase):
                     app.processEvents()
                     self.assertTrue(window.inspector.hint.text())
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_disabled_action_count_and_undo_redo(self):
         window = MacroWindow()
@@ -114,7 +115,7 @@ class EditorLayoutTests(unittest.TestCase):
             self.assertEqual(window.tree.topLevelItem(0).checkState(0),
                              Qt.CheckState.Unchecked)
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_numeric_editor_margins_on_main_window_and_inspector(self):
         window = MacroWindow()
@@ -133,7 +134,7 @@ class EditorLayoutTests(unittest.TestCase):
             self.assertEqual(window.repeats.value(), 1)
             self.assertEqual(window.delay.value(), 3.0)
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_numeric_editor_text_insets(self):
         window = MacroWindow()
@@ -148,7 +149,7 @@ class EditorLayoutTests(unittest.TestCase):
             self.assertIsInstance(window.delay, QDoubleSpinBox)
             self.assertIsInstance(window.inspector.controls["button"], QComboBox)
         finally:
-            window.close()
+            close_test_window(window)
 
     def test_both_theme_arrow_resources_and_styles(self):
         window = MacroWindow()
@@ -174,7 +175,7 @@ class EditorLayoutTests(unittest.TestCase):
                         self.assertIn(path.as_posix(), stylesheet)
                     self.assertEqual(field_controls_style(theme).count("image: url("), 3)
         finally:
-            window.close()
+            close_test_window(window)
 
 
 if __name__ == "__main__":

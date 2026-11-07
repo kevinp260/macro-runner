@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 """Headless Qt editor and toolbar tests for transient breakpoints."""
 import unittest
 from types import SimpleNamespace
@@ -118,7 +119,7 @@ class BreakpointWindowTests(unittest.TestCase):
                 window.settings.remove("debug_gap")
             else:
                 window.settings.setValue("debug_gap", old_gap)
-            window.close()
+            close_test_window(window)
 
     def test_breakpoint_diagnostic_highlights_and_allows_resume(self):
         window = MacroWindow()
@@ -135,7 +136,7 @@ class BreakpointWindowTests(unittest.TestCase):
             self.assertEqual(resumed, [True])
         finally:
             window.executor = None
-            window.close()
+            close_test_window(window)
 
     def test_minimized_editor_is_accessible_on_break_and_reminimized_on_continue(self):
         window = MacroWindow()
@@ -159,7 +160,7 @@ class BreakpointWindowTests(unittest.TestCase):
             self.assertFalse(window.isMinimized())
         finally:
             window.executor = None
-            window.close()
+            close_test_window(window)
 
 
 if __name__ == "__main__":

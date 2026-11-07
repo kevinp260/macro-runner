@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 """Offscreen Qt tests for run history controls and local privacy preferences."""
 import json
 import tempfile
@@ -120,7 +121,7 @@ class RunHistoryUITests(unittest.TestCase):
         finally:
             if window.run_history_dialog:
                 window.run_history_dialog.close()
-            window.close()
+            close_test_window(window)
 
     def test_main_window_stopped_and_error_status_are_distinct(self):
         window = MacroWindow()
@@ -143,7 +144,7 @@ class RunHistoryUITests(unittest.TestCase):
             self.assertNotIn("private error message", json.dumps(rec))
         finally:
             window.executor = None
-            window.close()
+            close_test_window(window)
 
 
 if __name__ == "__main__":

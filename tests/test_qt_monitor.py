@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 """Read-only region monitor unit/UI tests with synthetic screenshots."""
 import time
 import unittest
@@ -203,7 +204,7 @@ class RegionMonitorTests(unittest.TestCase):
                 window.settings.remove("minimize_on_run")
             else:
                 window.settings.setValue("minimize_on_run", old)
-            window.close()
+            close_test_window(window)
 
 
 if __name__ == "__main__":
