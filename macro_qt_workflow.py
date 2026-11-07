@@ -19,6 +19,7 @@ from macro_workflow import WorkflowNode, default_node, from_actions, to_actions
 from macro_flow import OPENERS
 
 NODE_ROLE = int(Qt.ItemDataRole.UserRole)
+BREAKPOINT_ROLE = NODE_ROLE + 1  # Editor-only; never included in macro JSON.
 
 
 def pack_node(node):
@@ -148,15 +149,25 @@ class WorkflowTree(QTreeWidget):
         self.itemChanged.connect(self._check_state_changed)
 
     @staticmethod
+    def _set_action_label(item, action):
+        marker = "●  " if item.data(0, BREAKPOINT_ROLE) else ""
+        item.setText(0, marker + description(action))
+
+    @staticmethod
     def _decorate_leaf(item, action):
         """Show disabled commands without making them unselectable/editable."""
         font = item.font(0)
         font.setStrikeOut(not action.enabled)
         font.setItalic(not action.enabled)
         item.setFont(0, font)
-        item.setToolTip(0, ("Enabled — uncheck to skip this action."
-                            if action.enabled else
-                            "Disabled — check to include this action."))
+        state = ("Enabled — uncheck to skip this action."
+                 if action.enabled else
+                 "Disabled — check to include this action.")
+        if item.data(0, BREAKPOINT_ROLE):
+            state += (" Breakpoint: pauses before execution."
+                      if action.enabled else
+                      " Breakpoint is inactive while disabled.")
+        item.setToolTip(0, state + " F9 toggles a breakpoint.")
 
     def _check_state_changed(self, item, column):
         """Persist a checkbox change through the normal history/change path."""
@@ -172,14 +183,14 @@ class WorkflowTree(QTreeWidget):
         node.action.enabled = enabled
         with QSignalBlocker(self):
             item.setData(0, NODE_ROLE, pack_node(node))
-            item.setText(0, description(node.action))
+            self._set_action_label(item, node.action)
             self._decorate_leaf(item, node.action)
         self._commit(previous)
 
     def _insert_node(self, parent, node):
         item = QTreeWidgetItem()
         item.setData(0, NODE_ROLE, pack_node(node))
-        item.setText(0, description(node.action))
+        self._set_action_label(item, node.action)
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled |
                       Qt.ItemFlag.ItemIsDropEnabled)
         if node.is_group:
@@ -366,6 +377,47 @@ class WorkflowTree(QTreeWidget):
         return [item for item in self.selectedItems()
                 if item.data(0, NODE_ROLE) != "else_branch"]
 
+    def toggle_breakpoints(self):
+        """Toggle transient breakpoints on selected executable tree actions."""
+        chosen = self.selected_nodes()
+        if not chosen:
+            return
+        nodes = [unpack_node(item) for item in chosen]
+        if any(node.is_group for node in nodes):
+            self.invalid_change.emit(
+                "Breakpoints can be placed on executable actions, not control blocks.")
+            return
+        with QSignalBlocker(self):
+            for item, node in zip(chosen, nodes):
+                item.setData(0, BREAKPOINT_ROLE,
+                             not bool(item.data(0, BREAKPOINT_ROLE)))
+                self._set_action_label(item, node.action)
+                self._decorate_leaf(item, node.action)
+
+    def breakpoint_indices(self):
+        """Return flat enabled action indices for an execution snapshot."""
+        return {
+            index for index, item in self.index_map().items()
+            if index < len(self._snapshot)
+            and self._snapshot[index].enabled
+            and self._snapshot[index].kind not in
+                ("loop_start", "loop_end", "if_start", "if_end", "else",
+                 "until_start", "until_end", "watch_start", "watch_end")
+            and bool(item.data(0, BREAKPOINT_ROLE))
+        }
+
+    def clear_breakpoints(self):
+        """Reset debugging-only marks when opening another document."""
+        with QSignalBlocker(self):
+            for item in set(self.index_map().values()):
+                if item.data(0, BREAKPOINT_ROLE):
+                    item.setData(0, BREAKPOINT_ROLE, False)
+                    node = unpack_node(item)
+                    if node is not None:
+                        self._set_action_label(item, node.action)
+                        if not node.is_group:
+                            self._decorate_leaf(item, node.action)
+
     def selected_action(self):
         items = self.selected_nodes()
         return unpack_node(items[0]).action if len(items) == 1 else None
@@ -381,7 +433,7 @@ class WorkflowTree(QTreeWidget):
         node.action = deepcopy(action)
         with QSignalBlocker(self):
             items[0].setData(0, NODE_ROLE, pack_node(node))
-            items[0].setText(0, description(action))
+            self._set_action_label(items[0], action)
             if not node.is_group:
                 items[0].setCheckState(
                     0, Qt.CheckState.Checked if action.enabled
@@ -426,7 +478,7 @@ class WorkflowTree(QTreeWidget):
             for item, node in zip(chosen, nodes):
                 node.action.enabled = not node.action.enabled
                 item.setData(0, NODE_ROLE, pack_node(node))
-                item.setText(0, description(node.action))
+                self._set_action_label(item, node.action)
                 item.setCheckState(
                     0, Qt.CheckState.Checked if node.action.enabled
                     else Qt.CheckState.Unchecked)

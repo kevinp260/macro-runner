@@ -225,6 +225,7 @@ class MacroWindow(QMainWindow):
         self.current_file = None
         self.executor = None
         self._restore_after_run = False
+        self._debug_window_visible = False
         self.run_signals = WorkerSignals()
         self.run_signals.progress.connect(self._progress)
         self.run_signals.diagnostic.connect(self._diagnostic_event)
@@ -274,6 +275,7 @@ class MacroWindow(QMainWindow):
             ("stop", "Stop", "Esc", self.stop_run),
             ("step", "Step", "", self.step_run),
             ("run_from", "Run from selected", "", self.run_selected),
+            ("breakpoint", "Breakpoint", "F9", self.toggle_breakpoint),
             ("history", "History", "", self.show_run_history),
             ("record", "Record", "Ctrl+R", self.record_toggle),
             ("undo", "Undo", "Ctrl+Z", self.undo),
@@ -346,6 +348,7 @@ class MacroWindow(QMainWindow):
             ("Enable / Disable", self.tree.toggle_enabled_selection),
             ("Collapse all", self.tree.collapseAll),
             ("Expand all", self.tree.expandAll),
+            ("Breakpoint (F9)", self.toggle_breakpoint),
         ]):
             button = QPushButton(text)
             button.clicked.connect(handler)
@@ -387,6 +390,18 @@ class MacroWindow(QMainWindow):
         pad_spinbox_text(self.delay)
         status_row.addWidget(self.delay)
         status_row.addSpacing(12)
+        status_row.addWidget(QLabel("Debug gap (s)"))
+        self.debug_gap = QDoubleSpinBox()
+        self.debug_gap.setRange(0, 5)
+        self.debug_gap.setDecimals(1)
+        self.debug_gap.setSingleStep(0.1)
+        self.debug_gap.setToolTip(
+            "Extra delay between executable actions in this editor; not saved in macro JSON.")
+        pad_spinbox_text(self.debug_gap)
+        self.debug_gap.valueChanged.connect(
+            lambda value: self.settings.setValue("debug_gap", value))
+        status_row.addWidget(self.debug_gap)
+        status_row.addSpacing(12)
         self.minimize_on_run = QCheckBox("Minimize when running")
         self.minimize_on_run.setToolTip(
             "Hide MacroRunner during playback and restore it when playback ends.")
@@ -408,7 +423,7 @@ class MacroWindow(QMainWindow):
 
     def _build_menus(self):
         menu = self.menuBar().addMenu("Edit")
-        for name in ("undo", "redo"):
+        for name in ("undo", "redo", "breakpoint"):
             menu.addAction(self.toolbar_actions[name])
         menu.addSeparator()
         for title, slot, key in [
@@ -467,6 +482,21 @@ class MacroWindow(QMainWindow):
     def _diagnostic_event(self, event):
         if self._run_session is not None:
             self._run_session.add(event)
+        if event.get("event") == "breakpoint" and self.executor is not None:
+            index = event.get("index")
+            item = self.tree.index_map().get(index)
+            if item is not None:
+                self.tree.setCurrentItem(item)
+                self.tree.scrollToItem(item)
+            self.toolbar_actions["pause"].setText("Resume")
+            self._set_status(f"Breakpoint before action #{index + 1} — Resume or Step")
+            if self._restore_after_run and self.isMinimized():
+                # Make controls accessible, then minimize again when continuing,
+                # so the target window is not hidden behind the editor.
+                self._debug_window_visible = True
+                self.showNormal()
+                self.raise_()
+                self.activateWindow()
 
     def _failure_capture_received(self, image):
         if self._run_session is not None:
@@ -488,6 +518,7 @@ class MacroWindow(QMainWindow):
         self.set_theme(self.settings.value("theme", "dark"))
         self.minimize_on_run.setChecked(
             self.settings.value("minimize_on_run", False, type=bool))
+        self.debug_gap.setValue(self.settings.value("debug_gap", 0.0, type=float))
         geometry = self.settings.value("geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
@@ -529,6 +560,7 @@ class MacroWindow(QMainWindow):
         self.toolbar_actions["stop"].setEnabled(busy)
         self.toolbar_actions["step"].setEnabled(not recording)
         self.toolbar_actions["run_from"].setEnabled(not busy and bool(self.actions))
+        self.toolbar_actions["breakpoint"].setEnabled(not busy)
         self.toolbar_actions["record"].setEnabled(not busy or recording)
         self.toolbar_actions["record"].setText("Stop recording" if recording else "Record")
         self.tree.setEnabled(not busy)
@@ -536,6 +568,7 @@ class MacroWindow(QMainWindow):
         self.inspector.setEnabled(not busy)
         self.repeats.setEnabled(not busy)
         self.delay.setEnabled(not busy)
+        self.debug_gap.setEnabled(not busy)
         self.minimize_on_run.setEnabled(not busy)
         self.selection_mode_menu.setEnabled(not busy)
 
@@ -577,6 +610,10 @@ class MacroWindow(QMainWindow):
             self.tree.update_selected_action(action)
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid edit", str(exc))
+
+    def toggle_breakpoint(self):
+        if not self._busy():
+            self.tree.toggle_breakpoints()
 
     def delete(self):
         if not self._busy():
@@ -622,6 +659,7 @@ class MacroWindow(QMainWindow):
         try:
             with open(filename, "r", encoding="utf-8") as file:
                 actions, settings = parse_document(json.load(file))
+            self.tree.clear_breakpoints()
             self._replace_actions(actions)
             if settings is not None:
                 self.repeats.setValue(settings["repeat_count"])
@@ -694,6 +732,7 @@ class MacroWindow(QMainWindow):
                 self.actions, repeats, self.delay.value(),
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
                 start_index=begin, step_mode=step_mode,
+                breakpoints=self.tree.breakpoint_indices(), debug_gap=self.debug_gap.value(),
                 on_diagnostic=self.run_signals.diagnostic.emit,
                 on_failure_capture=(self.run_signals.failure_capture.emit
                     if self.settings.value("diagnostics_capture_errors", False, type=bool)
@@ -704,6 +743,7 @@ class MacroWindow(QMainWindow):
                 mode="step" if step_mode else ("selected" if start_selected else "full"),
                 repeat_count=repeats)
             self._pending_failure_capture = None
+            self._debug_window_visible = False
             # Hide the editor before the start delay begins. Restore only if
             # this run minimized the window, not if the user did so manually.
             self._restore_after_run = self.minimize_on_run.isChecked() and not self.isMinimized()
@@ -733,10 +773,16 @@ class MacroWindow(QMainWindow):
             return
         self._begin_run(start_selected=True)
 
+    def _resume_debug_window(self):
+        if self._debug_window_visible and self._restore_after_run:
+            self._debug_window_visible = False
+            self.showMinimized()
+
     def pause_run(self):
         if not self.executor or self._busy() and self.recording:
             return
         if self.executor.gate.paused:
+            self._resume_debug_window()
             self.executor.resume()
             self.toolbar_actions["pause"].setText("Pause")
             self._set_status("Running…")
@@ -750,6 +796,7 @@ class MacroWindow(QMainWindow):
             self._begin_run(step_mode=True)
         if self.executor and self.executor.gate.paused:
             try:
+                self._resume_debug_window()
                 self.executor.step()
                 self._set_status("Stepping…")
             except RuntimeError:
@@ -775,6 +822,7 @@ class MacroWindow(QMainWindow):
             self.tree.scrollToItem(item)
 
     def _restore_run_window(self):
+        self._debug_window_visible = False
         if self._restore_after_run:
             self._restore_after_run = False
             self.showNormal()

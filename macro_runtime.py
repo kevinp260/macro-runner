@@ -3,6 +3,7 @@
 All mouse/keyboard operations happen in the worker thread.  The UI sends
 pause/stop/step commands through PlaybackGate, never from the worker itself.
 """
+import math
 import threading
 from macro_flow import has_smart_actions, iter_flow_steps, validate_flow, validate_start_selection
 from macro_model import validate_action
@@ -17,7 +18,8 @@ from dataclasses import asdict
 class MacroExecutor:
     def __init__(self, actions, repeat_count, start_delay, on_progress, on_finished,
                  start_index=0, step_mode=False, automation=None,
-                 on_diagnostic=None, on_failure_capture=None):
+                 on_diagnostic=None, on_failure_capture=None,
+                 breakpoints=(), debug_gap=0.0):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         if not self.actions:
@@ -29,6 +31,19 @@ class MacroExecutor:
             raise ValueError("Repeat count must be positive.")
         if not isinstance(start_delay, (int, float)) or not 0 <= start_delay < float("inf"):
             raise ValueError("Start delay must be nonnegative and finite.")
+        if isinstance(debug_gap, bool) or not isinstance(debug_gap, (int, float)) or (
+                not math.isfinite(debug_gap) or not 0 <= debug_gap <= 5):
+            raise ValueError("Debug gap must be between 0 and 5 seconds.")
+        if any(isinstance(index, bool) or not isinstance(index, int) or
+               index < 0 or index >= len(self.actions)
+               for index in breakpoints):
+            raise ValueError("Breakpoint action index is out of range.")
+        self.breakpoints = frozenset(
+            index for index in breakpoints
+            if self.actions[index].enabled and self.actions[index].kind not in
+            ("loop_start", "loop_end", "if_start", "if_end", "else",
+             "until_start", "until_end", "watch_start", "watch_end"))
+        self.debug_gap = float(debug_gap)
         self.smart = has_smart_actions(self.actions)
         if self.smart:
             validate_start_selection(self.actions, start_index)
@@ -227,8 +242,21 @@ class MacroExecutor:
                             watch=self._watch_region) if self.smart
                             else iter_execution_steps(self.actions, start))
                 for idx, action in iterator:
+                    # The breakpoint is consumed for this *occurrence* only.
+                    # Resume/Step continues this action; the next loop visit
+                    # can break again. Disabled leaves never reach this point.
+                    if idx in self.breakpoints:
+                        # Preserve a Step token queued before the worker reaches
+                        # this breakpoint (notably the first Step at startup).
+                        if not self.gate.paused:
+                            self.gate.pause()
+                        self._emit("breakpoint", index=idx, cycle=repeat + 1)
                     self.gate.begin_action()
                     try:
+                        # A debugging-only gap before the next action, inside
+                        # the gate's Step token so Pause/Stop remain responsive.
+                        if done and self.debug_gap:
+                            self.gate.wait(self.debug_gap)
                         self._active_index = idx
                         self._emit("action_start", index=idx, cycle=repeat + 1)
                         done += 1

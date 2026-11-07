@@ -22,7 +22,7 @@ EVENT_TYPES = frozenset({
     "action_start", "action_done", "action_error", "condition",
     "image_match", "watch_trigger", "pause", "resume", "step",
     "stop_requested", "screenshot_unavailable", "action_retry",
-    "action_skipped",
+    "action_skipped", "breakpoint",
 })
 ERROR_CODES = {
     "TimeoutError": "Timed out waiting for a condition or image",
