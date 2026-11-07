@@ -14,6 +14,7 @@ from macro_vision import (ConditionTimeout, locate_image, check_condition,
                           poll_until, watch_region_change)
 from dataclasses import asdict
 from macro_windows import WindowBinding, WindowUnavailable
+from macro_clipboard import ClipboardUnavailable, paste_clipboard
 
 
 class MacroExecutor:
@@ -21,7 +22,8 @@ class MacroExecutor:
                  start_index=0, step_mode=False, automation=None,
                  on_diagnostic=None, on_failure_capture=None,
                  breakpoints=(), debug_gap=0.0,
-                 window_target=None, window_manager=None):
+                 window_target=None, window_manager=None,
+                 clipboard=None):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         if not self.actions:
@@ -48,6 +50,7 @@ class MacroExecutor:
         self.debug_gap = float(debug_gap)
         self.window_binding = (WindowBinding(window_target, manager=window_manager)
                                if window_target is not None else None)
+        self.clipboard = clipboard
         self.smart = has_smart_actions(self.actions)
         if self.smart:
             validate_start_selection(self.actions, start_index)
@@ -221,9 +224,9 @@ class MacroExecutor:
     def _execute(self, a):
         pag = self._pag()
         self.gate.wait(0)
-        # No binding for a pure delay; other leaves use foreground activation
-        # even when coordinate mode remains absolute (e.g. keyboard actions).
-        bound = self._bound_action(a) if a.kind != "wait" else a
+        # Set clipboard does not send input, so it must not steal focus.
+        bound = self._bound_action(a) if a.kind not in (
+            "wait", "clipboard_set") else a
         if a.kind == "click_image":
             last_region = None
 
@@ -264,6 +267,18 @@ class MacroExecutor:
                     self.gate.wait(a.interval)
         elif a.kind == "wait":
             self.gate.wait(a.seconds)
+        elif a.kind == "clipboard_set":
+            if self.clipboard is None:
+                raise ClipboardUnavailable("Desktop clipboard service is unavailable.")
+            self.clipboard.set_text(a.clipboard_text, gate=self.gate)
+        elif a.kind == "clipboard_paste":
+            if self.clipboard is None:
+                raise ClipboardUnavailable("Desktop clipboard service is unavailable.")
+            paste_clipboard(
+                self.clipboard, pag, self.gate,
+                text=a.clipboard_text, restore=a.clipboard_restore,
+                prepare_focus=(lambda: self._bound_action(a))
+                if self.window_binding is not None else None)
         elif a.kind == "key":
             if a.key_mode == "type":
                 for character in a.keys:
