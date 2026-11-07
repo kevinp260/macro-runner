@@ -57,6 +57,52 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Wait for window state (Issue #48)
+
+Add **Wait for window** after launching an application, before typing or
+clicking. Choose the state **appears**, **active**, **hidden**, or **closed**;
+set a **Timeout** and **Poll interval**. A timeout of 0 checks the current
+state once. Polling is cancellable through Stop, and Pause/Step stay
+responsive without busy looping. The timeout counts active polling time,
+excluding paused intervals.
+
+Select a source in the inspector:
+- **Custom:** Click **Choose…** to select a currently visible window. Its
+  title/class and handle/process ID are stored with this action. The
+  saved identity can follow a renamed window if its handle/PID remain
+  stable; a reopened app may match a **unique** exact title/class.
+  For a window that does not exist yet, type its **exact title**, and
+  optionally its window class, without picking. Duplicate matches are
+  an error until you pick a specific window or refine the title/class.
+- **Workflow:** Reuse the binding from **Choose window…** on the main
+  editor. It does not re-activate that window just to check its status.
+
+**Appears** requires a mapped/visible window. **Active** requires it to
+be the foreground window and does not bring it forward automatically.
+**Hidden** requires an *existing, enumerated* hidden/minimized/unmapped
+window. **Closed** means no matching window remains in the backend's
+enumerated top-level windows; if already absent, it finishes immediately.
+For hidden, **absence is not treated as success**, avoiding accidental
+confusion with a closed app.
+
+Window state checks work on Windows and supported Ubuntu **X11/Xorg**
+window managers. X11 relies on `_NET_CLIENT_LIST` and
+`_NET_ACTIVE_WINDOW`: some window managers do not preserve unmapped
+clients in that list or accurately expose foreground state. In that case
+hidden/closed detection may be limited; test it on your actual session.
+On **Wayland**, this feature is unavailable and preflight blocks the
+action with an explicit message. Running it performs no mouse/keyboard
+input and does not need a global input backend.
+
+A workflow may use **Open application** (Issue #47), **Wait for window
+(appears)** and then client-relative input (Issue #45). When the saved
+workflow target is missing at startup, preflight allows this specific
+sequence and delays coordinate validation until that window appears;
+it still blocks ambiguous targets or input that would execute before
+the wait. Window waits work inside existing Repeat, If/Else and other
+workflow blocks without adding a new window-condition expression.
+Stop cancels a wait; an already launched app is not killed.
+
 ## Open application, file or URL (Issue #47)
 
 Add **Open application / file / URL** from the action palette, then choose a
