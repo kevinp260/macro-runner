@@ -11,6 +11,7 @@ from unittest.mock import patch
 from macro_files import (FileActionError, local_path, run_file_action,
                          validate_file_action)
 from macro_model import Action, parse_document, serialize_document, validate_action
+from macro_diagnostics import safe_error_code, ERROR_CODES
 from macro_preflight import inspect_workflow
 from macro_runtime import MacroExecutor
 from macro_playback import PlaybackGate
@@ -219,6 +220,14 @@ class FileActionTests(unittest.TestCase):
         disabled = [Action(kind="file_copy", enabled=False),
                     Action(kind="wait", seconds=0)]
         self.assertEqual(inspect_workflow(disabled), [])
+
+    def test_file_failures_are_categorized_without_raw_paths_or_contents(self):
+        code = safe_error_code(FileExistsError(str(self.target)))
+        self.assertEqual(code, "FileExistsError")
+        self.assertNotIn(str(self.target), ERROR_CODES[code])
+        code = safe_error_code(FileActionError(str(self.source)))
+        self.assertEqual(code, "FileActionError")
+        self.assertNotIn(str(self.source), ERROR_CODES[code])
 
     def test_runtime_file_only_workflow_avoids_desktop_backend(self):
         results = []
