@@ -103,8 +103,9 @@ class VariableModelTests(unittest.TestCase):
         self.assertEqual((resolved.x, resolved.y), (17, 29))
         self.assertEqual(resolved.bindings, {})
         self.assertEqual((click.x, click.y), (0, 0))
-        overwrite = Action(kind="file_copy", file_path="/tmp/source",
-                           file_destination="/tmp/dest",
+        overwrite = Action(kind="file_copy",
+                           file_path=str(Path.cwd() / "source"),
+                           file_destination=str(Path.cwd() / "dest"),
                            bindings={"file_overwrite": "allow"})
         self.assertTrue(vars.resolve(overwrite).file_overwrite)
         scroll = Action(kind="scroll", bindings={"scroll_amount":"n"})
