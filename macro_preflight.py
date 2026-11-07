@@ -265,20 +265,27 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             except ValueError as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
             else:
-                # Paths may be produced by earlier workflow steps, so
-                # filesystem absence is advisory until action execution.
-                if action.kind in ("file_check", "file_copy", "file_move") and (
-                        not src.is_file()):
+                # Paths may be produced by earlier steps. Filesystem absence
+                # is advisory; inaccessible drives return a useful warning.
+                try:
+                    if (action.kind in ("file_check", "file_copy", "file_move")
+                            and not src.is_file()):
+                        findings.append(PreflightFinding(
+                            "warning", index,
+                            "Source file is not present yet. Ensure an earlier "
+                            "step creates it, or verify the selected file path."))
+                    if (action.kind in ("file_copy", "file_move")
+                            and (dest.exists() or dest.is_symlink())
+                            and not action.file_overwrite):
+                        findings.append(PreflightFinding(
+                            "warning", index,
+                            "Destination file already exists. Copy/Move refuses "
+                            "to overwrite unless explicitly enabled."))
+                except OSError as exc:
                     findings.append(PreflightFinding(
                         "warning", index,
-                        "Source file is not present yet. Ensure an earlier "
-                        "step creates it, or verify the selected file path."))
-                if (action.kind in ("file_copy", "file_move")
-                        and dest.exists() and not action.file_overwrite):
-                    findings.append(PreflightFinding(
-                        "warning", index,
-                        "Destination file already exists. Copy/Move refuses "
-                        "to overwrite unless explicitly enabled."))
+                        "Cannot check the configured file path. Verify the "
+                        "drive is available and the directory is accessible."))
         if (action.kind in ("click_image", "wait_until", "if_start", "until_start")
                 and action.condition_source == "image"):
             # Disabled image actions have no runtime dependency on their file.
