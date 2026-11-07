@@ -165,6 +165,34 @@ class ClipboardActionTests(unittest.TestCase):
         self.assertEqual(fake.state.text, "original")
         self.assertEqual(desk.events, [("hotkey", ("ctrl", "v"))])
 
+    def test_partial_write_failure_still_restores_previous_text(self):
+        class PartiallyWritten(FakeClipboard):
+            def set_text(self, text, gate=None, *, cleanup=False):
+                super().set_text(text, gate=gate, cleanup=cleanup)
+                if text == "temporary":
+                    raise ClipboardUnavailable("write rejected after change")
+
+        fake = PartiallyWritten(ClipboardState("text", "previous"))
+        desk = FakeDesktop()
+        with self.assertRaises(ClipboardUnavailable):
+            paste_clipboard(fake, desk, Gate(), text="temporary", restore=True)
+        self.assertEqual(fake.state.text, "previous")
+        self.assertEqual(desk.events, [])
+
+    def test_cleanup_failure_does_not_hide_target_focus_error(self):
+        class FailingRestore(FakeClipboard):
+            def read(self, gate=None, *, cleanup=False):
+                if cleanup:
+                    raise ClipboardUnavailable("read failed")
+                return super().read(gate=gate, cleanup=cleanup)
+
+        fake = FailingRestore(ClipboardState("text", "previous"))
+        with self.assertRaisesRegex(RuntimeError, "focus lost"):
+            paste_clipboard(
+                fake, FakeDesktop(), Gate(), text="temporary",
+                prepare_focus=lambda: (_ for _ in ()).throw(
+                    RuntimeError("focus lost")))
+
     def test_runtime_disabled_and_step_behavior(self):
         fake = FakeClipboard(ClipboardState("text", "already"))
         desk = FakeDesktop()
