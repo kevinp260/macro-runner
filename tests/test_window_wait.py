@@ -102,10 +102,9 @@ class WindowWaitModelTests(unittest.TestCase):
             with self.subTest(fields=fields), self.assertRaises(ValueError):
                 validate_action(vars(wait_action(**fields)))
         with self.assertRaises(ValueError):
-            validate_action(vars(wait_action(window_wait_title="")) if False
-                            else vars(wait_action(window_wait_handle=5,
-                                                  window_wait_pid=2,
-                                                  window_wait_class=42)))
+            validate_action(vars(wait_action(window_wait_handle=5,
+                                              window_wait_pid=2,
+                                              window_wait_class=42)))
 
     def test_preflight_blocks_empty_source_and_unsupported_backend(self):
         manager = FakeWindowManager()
