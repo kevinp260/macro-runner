@@ -207,6 +207,7 @@ class MacroExecutor:
             # Never suppress Stop, emergency mouse-corner fail-safe, or
             # unexpected cancellation, even when Skip was selected.
             if (self.gate.stopped.is_set() or str(exc) == "Stopped" or
+                    isinstance(exc, WindowUnavailable) or
                     type(exc).__name__ == "FailSafeException"):
                 raise
             if action.failure_policy == "skip":
@@ -251,7 +252,12 @@ class MacroExecutor:
             for n in range(a.clicks):
                 self.gate.wait(0)
                 if self.window_binding is not None:
-                    self._bound_action(a)  # Confirm focus before every click.
+                    latest = self._bound_action(a)
+                    # Move again if the target changed position during a
+                    # multiple-click interval: never click the old screen spot.
+                    if (latest.x, latest.y) != (bound.x, bound.y):
+                        pag.moveTo(latest.x, latest.y, duration=0)
+                        bound = latest
                 pag.click(button=a.button)
                 if n + 1 < a.clicks:
                     self.gate.wait(a.interval)
@@ -277,11 +283,19 @@ class MacroExecutor:
         elif a.kind == "move":
             pag.moveTo(bound.x, bound.y, duration=a.move_duration)
         elif a.kind == "scroll":
+            if self.window_binding is not None:
+                info = self.window_binding.prepare(self.gate)
+                pag.moveTo(info.x + info.width // 2,
+                           info.y + info.height // 2, duration=0)
             pag.scroll(a.scroll_amount)
         elif a.kind == "drag":
             pag.moveTo(bound.x, bound.y, duration=0)
             if self.window_binding is not None:
-                self._bound_action(a)
+                latest = self._bound_action(a)
+                if ((latest.x, latest.y, latest.to_x, latest.to_y) !=
+                        (bound.x, bound.y, bound.to_x, bound.to_y)):
+                    raise WindowUnavailable(
+                        "Target window moved after drag preparation. Run again.")
             pag.dragTo(bound.to_x, bound.to_y,
                        duration=a.move_duration, button=a.button)
 
