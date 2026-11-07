@@ -228,6 +228,7 @@ class MacroWindow(QMainWindow):
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
         self._saved_state = None
         self._recovery_warning_shown = False
+        self._recovery_locked = False
         self.executor = None
         self._restore_after_run = False
         self._debug_window_visible = False
@@ -577,13 +578,15 @@ class MacroWindow(QMainWindow):
             + str(error))
 
     def _clear_recovery(self):
+        if self._recovery_locked:
+            return
         try:
             self.recovery_store.clear()
         except OSError as exc:
             self._recovery_error(exc)
 
     def _write_recovery(self):
-        if not self._is_dirty():
+        if not self._is_dirty() or self._recovery_locked:
             return
         try:
             self.recovery_store.write(
@@ -627,10 +630,22 @@ class MacroWindow(QMainWindow):
         try:
             snapshot = self.recovery_store.read()
         except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(
+            choice = QMessageBox.question(
                 self, "Recovery snapshot unreadable",
-                "The local recovery file could not be read. It was retained "
-                "for manual inspection and was not overwritten.\n\n" + str(exc))
+                "The local recovery file cannot be read. It might contain "
+                "unsaved work.\n\n"
+                "Discard the damaged snapshot to resume autosaving? "
+                "Cancel keeps it untouched, but disables new recovery "
+                "snapshots until that file is removed.\n\n" + str(exc),
+                QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel)
+            if choice == QMessageBox.StandardButton.Discard:
+                self._clear_recovery()
+                if self.recovery_store.path.exists():
+                    self._recovery_locked = True
+            else:
+                self._recovery_locked = True
             return
         if snapshot is None:
             return
