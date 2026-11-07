@@ -31,7 +31,7 @@ class MacroExecutor:
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         self.variables = VariableContext(
-            validate_references(self.actions, variables or []),
+            validate_references(self.actions, variables or [], require_outputs=True),
             variable_overrides)
         if not self.actions:
             raise ValueError("The workflow has no actions.")
