@@ -62,7 +62,7 @@ class FileActionTests(unittest.TestCase):
             "arrived", encoding="utf-8") if delay > 0 else None)
         run_file_action(self.action("file_wait", timeout=.4, poll_interval=.1),
                         gate)
-        self.assertEqual(self.source.read_text(), "arrived")
+        self.assertEqual(self.source.read_text(encoding="utf-8"), "arrived")
         self.assertIn(.1, gate.calls)
 
     def test_copy_preserves_source_and_requires_explicit_overwrite(self):
@@ -75,8 +75,8 @@ class FileActionTests(unittest.TestCase):
             run_file_action(self.action("file_copy"), Gate())
         self.assertEqual(self.target.read_bytes(), original)
         run_file_action(self.action("file_copy", file_overwrite=True), Gate())
-        self.assertEqual(self.target.read_text(), "new version")
-        self.assertEqual(self.source.read_text(), "new version")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "new version")
+        self.assertEqual(self.source.read_text(encoding="utf-8"), "new version")
 
     def test_move_removes_source_only_after_successful_destination_write(self):
         original = self.source.read_bytes()
@@ -89,10 +89,10 @@ class FileActionTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             run_file_action(self.action("file_move"), Gate())
         self.assertTrue(self.source.is_file())
-        self.assertEqual(self.target.read_text(), "unrelated existing file")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "unrelated existing file")
         run_file_action(self.action("file_move", file_overwrite=True), Gate())
         self.assertFalse(self.source.exists())
-        self.assertEqual(self.target.read_text(), "old\nHello á 😊")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "old\nHello á 😊")
 
     def test_overwrite_copy_failure_preserves_existing_destination(self):
         self.target.write_text("keep this", encoding="utf-8")
@@ -100,7 +100,7 @@ class FileActionTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 run_file_action(self.action("file_copy", file_overwrite=True),
                                 Gate())
-        self.assertEqual(self.target.read_text(), "keep this")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "keep this")
         self.assertTrue(self.source.exists())
         self.assertEqual(list(self.root.glob(".macrorunner-copy-*")), [])
 
@@ -110,7 +110,7 @@ class FileActionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Stopped"):
             run_file_action(self.action("file_move", file_overwrite=True), gate)
         self.assertTrue(self.source.is_file())
-        self.assertEqual(self.target.read_text(), "keep existing")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "keep existing")
         self.assertEqual(list(self.root.glob(".macrorunner-copy-*")), [])
 
     def test_copy_stop_discards_partial_new_destination(self):
