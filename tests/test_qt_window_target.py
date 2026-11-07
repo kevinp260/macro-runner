@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from macro_model import Action, parse_document, serialize_document
 from macro_qt import MacroWindow
 from macro_qt_windows import WindowPickerDialog
+from macro_recovery import RecoveryStore
 from macro_windows import (WindowBinding, WindowInfo, WindowManager,
                            WindowUnavailable, target_from_window)
 from qt_test_helpers import close_test_window
@@ -39,6 +40,7 @@ class WindowUIRegressionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.window = MacroWindow()
+        self.window.recovery_store = RecoveryStore(self.root / "recovery.json")
 
     def tearDown(self):
         close_test_window(self.window)
