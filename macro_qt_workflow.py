@@ -56,6 +56,7 @@ KINDS = [
     ("Release key", "key_up"), ("Move mouse", "move"),
     ("Scroll", "scroll"), ("Drag", "drag"),
     ("Set clipboard text", "clipboard_set"), ("Paste clipboard / text", "clipboard_paste"),
+    ("Open application / file / URL", "launch"),
     ("Repeat block", "loop_start"),
     ("If / Else", "if_start"), ("Repeat until", "until_start"),
     ("Watch region changes", "watch_start"),
@@ -67,6 +68,7 @@ TITLES = {
     "key": "Keyboard", "key_down": "Hold key", "key_up": "Release key",
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
     "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
+    "launch": "Open application / file / URL",
     "loop_start": "Repeat block", "if_start": "Condition",
     "until_start": "Repeat until", "watch_start": "Watch region changes"
 }
@@ -92,6 +94,13 @@ def description(action):
         detail = ("existing clipboard" if action.clipboard_text is None
                   else "temporary text (hidden)" if action.clipboard_restore
                   else "text (leave on clipboard)")
+    elif kind == "launch":
+        from pathlib import Path
+        from urllib.parse import urlsplit
+        detail = (urlsplit(action.launch_target).hostname or "Configure URL"
+                  if action.launch_mode == "url" and action.launch_target
+                  else Path(action.launch_target).name or "Configure target")
+        detail = f"{action.launch_mode} · {detail}"
     elif kind == "watch_start":
         detail = (f"({action.region_x}, {action.region_y}) "
                   f"{action.region_w}×{action.region_h} · "
