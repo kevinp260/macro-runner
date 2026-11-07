@@ -103,6 +103,23 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertEqual(store.runs, [])
             self.assertEqual(store._capture_files(), [])
 
+    def test_failed_screenshot_save_still_persists_run(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            store = RunHistoryStore(Path(tmp) / "history.json")
+            run = RunSession([Action(kind="wait", seconds=0)])
+            run.add({"event": "action_error", "index": 0,
+                     "error": "PermissionError"})
+            with patch.object(store, "_save_capture",
+                              side_effect=PermissionError("private location")):
+                store.add(run.finish("error"),
+                          capture=Image.new("RGB", (20, 20), "white"))
+            self.assertEqual(len(store.runs), 1)
+            self.assertNotIn("screenshot", store.runs[0])
+            self.assertIn("screenshot_unavailable",
+                          [e["event"] for e in store.runs[0]["events"]])
+            self.assertNotIn("private location", store.path.read_text())
+
     def test_corrupt_history_and_unsafe_capture_reference_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "history.json"

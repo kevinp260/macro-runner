@@ -755,13 +755,14 @@ class MacroWindow(QMainWindow):
                        (self.executor is not None and
                         self.executor.gate.stopped.is_set())))
         status = "completed" if success else ("stopped" if is_stopped else "error")
+        history_warning = False
         if self._run_session is not None:
             record = self._run_session.finish(status)
             capture = self._pending_failure_capture if status == "error" else None
             try:
                 self.diagnostics_store.add(record, capture=capture)
-            except (OSError, ValueError) as exc:
-                self._set_status(f"Run history could not be saved: {exc}")
+            except (OSError, ValueError):
+                history_warning = True
             if self.run_history_dialog is not None:
                 self.run_history_dialog.refresh()
         self._run_session = None
@@ -769,7 +770,9 @@ class MacroWindow(QMainWindow):
         self.executor = None
         self._restore_run_window()
         self.toolbar_actions["pause"].setText("Pause")
-        self._set_status(message)
+        self._set_status(
+            message + (" Warning: run history could not be saved."
+                       if history_warning else ""))
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1 if success else 0)
         self._update_controls()

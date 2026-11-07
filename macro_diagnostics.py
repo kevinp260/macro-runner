@@ -164,7 +164,7 @@ class RunHistoryStore:
         self.max_runs = max(1, min(100, int(max_runs)))
         self.max_screenshots = max(0, min(20, int(max_screenshots)))
         self.runs = self._read()
-        self._prune(keep_orphans=False)
+        self._prune()  # Discard orphaned private screenshots on startup.
 
     def _read(self):
         try:
@@ -252,7 +252,17 @@ class RunHistoryStore:
         if clean.get("error_code"):
             clean["error_code"] = safe_error_code(clean["error_code"])
         if capture is not None and clean.get("status") == "error" and self.max_screenshots:
-            clean["screenshot"] = self._save_capture(capture)
+            try:
+                clean["screenshot"] = self._save_capture(capture)
+            except (OSError, ValueError) as exc:
+                # A denied screenshot must not discard the actual run log.
+                failure = safe_event({
+                    "event": "screenshot_unavailable",
+                    "error": safe_error_code(exc),
+                }, clean.get("duration_s", 0))
+                if failure is not None:
+                    clean["events"].append(failure)
+                    clean["events"] = clean["events"][-MAX_EVENTS:]
         self.runs.append(clean)
         self._prune()
         self._write()
