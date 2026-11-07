@@ -15,6 +15,7 @@ from macro_vision import (ConditionTimeout, locate_image, check_condition,
 from dataclasses import asdict
 from macro_windows import WindowBinding, WindowUnavailable
 from macro_clipboard import ClipboardUnavailable, paste_clipboard
+from macro_launch import launch_target
 
 
 class MacroExecutor:
@@ -226,7 +227,7 @@ class MacroExecutor:
         self.gate.wait(0)
         # Set clipboard does not send input, so it must not steal focus.
         bound = self._bound_action(a) if a.kind not in (
-            "wait", "clipboard_set") else a
+            "wait", "clipboard_set", "launch") else a
         if a.kind == "click_image":
             last_region = None
 
@@ -267,6 +268,11 @@ class MacroExecutor:
                     self.gate.wait(a.interval)
         elif a.kind == "wait":
             self.gate.wait(a.seconds)
+        elif a.kind == "launch":
+            # OS-native app/file/browser open only. No window activation or
+            # shell; Stop before dispatch prevents launching.
+            self.gate.wait(0)
+            launch_target(a)
         elif a.kind == "clipboard_set":
             if self.clipboard is None:
                 raise ClipboardUnavailable("Desktop clipboard service is unavailable.")
