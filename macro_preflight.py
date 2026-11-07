@@ -282,6 +282,15 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             except ValueError as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
             else:
+                for field, value in (("file_path", src),
+                                     ("file_destination", dest)):
+                    if (field == "file_destination" and
+                            action.kind not in ("file_copy", "file_move")):
+                        continue
+                    if field not in action.bindings and value is None:
+                        findings.append(PreflightFinding(
+                            "error", index, f"Choose a {field.replace('_', ' ')} "
+                            "or bind a typed text variable."))
                 # Paths may be produced by earlier steps. Filesystem absence
                 # is advisory; inaccessible drives return a useful warning.
                 try:
@@ -308,7 +317,7 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         if (action.kind in ("click_image", "wait_until", "if_start", "until_start")
                 and action.condition_source == "image"):
             # Disabled image actions have no runtime dependency on their file.
-            if required:
+            if required and "image_path" not in action.bindings:
                 _image_issues(action, index, findings, required=True)
         if required and binding is not None and binding.spec["relative"] and (
                 target_info is not None):
