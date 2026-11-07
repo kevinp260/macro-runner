@@ -78,11 +78,13 @@ not activate or expose a covered target window.
 On playback, the existing OpenCV match and poll/timeout/retry controls are
 reused. After the match, MacroRunner adds the offset **once** to the
 physical global match center and checks the final point **before clicking**.
-A negative or out-of-primary-screen point is rejected; with a client-relative
-target window, the point must additionally remain inside the target's client
-rectangle. Target movement/focus after matching is checked, and Stop
-before click dispatch prevents input. A missing reference image or match
-never triggers a click.
+For **nonzero offsets**, a negative or out-of-primary-screen click
+point is rejected; with a client-relative target window, the offset point
+must additionally remain inside the target's client rectangle. With
+**zero offsets**, the previous center-click behavior (including any supported
+secondary-monitor coordinate conventions) is unchanged. Target movement/focus
+after matching is checked, and Stop before click dispatch prevents input.
+A missing reference image or match never triggers a click.
 
 **Display limitations:** On Windows and X11 the screenshot/mouse backend
 primarily supports the primary screen. A secondary monitor, negative
