@@ -37,6 +37,7 @@ from macro_recovery import RecoveryStore, atomic_json_write
 from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
                            validate_target, target_from_window)
 from macro_qt_windows import WindowPickerDialog
+from macro_qt_clipboard import QtClipboardClient
 from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -216,6 +217,7 @@ class MacroWindow(QMainWindow):
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
         self.window_target = None
+        self.clipboard_client = QtClipboardClient(self)
         self.history = ActionHistory(60)
         data_dir = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.AppLocalDataLocation)
@@ -976,6 +978,7 @@ class MacroWindow(QMainWindow):
                 start_index=begin, step_mode=step_mode,
                 breakpoints=self.tree.breakpoint_indices(), debug_gap=self.debug_gap.value(),
                 window_target=self.window_target,
+                clipboard=self.clipboard_client,
                 on_diagnostic=self.run_signals.diagnostic.emit,
                 on_failure_capture=(self.run_signals.failure_capture.emit
                     if self.settings.value("diagnostics_capture_errors", False, type=bool)
