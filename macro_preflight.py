@@ -14,6 +14,7 @@ from PIL import Image
 
 from macro_flow import CONTROL, has_smart_actions, validate_flow, validate_start_selection
 from macro_model import validate_action
+from macro_windows import WindowBinding, WindowUnavailable
 
 
 @dataclass(frozen=True)
@@ -94,7 +95,8 @@ def _geometry_issues(action, index, screen_size, findings):
 
 
 def inspect_workflow(actions, *, start_index=0, screen_size=None,
-                     platform_name=None, session_type=None):
+                     platform_name=None, session_type=None, window_target=None,
+                     window_manager=None):
     """Return pre-run findings in workflow order, without performing actions.
 
     The same model and structural checks as MacroExecutor are applied first.
@@ -158,6 +160,18 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             "Wayland may restrict global input and screen capture. "
             "Use an X11 session where required; verify desktop permissions."))
 
+    binding = None
+    target_info = None
+    if window_target is not None:
+        try:
+            binding = WindowBinding(window_target, manager=window_manager)
+            # No activation is performed by preflight: checking a target
+            # must not change window focus or send desktop input.
+            target_info = binding.resolve()
+        except (WindowUnavailable, ValueError, OSError) as exc:
+            findings.append(PreflightFinding("error", None, str(exc)))
+            return findings
+
     for index in range(start_index, len(normalized)):
         action = normalized[index]
         # Control markers are necessary for flow execution even though they
@@ -168,7 +182,27 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             # Disabled image actions have no runtime dependency on their file.
             if required:
                 _image_issues(action, index, findings, required=True)
-        if required:
+        if required and binding is not None and binding.spec["relative"]:
+            try:
+                bound = binding.transform(action, target_info)
+                if (action.kind in ("click_image", "wait_until", "if_start",
+                                    "until_start", "watch_start") and
+                        (action.kind == "watch_start" or
+                         action.condition_source == "image") and
+                        bound.region_x is not None and
+                        (bound.region_x < 0 or bound.region_y < 0)):
+                    raise WindowUnavailable(
+                        "Window screenshot region has a negative screen origin; "
+                        "move the window onto a positive-coordinate display.")
+                if (action.kind in ("wait_until", "if_start", "until_start") and
+                        action.condition_source == "pixel" and
+                        (bound.pixel_x < 0 or bound.pixel_y < 0)):
+                    raise WindowUnavailable(
+                        "Window pixel has a negative screen origin unsupported by "
+                        "the screenshot backend.")
+            except WindowUnavailable as exc:
+                findings.append(PreflightFinding("error", index, str(exc)))
+        elif required:
             _geometry_issues(action, index, screen_size, findings)
 
     return findings
