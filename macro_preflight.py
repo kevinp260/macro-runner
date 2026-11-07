@@ -153,7 +153,8 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         return findings
 
     try:
-        definitions = validate_references(normalized, variables or [])
+        definitions = validate_references(
+            normalized, variables or [], require_outputs=True)
         for index, message in unset_warnings(
                 normalized, definitions, start_index, variable_overrides):
             findings.append(PreflightFinding("warning", index, message))
