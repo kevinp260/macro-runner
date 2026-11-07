@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added an Open Application/File/URL action with shell-free explicit arguments,
+  OS default file/HTTP(S) handlers, preflight path/permission checks, and a
+  direct inspector file picker and test-launch control (Issue #47).
+
 - Added Set clipboard text and Paste clipboard/text actions with Unicode,
   optional best-effort prior-text restoration, Pause/Stop support, Qt clipboard
   thread safety, and redacted workflow labels/diagnostics (Issue #46).

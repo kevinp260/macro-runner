@@ -120,4 +120,6 @@ def default_node(kind):
         return WorkflowNode(Action(kind=kind, keys="shift"))
     if kind == "clipboard_set":
         return WorkflowNode(Action(kind=kind, clipboard_text=""))
+    if kind == "launch":
+        return WorkflowNode(Action(kind=kind))
     return WorkflowNode(Action(kind=kind))

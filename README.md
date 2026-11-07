@@ -57,6 +57,49 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Open application, file or URL (Issue #47)
+
+Add **Open application / file / URL** from the action palette, then choose a
+mode in Properties:
+
+- **Application:** Choose an absolute path to an executable and optionally
+  supply arguments, **one argument per line**. Every line is one literal value:
+  an argument such as `My Project Folder` needs no surrounding quotes. The
+  app starts directly without `shell=True`, a command interpreter, or a
+  terminal. On Windows choose an `.exe` or `.com`; on Linux the file must be
+  executable (including a script with an executable bit and valid shebang).
+- **File:** Choose an existing local file to open in the system's associated
+  default app (Windows file association / Ubuntu `xdg-open`). Arguments are
+  not applicable.
+- **URL:** Enter an `http://` or `https://` URL to open through the
+  default browser. Local `file://`, `javascript:`, and other schemes are
+  rejected. Arguments are not applicable.
+
+Use **Browse…** for files/executables and **Test launch…** to open the target
+using **current unsaved form fields**. Testing performs a real launch, but
+does not apply or save your action. Click **Apply changes** to persist it.
+
+Execution preflight checks the target's existence, type, permissions and URL
+format before sending input or initiating an app launch. An unconfigured action
+can be inserted and edited, but cannot run until its target is configured.
+Relative paths are deliberately unsupported, so behavior does not depend on
+the current working directory of an installed application. Paths containing
+spaces and Unicode work without shell quoting. No command output is captured.
+
+The launch action **requests** an OS start: success does not imply a browser
+successfully rendered the page or the launched application is ready for input.
+An OS opener can report delayed failure after a request is accepted. A newly
+launched process is **not** stopped or killed when the macro Stop button is
+pressed. Stop before the action blocks dispatch; a launch already accepted by
+the OS cannot be undone. Launch actions don't alter a saved target-window
+binding or force its activation. Use the planned wait-for-window action
+(Issue #48) if a subsequent step needs to wait for an app window.
+
+This is supported on Windows and Ubuntu/Linux desktops without opening a
+terminal. Ubuntu requires `xdg-open` for file/URL associations. Avoid treating
+untrusted workflow files as safe to run: an Open Application action can start
+any selected executable in your user account.
+
 ## Clipboard and paste actions (Issue #46)
 
 Add **Set clipboard text** from the action palette to put literal text on the

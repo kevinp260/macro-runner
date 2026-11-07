@@ -14,6 +14,7 @@ from PIL import Image
 
 from macro_flow import CONTROL, has_smart_actions, validate_flow, validate_start_selection
 from macro_model import validate_action
+from macro_launch import LaunchError, validate_launch
 from macro_windows import WindowBinding, WindowUnavailable
 
 
@@ -177,6 +178,11 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         # Control markers are necessary for flow execution even though they
         # are not leaf actions. Disabled leaf actions never access the screen.
         required = action.enabled
+        if required and action.kind == "launch":
+            try:
+                validate_launch(action, check_files=True, platform_name=platform_name)
+            except LaunchError as exc:
+                findings.append(PreflightFinding("error", index, str(exc)))
         if (action.kind in ("click_image", "wait_until", "if_start", "until_start")
                 and action.condition_source == "image"):
             # Disabled image actions have no runtime dependency on their file.

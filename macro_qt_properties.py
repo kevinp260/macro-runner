@@ -25,6 +25,7 @@ SPECS = {
     "drag": ["x", "y", "to_x", "to_y", "move_duration", "button"],
     "clipboard_set": ["clipboard_text"],
     "clipboard_paste": ["clipboard_text", "clipboard_restore"],
+    "launch": ["launch_mode", "launch_target", "launch_args"],
     "loop_start": [],
     "if_start": [],
     "until_start": [],
@@ -43,6 +44,7 @@ COMBOS = {
     "condition_source": ["image", "pixel"],
     "match_mode": ["matches", "not_matches"],
     "failure_policy": ["stop", "skip", "retry"],
+    "launch_mode": ["application", "file", "url"],
 }
 INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "pixel_x", "pixel_y", "pixel_tolerance",
@@ -101,6 +103,7 @@ class PropertiesPanel(QFrame):
     test_move = Signal(int, int)
     pick_region = Signal()
     test_monitoring = Signal(object)
+    test_launch = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -178,6 +181,16 @@ class PropertiesPanel(QFrame):
             self.form.addRow("", enabled)
         for field in fields_for_kind(action.kind):
             value = getattr(action, field)
+            if field == "launch_args":
+                widget = QPlainTextEdit()
+                widget.setPlainText(value)
+                widget.setPlaceholderText(
+                    "One argument per line. Spaces and Unicode stay intact. "
+                    "No quoting or shell syntax.")
+                widget.setMaximumHeight(100)
+                self.controls[field] = widget
+                self.form.addRow("Arguments", widget)
+                continue
             if field == "clipboard_text":
                 widget = QPlainTextEdit()
                 widget.setPlainText("" if value is None else value)
@@ -201,6 +214,18 @@ class PropertiesPanel(QFrame):
                 widget.setCurrentText(str(value))
             else:
                 widget = QLineEdit("" if value is None else str(value))
+                if field == "launch_target":
+                    row = QWidget()
+                    layout = QHBoxLayout(row)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.addWidget(widget, 1)
+                    browse = QPushButton("Browse…")
+                    browse.clicked.connect(lambda _, target=widget: self.browse_launch(target))
+                    layout.addWidget(browse)
+                    self.launch_browse = browse
+                    self.form.addRow("Path or URL", row)
+                    self.controls[field] = widget
+                    continue
                 if field == "image_path":
                     row = QWidget()
                     layout = QHBoxLayout(row)
@@ -214,6 +239,24 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind == "launch":
+            self.controls["launch_mode"].currentTextChanged.connect(
+                self.update_launch_visibility)
+            self.update_launch_visibility()
+            info = QLabel(
+                "Application runs an executable directly; each argument line "
+                "is a literal parameter (no shell). File opens in the default "
+                "desktop app; URL opens HTTP(S) in the default browser. "
+                "Test launch actually opens the target.")
+            info.setWordWrap(True)
+            info.setObjectName("panelHint")
+            self.form.addRow(info)
+            test = QPushButton("Test launch…")
+            test.setToolTip(
+                "Actually start/open the selected app, file or URL using "
+                "current form values; does not save the action.")
+            test.clicked.connect(self._test_launch)
+            self.form.addRow(test)
         if action.kind in ("clipboard_set", "clipboard_paste"):
             info = QLabel(
                 "Clipboard text is saved as plaintext in macro files and local "
@@ -292,6 +335,15 @@ class PropertiesPanel(QFrame):
                 self.controls["match_mode"].setEnabled(False)
             self.update_visual_visibility()
 
+    def update_launch_visibility(self, _=None):
+        mode = self.controls.get("launch_mode")
+        if mode is None:
+            return
+        is_app = mode.currentText() == "application"
+        args = self.controls["launch_args"]
+        args.setEnabled(is_app)
+        self.launch_browse.setVisible(mode.currentText() != "url")
+
     def update_failure_visibility(self, _=None):
         policy = self.controls.get("failure_policy")
         if policy is None:
@@ -344,6 +396,13 @@ class PropertiesPanel(QFrame):
             return
         self.test_move.emit(x, y)
 
+    def browse_launch(self, target):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose application or file", "",
+            "All files (*)")
+        if path:
+            target.setText(path)
+
     def browse_image(self, target):
         path, _ = QFileDialog.getOpenFileName(
             self, "Choose cropped reference image", "",
@@ -368,10 +427,22 @@ class PropertiesPanel(QFrame):
             else:
                 value = convert(field, widget.text())
             data[field] = value
+        if data["kind"] == "launch" and data["launch_mode"] != "application":
+            data["launch_args"] = ""
         if data["kind"] == "click_image":
             data["condition_source"] = "image"
             data["match_mode"] = "matches"
         return validate_action(data)
+
+    def _test_launch(self):
+        if self.current is None or self.current.kind != "launch":
+            return
+        try:
+            action = self._read_action()
+        except (TypeError, ValueError) as exc:
+            QMessageBox.warning(self, "Invalid launch settings", str(exc))
+            return
+        self.test_launch.emit(action)
 
     def _test_monitoring(self):
         if self.current is None or self.current.kind != "watch_start":
