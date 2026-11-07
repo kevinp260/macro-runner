@@ -5,6 +5,11 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added foreground target-window selection on Windows/X11, safe re-identification,
+  client-relative action coordinates, and explicit Wayland/background limitations
+  (Issue #45).
+
+
 - Added an unsaved-workflow title indicator, Save/Discard/Cancel prompts,
   bounded atomic local recovery snapshots, startup restore/discard, and
   atomic normal workflow saves (Issue #40).
