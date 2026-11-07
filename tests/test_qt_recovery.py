@@ -198,6 +198,10 @@ class QtRecoveryTests(unittest.TestCase):
         self.assertIsNone(self.window.current_file)
         self.assertEqual(source.read_text(), "original file remains untouched")
         self.assertEqual(self.path.read_bytes(), snapshot)
+        # The original path remains available on another crash/restart,
+        # although the recovered document itself is always untitled.
+        self.window._write_recovery()
+        self.assertEqual(self.window.recovery_store.read().source_file, str(source))
         saved_copy = self.root / "recovered-as.json"
         with patch("macro_qt.QFileDialog.getSaveFileName",
                    return_value=(str(saved_copy), "")):
