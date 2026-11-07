@@ -84,6 +84,9 @@ A consolidated deferred test checklist for all planned PRs lives in
       an **unsaved copy**; original user file is untouched until explicitly saved.
 - [ ] On restart choose Discard recovery and verify snapshot deletion without
       changing the last saved user file. Verify canceled Close retains edits.
+- [ ] Corrupt the recovery JSON, restart, and choose Cancel: the damaged file
+      must remain untouched even after a clean Close or subsequent edits.
+      Explicit Discard should delete it and allow autosaving again.
 - [ ] Test unwriteable recovery directory and failed normal Save: warning,
       current edits retained, and an existing file not truncated.
 - [ ] Perform multiple edits quickly and confirm only one recovery snapshot
