@@ -60,6 +60,21 @@ class BreakpointTreeTests(unittest.TestCase):
         self.assertIn("●", item.text(0))
         tree.close()
 
+    def test_clear_breakpoints_and_duplicate_without_copying_marker(self):
+        tree = WorkflowTree()
+        tree.set_actions([Action(kind="wait", seconds=1)])
+        first = tree.topLevelItem(0)
+        first.setSelected(True)
+        tree.toggle_breakpoints()
+        tree.duplicate_selection()
+        self.assertEqual(len(tree.actions()), 2)
+        self.assertEqual(tree.breakpoint_indices(), {0})
+        self.assertNotIn("●", tree.topLevelItem(1).text(0))
+        tree.clear_breakpoints()
+        self.assertEqual(tree.breakpoint_indices(), set())
+        self.assertNotIn("●", tree.topLevelItem(0).text(0))
+        tree.close()
+
     def test_action_edit_and_reorder_keep_marker_but_rebuild_resets(self):
         tree = WorkflowTree()
         tree.set_actions([Action(kind="wait", seconds=1),
