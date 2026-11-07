@@ -122,4 +122,6 @@ def default_node(kind):
         return WorkflowNode(Action(kind=kind, clipboard_text=""))
     if kind == "launch":
         return WorkflowNode(Action(kind=kind))
+    if kind == "wait_window":
+        return WorkflowNode(Action(kind=kind))
     return WorkflowNode(Action(kind=kind))
