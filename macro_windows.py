@@ -202,9 +202,6 @@ class _X11:
             ("format", ctypes.c_int), ("data", ctypes.c_long * 5),
         ]
 
-    class Event(ctypes.Union):
-        _fields_ = [("xclient", ClientMessage), ("pad", ctypes.c_long * 24)]
-
     def __init__(self):
         path = find_library("X11")
         if not path:
@@ -347,7 +344,10 @@ class _X11:
         display = self._open()
         try:
             root = self.x.XDefaultRootWindow(display)
-            event = self.Event()
+            class Event(ctypes.Union):
+                _fields_ = [("xclient", self.ClientMessage),
+                            ("pad", ctypes.c_long * 24)]
+            event = Event()
             event.xclient.type = 33  # ClientMessage
             event.xclient.display = display
             event.xclient.window = handle
