@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window"]
 
 @dataclass
 class Action:
@@ -57,6 +57,13 @@ class Action:
     launch_mode: str = "application"
     launch_target: str = ""
     launch_args: str = ""
+    # Wait for window: optionally reuse workflow target or a picked/title match.
+    window_wait_source: str = "custom"
+    window_wait_state: str = "appears"
+    window_wait_title: str = ""
+    window_wait_class: str = ""
+    window_wait_handle: int = 0
+    window_wait_pid: int = 0
 
 
 def _finite_nonnegative(value, field):
@@ -80,7 +87,7 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -181,6 +188,10 @@ def validate_action(item):
             raise ValueError("Poll interval must be positive.")
         if action.kind in ("click_image", "wait_until"):
             _finite_nonnegative(action.timeout, "Timeout")
+    if action.kind == "wait_window":
+        from macro_window_wait import validate_window_wait
+        validate_window_wait(action)
+        # Reuse existing timeout/poll_interval fields for UI and persistence.
     if action.kind == "launch":
         from macro_launch import validate_launch
         if (action.launch_mode not in ("application", "file", "url") or
