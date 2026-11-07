@@ -69,6 +69,32 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Clipboard and Unicode paste (Issue #46)
+
+- [ ] On Windows 11 and Ubuntu X11, add Set clipboard text and Paste
+      clipboard/text actions; enter harmless Unicode test content (e.g.
+      Greek, Arabic, CJK and emoji) and multiline text. Verify clipboard
+      transfers and Ctrl+V into a common native text editor and browser form.
+- [ ] Paste the existing clipboard (blank action text). Confirm empty or
+      non-text clipboard produces a clear error without pressing Ctrl+V.
+- [ ] With temporary paste text and Restore enabled, confirm prior plain text
+      or empty clipboard is restored; with Restore disabled, pasted text remains.
+      Non-text clipboard formats must be protected unless Restore is off.
+- [ ] During paste, change clipboard from a second application; MacroRunner
+      must not overwrite changed data during the restore step. Verify target
+      application actually consumed pasted data before restoration.
+- [ ] Test slow text editors, multiline/emoji clipboard ownership and clipboard
+      failure/unavailable scenarios. Confirm Stop/Pause/Step and a disabled
+      action do not leak input or leave keys held.
+- [ ] With target-window activation enabled/disabled, test paste when another
+      window is foreground; verify no unintended clipboard text goes to the
+      wrong application.
+- [ ] Verify action labels, Run History and redacted export never show typed
+      clipboard contents; note that workflow JSON and local crash recovery
+      contain the literal plaintext. Save/open legacy and v2 workflows.
+- [ ] Check packaged Windows and Ubuntu installers, plus Wayland capability
+      differences (clipboard may work even if global paste hotkeys do not).
+
 ## Target-window automation (Issue #45)
 
 - [ ] On Windows 11 and Ubuntu X11/Xorg, open **Choose window…**; confirm
