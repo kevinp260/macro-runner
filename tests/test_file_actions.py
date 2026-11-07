@@ -137,6 +137,10 @@ class FileActionTests(unittest.TestCase):
                       " " + str(self.source), str(self.source) + "\n"):
             with self.subTest(value=value), self.assertRaises(FileActionError):
                 local_path(value, "File", required=True)
+        with patch("macro_files.Path.expanduser",
+                   side_effect=RuntimeError("unknown account")):
+            with self.assertRaisesRegex(FileActionError, "home directory"):
+                local_path("~unavailable/file.txt", "File")
         with self.assertRaises(FileActionError):
             run_file_action(Action(kind="file_copy", file_path=str(self.source),
                                    file_destination=str(self.source)), Gate())
