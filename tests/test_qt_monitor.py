@@ -155,7 +155,8 @@ class RegionMonitorTests(unittest.TestCase):
             self.assertEqual(selected[0].watch_change_percent, 2.5)
             self.assertEqual(original.region_x, 10)  # No edit committed.
             panel.controls["region_w"].setText("0")
-            with patch.object(QMessageBox, "warning", side_effect=warnings.append):
+            with patch.object(QMessageBox, "warning",
+                              side_effect=lambda *args: warnings.append(args)):
                 button.click()
             self.assertEqual(len(selected), 1)
             self.assertEqual(len(warnings), 1)
