@@ -5,6 +5,9 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added pre-run workflow validation, blocking errors and acknowledged warnings,
+  with direct navigation to offending workflow actions (Issue #38).
+
 - Added per-action Stop/Skip/Retry failure handling, bounded retry counts and
   delays for pre-input visual-condition timeouts, and Run History retry/skip
   diagnostics (Issue #37).
