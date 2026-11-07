@@ -46,9 +46,16 @@ def paste_clipboard(clipboard, automation, gate, *, text=None,
             prepare_focus()
         gate.wait(0)
         automation.hotkey("ctrl", "v")
-        # The target may consume the clipboard after the shortcut returns.
-        # Allow a brief cancellable interval before best-effort restoration.
-        gate.wait(0.2)
+        if text is not None and restore:
+            # Allow the target to consume text before restoring. A mid-action
+            # Pause must not leave temporary clipboard contents indefinitely;
+            # Stop still interrupts this brief settle interval.
+            stopped = getattr(gate, "stopped", None)
+            if hasattr(stopped, "wait"):
+                if stopped.wait(0.2):
+                    raise RuntimeError("Stopped")
+            else:
+                gate.wait(0.2)
     finally:
         if attempted and restore:
             # Cleanup is attempted even after Stop or failure. It is not
