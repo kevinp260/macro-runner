@@ -176,8 +176,11 @@ def validate_action(item):
                     raise ValueError(
                         f"{field} must be an integer offset between -100000 and 100000 pixels.")
         if action.condition_source == "image":
-            if not isinstance(action.image_path, str) or not action.image_path.strip():
-                raise ValueError("Select a reference image.")
+            if (not isinstance(action.image_path, str) or
+                    (not action.image_path.strip() and
+                     not (isinstance(action.bindings, dict) and
+                          action.bindings.get("image_path")))):
+                raise ValueError("Select a reference image or bind an image-path variable.")
             _finite_nonnegative(action.confidence, "Image confidence")
             if not 0 < action.confidence <= 1:
                 raise ValueError("Image confidence must be greater than 0 and at most 1.")
