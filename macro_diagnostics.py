@@ -39,6 +39,8 @@ CAPTURE_NAME = re.compile(r"^[a-f0-9]{32}\.jpg$")
 
 def safe_error_code(error):
     """Only store known error categories, never raw exception text."""
+    if isinstance(error, TimeoutError):
+        return "TimeoutError"
     if isinstance(error, str):
         label = error
     else:

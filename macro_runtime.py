@@ -9,7 +9,8 @@ from macro_model import validate_action
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 from macro_keys import HeldKeys
 from macro_diagnostics import safe_error_code
-from macro_vision import locate_image, check_condition, poll_until, watch_region_change
+from macro_vision import (ConditionTimeout, locate_image, check_condition,
+                          poll_until, watch_region_change)
 from dataclasses import asdict
 
 
@@ -136,7 +137,7 @@ class MacroExecutor:
             self.gate.wait(0)
             try:
                 return probe()
-            except TimeoutError:
+            except ConditionTimeout:
                 # Stop takes precedence, even when a timeout races with Stop.
                 self.gate.wait(0)
                 if attempt == extras:

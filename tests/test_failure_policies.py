@@ -7,6 +7,7 @@ from PIL import Image
 
 from macro_model import Action, parse_document, serialize_document, validate_action
 from macro_runtime import MacroExecutor
+from macro_vision import ConditionTimeout
 from macro_diagnostics import RunSession
 from macro_qt_history import describe_run
 from macro_workflow import from_actions, to_actions
@@ -175,7 +176,7 @@ class FailurePolicyExecutionTests(unittest.TestCase):
         def probe(*args, **kwargs):
             tries.append(1)
             if len(tries) == 1:
-                raise TimeoutError("No match yet")
+                raise ConditionTimeout("No match yet")
             return (20, 30, .9)
         with patch("macro_runtime.poll_until", side_effect=probe):
             _, target, outcomes, events = execute([image_action], desktop)
@@ -192,6 +193,17 @@ class FailurePolicyExecutionTests(unittest.TestCase):
         self.assertFalse(outcomes[0][0])
         self.assertEqual(len(tries), 1)  # The click must NEVER be duplicated.
         self.assertEqual(len(target.clicks), 1)
+        self.assertFalse(any(e["event"] == "action_retry" for e in events))
+
+    def test_backend_timeout_is_not_treated_as_retryable_condition_timeout(self):
+        a = wait_until(failure_policy="retry", retry_count=3, retry_delay=0)
+        class BrokenDesktop(FakeDesktop):
+            def screenshot(self, region=None):
+                self.screenshots += 1
+                raise TimeoutError("backend unavailable")
+        _, target, outcomes, events = execute([a], BrokenDesktop())
+        self.assertFalse(outcomes[0][0])
+        self.assertEqual(target.screenshots, 1)
         self.assertFalse(any(e["event"] == "action_retry" for e in events))
 
     def test_failsafe_cannot_be_suppressed_by_skip(self):

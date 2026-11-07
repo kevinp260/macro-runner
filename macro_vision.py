@@ -58,6 +58,10 @@ def check_condition(action, screenshot):
     return matched if action.match_mode == "matches" else not matched
 
 
+class ConditionTimeout(TimeoutError):
+    """Polling reached its configured timeout before the condition matched."""
+
+
 def poll_until(action, probe, gate):
     """Poll up to timeout active seconds; pausing does not consume the budget."""
     remaining = action.timeout
@@ -67,7 +71,7 @@ def poll_until(action, probe, gate):
         if value:
             return value
         if remaining <= 0:
-            raise TimeoutError(f"{action.name or action.kind}: condition timed out.")
+            raise ConditionTimeout(f"{action.name or action.kind}: condition timed out.")
         interval = min(action.poll_interval, remaining)
         gate.wait(interval)
         remaining -= interval
