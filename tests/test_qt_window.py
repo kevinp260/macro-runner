@@ -1,3 +1,4 @@
+from qt_test_helpers import close_test_window
 import sys
 import unittest
 from types import SimpleNamespace
@@ -31,7 +32,7 @@ class WindowTests(unittest.TestCase):
             self.assertFalse(w._restore_after_run)
         finally:
             w.minimize_on_run.setChecked(False)
-            w.close()
+            close_test_window(w)
 
     def test_minimize_off_keeps_window_unchanged(self):
         w = MacroWindow()
@@ -42,7 +43,7 @@ class WindowTests(unittest.TestCase):
             w._finished(True, "Done")
             self.assertFalse(w.isMinimized())
         finally:
-            w.close()
+            close_test_window(w)
 
 
     def test_pending_completion_keeps_editor_locked(self):
@@ -55,7 +56,7 @@ class WindowTests(unittest.TestCase):
             self.assertFalse(w._busy())
         finally:
             w.executor = None
-            w.close()
+            close_test_window(w)
 
     def test_window_undo_and_full_workflow(self):
         w = MacroWindow()
@@ -69,7 +70,7 @@ class WindowTests(unittest.TestCase):
             w.redo()
             self.assertEqual(w.actions[-1].kind, "loop_end")
         finally:
-            w.close()
+            close_test_window(w)
 
     def test_scrollable_palette_and_inspector(self):
         w = MacroWindow()
@@ -82,7 +83,7 @@ class WindowTests(unittest.TestCase):
             w.tree.topLevelItem(0).setSelected(True)
             self.assertEqual(w.inspector.current.kind, "wait")
         finally:
-            w.close()
+            close_test_window(w)
 
 
 class ScreenSelectionVisibilityTests(unittest.TestCase):
@@ -94,7 +95,7 @@ class ScreenSelectionVisibilityTests(unittest.TestCase):
 
     def tearDown(self):
         self.w._end_screen_selection()
-        self.w.close()
+        close_test_window(self.w)
         if self.original_mode is None:
             self.w.settings.remove("selection_window_mode")
         else:
@@ -222,7 +223,7 @@ class ScreenSelectionVisibilityTests(unittest.TestCase):
         with patch("macro_qt.QTimer", timer):
             self.w._pick_region()
             self.assertFalse(self.w.isVisible())
-            self.w.close()
+            close_test_window(self.w)
             scheduled.pop()()  # The queued callback must not open the overlay.
             self.assertIsNone(self.w.region_picker)
             self.assertFalse(self.w.isVisible())
