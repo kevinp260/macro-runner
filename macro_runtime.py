@@ -10,8 +10,8 @@ from macro_model import validate_action
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 from macro_keys import HeldKeys
 from macro_diagnostics import safe_error_code
-from macro_vision import (ConditionTimeout, locate_image, check_condition,
-                          poll_until, watch_region_change)
+from macro_vision import (ConditionTimeout, locate_image, image_click_point,
+                          check_condition, poll_until, watch_region_change)
 from dataclasses import asdict
 from macro_windows import WindowBinding, WindowUnavailable
 from macro_clipboard import ClipboardUnavailable, paste_clipboard
@@ -247,13 +247,24 @@ class MacroExecutor:
             match = self._poll_with_retries(
                 a, lambda: poll_until(a, find, self.gate))
             self._emit("image_match", action=a, result=True)
+            client_rect = None
             if self.window_binding is not None:
-                current = self._bound_action(a)
+                info = self.window_binding.prepare(self.gate)
+                current = self.window_binding.transform(a, info)
                 if (current.region_x, current.region_y,
                         current.region_w, current.region_h) != last_region:
                     raise WindowUnavailable(
                         "Target window moved after image matching. Run again.")
-            pag.click(match[0], match[1], button=a.button)
+                if self.window_binding.spec["relative"]:
+                    client_rect = (info.x, info.y, info.width, info.height)
+            # The detector returns a physical global center, including any
+            # screenshot-region origin. Never add that origin twice.
+            screen_size = pag.size() if hasattr(pag, "size") else None
+            x, y = image_click_point(
+                a, match, screen_size=screen_size, client_rect=client_rect)
+            # Stop during matching, verification or Pause must not inject input.
+            self.gate.wait(0)
+            pag.click(x, y, button=a.button)
         elif a.kind == "wait_until":
             self._poll_with_retries(
                 a, lambda: poll_until(
