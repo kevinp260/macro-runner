@@ -100,7 +100,11 @@ def description(action):
         detail = ""
     base = action.name.strip() or TITLES.get(kind, kind)
     repeats = f" · ×{action.repeats}" if (kind not in OPENERS and action.repeats > 1) else ""
-    return f"{base}  ·  {detail}{repeats}" + ("" if action.enabled else "  [disabled]")
+    policy = (
+        f" · retry {action.retry_count}×" if action.failure_policy == "retry"
+        else " · skip on error" if action.failure_policy == "skip" else "")
+    return f"{base}  ·  {detail}{repeats}{policy}" + (
+        "" if action.enabled else "  [disabled]")
 
 
 class ActionPalette(QListWidget):

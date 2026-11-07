@@ -22,7 +22,8 @@ def describe_run(run):
         f"Outcome: {run['status']}",
         f"Duration: {run['duration_s']:.2f} seconds",
         f"Mode: {run['mode']} / workflow repeats: {run['repeat_count']}",
-        f"Completed actions: {run['completed_actions']} "
+        f"Completed actions: {run['completed_actions']}; "
+        f"skipped after failure: {run.get('skipped_actions', 0)} "
         f"(workflow entries: {run['action_count']})",
     ]
     if run.get("error_code"):
@@ -44,6 +45,9 @@ def describe_run(run):
             more += " · " + ERROR_CODES.get(item["error"], ERROR_CODES["Exception"])
         if "cycle" in item:
             more += f" · cycle {item['cycle']}"
+        if "attempt" in item:
+            more += (f" · attempt {item['attempt']}/"
+                     f"{item.get('max_attempts', '?')}")
         lines.append(f"{item['at_s']:>8.3f}s  {label}{prefix}{more}")
     if run.get("dropped_events"):
         lines.append(

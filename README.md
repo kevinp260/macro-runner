@@ -57,6 +57,27 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Per-action failure handling
+
+Each executable action has an **On failure** choice in Properties:
+
+- **stop** (default): preserve the existing behavior and stop the workflow.
+- **skip**: log the error as an action skip, then continue with the next
+  executable action or nested step. Skipping an input action may leave partial
+  effects: a click or keystroke may already have reached the application.
+- **retry**: offered only for **Wait Until** and **Click Image**. Set
+  **retry count** (1–10 additional attempts) and **retry delay** (0–60 seconds).
+  The timeout on the action applies **separately to every attempt**. Retry is
+  triggered only by a timeout while polling for a condition or image, **before
+  any mouse or keyboard input is sent**. The actual image click is never
+  retried after an input failure, preventing accidental duplicate clicks.
+
+Retries are finite and honor Pause, Stop, and the existing mouse-corner
+fail-safe. A Step executes the whole retry attempt sequence as one action.
+Policies are stored in existing version-2 macro JSON, and older macros
+automatically default to stop. Run History shows retry attempts, skipped
+actions, and safe error categories without logging action parameters.
+
 ## Run history and diagnostics
 
 Open **History** in the toolbar (or **View → History**) to see a bounded

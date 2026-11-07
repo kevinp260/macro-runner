@@ -69,6 +69,27 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Per-action failure handling (Issue #37)
+
+- [ ] Select a Wait Until or Click Image action: switch On failure between
+      Stop / Skip / Retry, edit retry count and delay, and confirm the values
+      persist after Save/Open and undo/redo.
+- [ ] Confirm Click, Move, Drag, Type, Hold/Release and other input actions
+      expose Stop and Skip, **not** automatic Retry (to avoid duplicate input).
+- [ ] Simulate a missing image or pixel condition: retry a finite number of
+      times, then succeed or fail after the configured per-attempt timeout.
+      Inspect Run History for attempt numbers and sanitized errors.
+- [ ] Set Skip for a missing visual condition inside a nested Repeat and If;
+      confirm the next executable step runs and skips are counted separately.
+- [ ] While waiting for a retry delay, test Stop, Pause/Resume and Step; verify
+      no retry continues after Stop and emergency mouse-corner fail-safe
+      errors are never suppressed.
+- [ ] Cause a click or keyboard action to fail under Skip. Verify the action
+      is never blindly replayed, and document that partial side effects may
+      still have occurred.
+- [ ] Load an older JSON macro without failure-policy fields; confirm the
+      default remains Stop. Verify bad policy names/counts reject on import.
+
 ## Run history and diagnostic logs (Issue #36)
 
 - [ ] On real Ubuntu/X11 and Windows installations, run a successful workflow,

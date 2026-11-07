@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added per-action Stop/Skip/Retry failure handling, bounded retry counts and
+  delays for pre-input visual-condition timeouts, and Run History retry/skip
+  diagnostics (Issue #37).
+
 - Added local, bounded Run History and action-level diagnostic events (Issue #36),
   with copy/redacted-export, paused/stopped/error outcomes, and opt-in failure
   screenshots with retention controls.

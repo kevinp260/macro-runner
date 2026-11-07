@@ -125,15 +125,57 @@ class MacroExecutor:
         finally:
             self.gate.end_action()
 
+    def _poll_with_retries(self, action, probe):
+        """Retry *only* the pre-input polling stage after a TimeoutError.
+
+        Click Image is deliberately never retried after sending its click:
+        an OS input exception could happen *after* the click took effect.
+        """
+        extras = action.retry_count if action.failure_policy == "retry" else 0
+        for attempt in range(extras + 1):
+            self.gate.wait(0)
+            try:
+                return probe()
+            except TimeoutError:
+                # Stop takes precedence, even when a timeout races with Stop.
+                self.gate.wait(0)
+                if attempt == extras:
+                    raise
+                self._emit(
+                    "action_retry", action=action, attempt=attempt + 2,
+                    max_attempts=extras + 1, error="TimeoutError")
+                self.gate.wait(action.retry_delay)
+        raise AssertionError("Retry count was not bounded.")
+
+    def _execute_with_policy(self, action):
+        try:
+            self._execute(action)
+        except Exception as exc:
+            # Never suppress Stop, emergency mouse-corner fail-safe, or
+            # unexpected cancellation, even when Skip was selected.
+            if (self.gate.stopped.is_set() or str(exc) == "Stopped" or
+                    type(exc).__name__ == "FailSafeException"):
+                raise
+            if action.failure_policy == "skip":
+                self._emit("action_skipped", action=action,
+                           error=safe_error_code(exc))
+                return False
+            raise
+        return True
+
     def _execute(self, a):
         pag = self._pag()
         self.gate.wait(0)
         if a.kind == "click_image":
-            match = poll_until(a, lambda: locate_image(a, pag.screenshot), self.gate)
+            match = self._poll_with_retries(
+                a, lambda: poll_until(
+                    a, lambda: locate_image(a, pag.screenshot), self.gate))
             self._emit("image_match", action=a, result=True)
             pag.click(match[0], match[1], button=a.button)
         elif a.kind == "wait_until":
-            poll_until(a, lambda: self._condition(a), self.gate)
+            self._poll_with_retries(
+                a, lambda: poll_until(
+                    a, lambda: self._condition(a), self.gate))
         elif a.kind == "click":
             pag.moveTo(a.x, a.y, duration=0)
             for n in range(a.clicks):
@@ -191,8 +233,9 @@ class MacroExecutor:
                         done += 1
                         self.on_progress(repeat + 1, self.repeat_count,
                                          idx, done, self.total)
-                        self._execute(action)
-                        self._emit("action_done", index=idx, cycle=repeat + 1)
+                        if self._execute_with_policy(action):
+                            self._emit("action_done", index=idx,
+                                       cycle=repeat + 1)
                     finally:
                         self.gate.end_action()
             success, message = True, "Workflow completed."
