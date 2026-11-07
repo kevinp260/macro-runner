@@ -87,8 +87,8 @@ actual workflow contents, including typed strings, application paths and image
 references, in **unencrypted plaintext**. The temporary file uses user-only
 permissions where supported. Protect your device/user account accordingly and
 explicitly Discard or Save when no longer needing recovery data. The app holds
-at most one snapshot, capped at **10 MB**, and imports/saves are also limited to
-10 MB. If recovery storage is unwritable, the app warns and leaves the current
+at most one snapshot, capped at **10 MB**; regular macro import/save
+limits are unchanged. If recovery storage is unwritable, the app warns and leaves the current
 edits in memory so you can save them elsewhere.
 
 ## Per-action failure handling
