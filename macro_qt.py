@@ -27,6 +27,7 @@ from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_variables import VariablesDialog
+from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
 from macro_diagnostics import RunHistoryStore, RunSession
@@ -851,6 +852,14 @@ class MacroWindow(QMainWindow):
             return
         dialog = VariablesDialog(self.variables, self.variable_overrides, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            validate_references(self.actions, dialog.definitions)
+        except ValueError as exc:
+            QMessageBox.warning(
+                self, "Variable still in use",
+                "Update the affected action bindings or results before "
+                f"changing this variable.\n\n{exc}")
             return
         if dialog.definitions != self.variables:
             self.history.record(self.actions, self.variables)
