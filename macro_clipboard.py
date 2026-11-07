@@ -1,5 +1,6 @@
 """Clipboard text operations and best-effort cleanup, without UI dependencies."""
 from dataclasses import dataclass
+import sys
 
 
 class ClipboardUnavailable(RuntimeError):
@@ -35,9 +36,12 @@ def paste_clipboard(clipboard, automation, gate, *, text=None,
                 raise ClipboardUnavailable(
                     "Cannot restore non-text clipboard data. "
                     "Disable restoration to replace the clipboard explicitly.")
-        clipboard.set_text(text, gate=gate)
-
+    attempted = False
     try:
+        if text is not None:
+            # Even a failed write might already have changed the clipboard.
+            attempted = True
+            clipboard.set_text(text, gate=gate)
         if prepare_focus is not None:
             prepare_focus()
         gate.wait(0)
@@ -46,12 +50,19 @@ def paste_clipboard(clipboard, automation, gate, *, text=None,
         # Allow a brief cancellable interval before best-effort restoration.
         gate.wait(0.2)
     finally:
-        if text is not None and restore:
+        if attempted and restore:
             # Cleanup is attempted even after Stop or failure. It is not
             # governed by Pause/Stop, but never overwrites a changed clipboard.
-            current = clipboard.read(cleanup=True)
-            if current.kind == "text" and current.text == text:
-                if previous.kind == "text":
-                    clipboard.set_text(previous.text, cleanup=True)
-                else:
-                    clipboard.clear(cleanup=True)
+            in_flight_error = sys.exc_info()[1]
+            try:
+                current = clipboard.read(cleanup=True)
+                if current.kind == "text" and current.text == text:
+                    if previous.kind == "text":
+                        clipboard.set_text(previous.text, cleanup=True)
+                    else:
+                        clipboard.clear(cleanup=True)
+            except Exception:
+                # Do not hide Stop or unsafe target-focus errors merely
+                # because clipboard cleanup also failed.
+                if in_flight_error is None:
+                    raise
