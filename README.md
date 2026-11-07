@@ -78,6 +78,24 @@ Policies are stored in existing version-2 macro JSON, and older macros
 automatically default to stop. Run History shows retry attempts, skipped
 actions, and safe error categories without logging action parameters.
 
+## Pre-run validation
+
+Before **Run**, **Run from Selected**, or **Step**, MacroRunner checks the
+applied workflow without sending any input or taking a screenshot. A findings
+dialog explains any invalid settings or control blocks, missing/corrupt
+reference images, images too large for their search regions, and screen
+coordinates or regions beyond the primary display. **Errors block playback**;
+**warnings require an explicit Run anyway** confirmation. Select a finding
+and click **Go to action** to highlight its position in the workflow tree.
+
+Primary-screen warnings are advisory: a coordinate may intentionally be on
+another monitor, and mixed-DPI systems can have different coordinate scales.
+Wayland sessions warn about platform limitations on global input/screen capture.
+The validator reads referenced images from the same paths used at runtime
+(relative paths are interpreted from the current working directory). Disabled
+actions and actions before a Run from Selected start do not need their images
+to be accessible. This check does not change or save macro JSON.
+
 ## Run history and diagnostics
 
 Open **History** in the toolbar (or **View → History**) to see a bounded

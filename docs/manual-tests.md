@@ -69,6 +69,28 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Pre-run validation (Issue #38)
+
+- [ ] Run, Run from Selected, and Step first validate the applied workflow;
+      no screenshot, click, typing, or recording should occur during checks.
+- [ ] Configure a missing or corrupt reference image and an image larger than
+      its chosen search region. Confirm blocking findings and clear fixes.
+- [ ] Use a valid image reference; confirm the validator does not flag it.
+      Test legacy JSON workflows and newly created nested blocks.
+- [ ] Check warnings for off-primary-screen click/drag/pixel coordinates and
+      out-of-bounds watch/image regions; verify another monitor may justify
+      choosing **Run anyway**.
+- [ ] Verify a restricted Wayland session shows the capability warning,
+      without claiming background input or screenshot access is supported.
+- [ ] Select findings inside nested Repeat/If branches and **Go to action**;
+      confirm the relevant tree action is selected and inspector opens.
+- [ ] Confirm **Run anyway** is offered only for warnings, not errors.
+      Cancel must not start playback or change run history.
+- [ ] Confirm disabled image actions and images before Run from Selected do
+      not trigger false blocking errors. Normal valid workflows run directly.
+- [ ] Check both themes, keyboard navigation, smaller screens and packaged
+      Ubuntu X11/Windows builds; document actual environment and results.
+
 ## Per-action failure handling (Issue #37)
 
 - [ ] Select a Wait Until or Click Image action: switch On failure between
