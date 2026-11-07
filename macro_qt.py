@@ -9,8 +9,9 @@ import queue
 import sys
 import time
 from dataclasses import asdict
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint
+from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint, QStandardPaths
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -26,6 +27,8 @@ from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
+from macro_diagnostics import RunHistoryStore, RunSession
+from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
@@ -182,6 +185,8 @@ QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
 
 class WorkerSignals(QObject):
     progress = Signal(int, int, int, int, object)
+    diagnostic = Signal(object)
+    failure_capture = Signal(object)
     finished = Signal(bool, str)
 
 
@@ -204,11 +209,24 @@ class MacroWindow(QMainWindow):
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
         self.history = ActionHistory(60)
+        data_dir = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.AppLocalDataLocation)
+        if not data_dir:
+            data_dir = str(Path.home() / ".macrorunner")
+        self.diagnostics_store = RunHistoryStore(
+            Path(data_dir) / "run-history.json",
+            max_screenshots=self.settings.value(
+                "diagnostics_capture_limit", 5, type=int))
+        self._run_session = None
+        self._pending_failure_capture = None
+        self.run_history_dialog = None
         self.current_file = None
         self.executor = None
         self._restore_after_run = False
         self.run_signals = WorkerSignals()
         self.run_signals.progress.connect(self._progress)
+        self.run_signals.diagnostic.connect(self._diagnostic_event)
+        self.run_signals.failure_capture.connect(self._failure_capture_received)
         self.run_signals.finished.connect(self._finished)
         self.events = queue.Queue()
         self.recording = False
@@ -254,6 +272,7 @@ class MacroWindow(QMainWindow):
             ("stop", "Stop", "Esc", self.stop_run),
             ("step", "Step", "", self.step_run),
             ("run_from", "Run from selected", "", self.run_selected),
+            ("history", "History", "", self.show_run_history),
             ("record", "Record", "Ctrl+R", self.record_toggle),
             ("undo", "Undo", "Ctrl+Z", self.undo),
             ("redo", "Redo", "Ctrl+Y", self.redo),
@@ -404,6 +423,7 @@ class MacroWindow(QMainWindow):
         dark.toggled.connect(lambda checked: self.set_theme("dark" if checked else "light"))
         view.addAction(dark)
         self.dark_action = dark
+        view.addAction(self.toolbar_actions["history"])
 
         # A device preference, not part of the saved workflow. Hide by default
         # so screen targets behind the editor can be selected naturally.
@@ -428,6 +448,27 @@ class MacroWindow(QMainWindow):
         about_action = QAction("About MacroRunner", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+    def show_run_history(self):
+        if self.run_history_dialog is None:
+            dialog = RunHistoryDialog(self.diagnostics_store, self.settings, self)
+            self.run_history_dialog = dialog
+            dialog.finished.connect(self._history_dialog_closed)
+        self.run_history_dialog.refresh()
+        self.run_history_dialog.show()
+        self.run_history_dialog.raise_()
+        self.run_history_dialog.activateWindow()
+
+    def _history_dialog_closed(self, _result):
+        self.run_history_dialog = None
+
+    def _diagnostic_event(self, event):
+        if self._run_session is not None:
+            self._run_session.add(event)
+
+    def _failure_capture_received(self, image):
+        if self._run_session is not None:
+            self._pending_failure_capture = image
 
     def show_about(self):
         QMessageBox.about(
@@ -621,7 +662,16 @@ class MacroWindow(QMainWindow):
                 self.actions, repeats, self.delay.value(),
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
                 start_index=begin, step_mode=step_mode,
+                on_diagnostic=self.run_signals.diagnostic.emit,
+                on_failure_capture=(self.run_signals.failure_capture.emit
+                    if self.settings.value("diagnostics_capture_errors", False, type=bool)
+                    else None),
             )
+            self._run_session = RunSession(
+                self.actions,
+                mode="step" if step_mode else ("selected" if start_selected else "full"),
+                repeat_count=repeats)
+            self._pending_failure_capture = None
             # Hide the editor before the start delay begins. Restore only if
             # this run minimized the window, not if the user did so manually.
             self._restore_after_run = self.minimize_on_run.isChecked() and not self.isMinimized()
@@ -638,6 +688,8 @@ class MacroWindow(QMainWindow):
             self._update_controls()
         except (ValueError, RuntimeError) as exc:
             self.executor = None
+            self._run_session = None
+            self._pending_failure_capture = None
             QMessageBox.warning(self, "Unable to start", str(exc))
 
     def run_workflow(self):
@@ -698,6 +750,22 @@ class MacroWindow(QMainWindow):
             self.activateWindow()
 
     def _finished(self, success, message):
+        is_stopped = (not success and
+                      (message == "Stopped." or
+                       (self.executor is not None and
+                        self.executor.gate.stopped.is_set())))
+        status = "completed" if success else ("stopped" if is_stopped else "error")
+        if self._run_session is not None:
+            record = self._run_session.finish(status)
+            capture = self._pending_failure_capture if status == "error" else None
+            try:
+                self.diagnostics_store.add(record, capture=capture)
+            except (OSError, ValueError) as exc:
+                self._set_status(f"Run history could not be saved: {exc}")
+            if self.run_history_dialog is not None:
+                self.run_history_dialog.refresh()
+        self._run_session = None
+        self._pending_failure_capture = None
         self.executor = None
         self._restore_run_window()
         self.toolbar_actions["pause"].setText("Pause")

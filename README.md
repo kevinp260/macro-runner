@@ -57,6 +57,28 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Run history and diagnostics
+
+Open **History** in the toolbar (or **View → History**) to see a bounded
+timeline of recent workflow runs, including start time, duration, final status,
+action indices and structural paths, successful image matches, condition state
+changes, and screen-region watcher triggers. Error diagnostics are summarized
+without persisting the raw error message or any user-defined action values.
+
+History is stored **locally** in MacroRunner's application data directory,
+limited to the most recent 40 runs and 250 diagnostic events per run. Use
+**Copy selected details** or **Export safe JSON…** to share redacted diagnostic
+metadata; the export omits screen images and raw action parameters. Use
+**Clear history and screenshots** to remove saved data.
+
+**Save a screenshot on execution error** is **off by default**. You can enable
+it only after acknowledging that a screenshot may contain sensitive content.
+When enabled, failed runs store a reduced JPEG screenshot locally, with a
+configurable cap of 0–20 saved images (default 5). Screenshots are never
+included in the normal JSON export. You can open an explicitly saved
+failure image from History or clear all images and records. This does not
+change saved macro files and does not require an account or cloud service.
+
 ## Actions and workflows
 
 Supported actions include mouse click, move, scroll, drag, wait, keyboard
