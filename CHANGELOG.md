@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added local, bounded Run History and action-level diagnostic events (Issue #36),
+  with copy/redacted-export, paused/stopped/error outcomes, and opt-in failure
+  screenshots with retention controls.
+
 - Added a read-only screen-region diagnostics window to test live screenshot
   differences, confirmation rules, and A→B→A state transitions before
   executing macros (Issue #35).

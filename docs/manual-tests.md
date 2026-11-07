@@ -2,6 +2,9 @@
 
 Complete this checklist on **real desktop installations** before release.
 Automated CI does not exercise native OS input hooks or screenshot capture.
+A consolidated deferred test checklist for all planned PRs lives in
+[GitHub Issue #64](https://github.com/kevinp260/macro-runner/issues/64).
+
 
 ## Setup
 
@@ -65,6 +68,25 @@ Automated CI does not exercise native OS input hooks or screenshot capture.
       diagnostic message; verify the app remains responsive and no inputs fire.
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
+
+## Run history and diagnostic logs (Issue #36)
+
+- [ ] On real Ubuntu/X11 and Windows installations, run a successful workflow,
+      stop one during playback, and trigger an error. Verify separate run
+      records and accurate outcomes, timestamps and durations.
+- [ ] Run nested If/Else and Watch Region Changes; verify structural action
+      paths, condition changes, image-match results, and watcher-trigger logs.
+- [ ] Test Pause, Resume and Step; inspect their timeline entries and timing.
+- [ ] Confirm typed text, keyboard shortcuts, clipboard values, user-defined
+      action names, image paths, and raw error strings are absent from history
+      files and redacted JSON exports.
+- [ ] Confirm no failure screenshot is saved by default; opt in explicitly,
+      trigger an error, inspect the local screenshot, cap retention, disable
+      capture, and clear all saved images/history.
+- [ ] Open History while a macro runs and after a restart; copy selected
+      diagnostics, export JSON, reject clear, then confirm clear works.
+- [ ] Confirm slow/large or corrupt history files do not block automation;
+      check desktop permissions and no unbounded growth.
 
 ## Playback and visual automation
 

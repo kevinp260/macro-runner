@@ -8,13 +8,15 @@ from macro_flow import has_smart_actions, iter_flow_steps, validate_flow, valida
 from macro_model import validate_action
 from macro_playback import PlaybackGate, iter_execution_steps, progress_total
 from macro_keys import HeldKeys
+from macro_diagnostics import safe_error_code
 from macro_vision import locate_image, check_condition, poll_until, watch_region_change
 from dataclasses import asdict
 
 
 class MacroExecutor:
     def __init__(self, actions, repeat_count, start_delay, on_progress, on_finished,
-                 start_index=0, step_mode=False, automation=None):
+                 start_index=0, step_mode=False, automation=None,
+                 on_diagnostic=None, on_failure_capture=None):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         if not self.actions:
@@ -45,6 +47,29 @@ class MacroExecutor:
         self.automation = automation  # lazy import for headless model tests
         self.thread = None
         self.held = None
+        self.on_diagnostic = on_diagnostic
+        self.on_failure_capture = on_failure_capture
+        self._action_indices = {id(a): i for i, a in enumerate(self.actions)}
+        self._last_conditions = {}
+        self._active_index = None
+
+    def _emit(self, event, action=None, index=None, **details):
+        """Emit metadata only; never include user-defined actions or text."""
+        if self.on_diagnostic is None:
+            return
+        if index is None and action is not None:
+            index = self._action_indices.get(id(action))
+        values = {"event": event}
+        if index is not None:
+            values["index"] = index
+            if 0 <= index < len(self.actions):
+                values["kind"] = self.actions[index].kind
+        values.update(details)
+        try:
+            self.on_diagnostic(values)
+        except Exception:
+            # Diagnostics must never interrupt actual automation.
+            pass
 
     def start(self):
         if self.thread is not None:
@@ -53,16 +78,20 @@ class MacroExecutor:
         self.thread.start()
 
     def stop(self):
+        self._emit("stop_requested")
         self.gate.stop()
 
     def pause(self):
+        self._emit("pause")
         self.gate.pause()
 
     def resume(self):
+        self._emit("resume")
         self.gate.resume()
 
     def step(self):
         self.gate.step()
+        self._emit("step")
 
     def _pag(self):
         if self.automation is None:
@@ -75,7 +104,13 @@ class MacroExecutor:
         # executable action can acquire its Step token.
         if self.gate.stopped.is_set():
             raise RuntimeError("Stopped")
-        return check_condition(action, self._pag().screenshot)
+        result = check_condition(action, self._pag().screenshot)
+        # Record state transitions, not every polling frame.
+        key = id(action)
+        if self._last_conditions.get(key) != result:
+            self._last_conditions[key] = result
+            self._emit("condition", action=action, result=result)
+        return result
 
     def _watch_region(self, action, baseline=None):
         # Watch only on the worker thread. Step mode can grant one watch cycle,
@@ -83,8 +118,10 @@ class MacroExecutor:
         # accepted screen image across nested action execution.
         self.gate.begin_action()
         try:
-            return watch_region_change(action, self._pag().screenshot, self.gate,
-                                       baseline=baseline)
+            result = watch_region_change(action, self._pag().screenshot, self.gate,
+                                         baseline=baseline)
+            self._emit("watch_trigger", action=action, result=True)
+            return result
         finally:
             self.gate.end_action()
 
@@ -93,6 +130,7 @@ class MacroExecutor:
         self.gate.wait(0)
         if a.kind == "click_image":
             match = poll_until(a, lambda: locate_image(a, pag.screenshot), self.gate)
+            self._emit("image_match", action=a, result=True)
             pag.click(match[0], match[1], button=a.button)
         elif a.kind == "wait_until":
             poll_until(a, lambda: self._condition(a), self.gate)
@@ -148,15 +186,29 @@ class MacroExecutor:
                 for idx, action in iterator:
                     self.gate.begin_action()
                     try:
+                        self._active_index = idx
+                        self._emit("action_start", index=idx, cycle=repeat + 1)
                         done += 1
                         self.on_progress(repeat + 1, self.repeat_count,
                                          idx, done, self.total)
                         self._execute(action)
+                        self._emit("action_done", index=idx, cycle=repeat + 1)
                     finally:
                         self.gate.end_action()
             success, message = True, "Workflow completed."
         except Exception as exc:
-            message = "Stopped." if str(exc) == "Stopped" else str(exc)
+            stopped = self.gate.stopped.is_set() or str(exc) == "Stopped"
+            message = "Stopped." if stopped else str(exc)
+            if not stopped:
+                self._emit("action_error", index=self._active_index,
+                           error=safe_error_code(exc))
+                if self.on_failure_capture is not None:
+                    try:
+                        image = self._pag().screenshot()
+                        self.on_failure_capture(image)
+                    except Exception as capture_exc:
+                        self._emit("screenshot_unavailable",
+                                   error=safe_error_code(capture_exc))
         finally:
             if self.held:
                 errors = self.held.release_all()
