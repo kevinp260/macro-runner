@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added signed X/Y offsets to Click Image (zero preserves center clicks),
+  read-only click-point preview, final-point bounds checks, and target-client
+  containment before clicking (Issue #49).
+
 - Added cancellable Wait for Window actions for appear/active/hidden/closed
   states using the existing Win32/X11 targeting identity, including a picker,
   title/class fallback, timeout and polling controls (Issue #48).
