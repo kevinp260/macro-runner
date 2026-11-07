@@ -45,6 +45,7 @@ class FakeDesktop:
         if self.on_paste:
             self.on_paste()
 
+    def press(self, key): self.events.append(("press", key))
     def keyDown(self, key): self.events.append(("down", key))
     def keyUp(self, key): self.events.append(("up", key))
 
