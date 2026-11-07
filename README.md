@@ -57,6 +57,38 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Unsaved changes and crash recovery
+
+MacroRunner marks unsaved changes with **\u002a** in the window title, including
+changes to whole-workflow repeat count and start delay. **New**, **Open** and
+**Close** offer **Save / Discard / Cancel** when changes are pending. Cancelling
+keeps the current editor intact; canceling the Save As picker also keeps edits.
+Opening an invalid or unreadable file does not replace the current workflow.
+Normal saves now use an atomic replace so a failed write does not truncate an
+existing workflow file.
+
+After an edit, the app writes a **single** local recovery snapshot within
+about one second. The complete workflow and playback settings are stored
+in `workflow-recovery.json` inside the operating system's
+**MacroRunner application-data directory** (Qt AppLocalDataLocation, the same
+parent directory used for Run History). Snapshots are written via a private
+temporary file and atomic replacement. Each update replaces the prior snapshot;
+**no additional history copies** accumulate. A normal Save or explicit Discard
+clears the recovery copy. At startup, **Restore** opens the previous snapshot as
+an **unsaved copy** (choose a destination using Save), while **Discard recovery**
+deletes it. The dialog shows the original file location and snapshot time (UTC).
+Recovery **never silently overwrites the user's saved macro**. An unreadable
+recovery file is retained for manual inspection, not automatically deleted.
+
+**Privacy:** Recovery is local and is not uploaded, but its JSON contains the
+actual workflow contents, including typed strings, application paths and image
+references, in **unencrypted plaintext**. The temporary file uses user-only
+permissions where supported. Protect your device/user account accordingly and
+explicitly Discard or Save when no longer needing recovery data. The app holds
+at most one snapshot, capped at **10 MB**, and imports/saves are also limited to
+10 MB. If recovery storage is unwritable, the app warns and leaves the current
+edits in memory so you can save them elsewhere.
+
 ## Per-action failure handling
 
 Each executable action has an **On failure** choice in Properties:
