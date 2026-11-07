@@ -69,6 +69,34 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Open application, file, or HTTP(S) URL (Issue #47)
+
+- [ ] Add the action, browse to a valid installed executable, and enter
+      literal arguments one per line. On Windows and Ubuntu X11, test
+      executable paths and argument strings with spaces, quotes and Unicode.
+      Confirm no shell interpolation and no terminal is necessary.
+- [ ] Change to File mode and open a local text document through the default
+      app. Test file association failure, permission denial, missing files,
+      and a file path in a Unicode/space-containing directory.
+- [ ] Change to URL mode and open a valid HTTP and HTTPS URL with the default
+      browser. Check that file://, javascript:, missing host, malformed
+      ports, whitespace and userinfo URLs are refused before dispatch.
+- [ ] Test launch uses unsaved inspector values without changing the saved
+      workflow, and the application visibly starts only after explicit Test
+      launch or regular playback. Confirm successful Test launch status.
+- [ ] Use Run, Run from Selected, Step, Pause, disabled action, Stop and
+      On failure: Skip/Stop. Stop before launch must avoid side effects;
+      processes already launched are not killed by Stop.
+- [ ] Verify a saved target-window binding does not activate before a Launch
+      action, and existing absolute-coordinate, image and clipboard actions
+      remain unchanged.
+- [ ] Save/open and crash-recover a workflow with a launch action; verify
+      old JSON remains readable and explicit arguments persist without
+      silent shell parsing.
+- [ ] Test Ubuntu X11 and Windows packaged installers. Check Wayland URL/file
+      open behavior and default handler availability; launch success is not
+      proof that a browser/app is ready for subsequent input.
+
 ## Clipboard and Unicode paste (Issue #46)
 
 - [ ] On Windows 11 and Ubuntu X11, add Set clipboard text and Paste
