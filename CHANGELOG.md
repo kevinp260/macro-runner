@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added an unsaved-workflow title indicator, Save/Discard/Cancel prompts,
+  bounded atomic local recovery snapshots, startup restore/discard, and
+  atomic normal workflow saves (Issue #40).
+
 - Added editor-only F9 breakpoints before enabled actions, step/resume
   debugging through nested flows, and a local slow-playback gap (Issue #39).
 
