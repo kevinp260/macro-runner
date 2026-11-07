@@ -52,7 +52,8 @@ class WindowPickerDialog(QDialog):
     def refresh(self):
         own_handle = int(self.parent().winId()) if self.parent() is not None else None
         self.windows = [w for w in self.manager.windows()
-                        if w.pid != os.getpid() and w.handle != own_handle]
+                        if w.pid != os.getpid() and w.handle != own_handle
+                        and not w.minimized]
         self.table.setRowCount(len(self.windows))
         for row, info in enumerate(self.windows):
             for column, text in enumerate((
