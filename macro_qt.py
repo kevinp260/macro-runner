@@ -25,6 +25,7 @@ from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_region import RegionPicker
+from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -417,6 +418,19 @@ class MacroWindow(QMainWindow):
             )
             self.selection_mode_group.addAction(action)
             self.selection_mode_menu.addAction(action)
+
+        help_menu = self.menuBar().addMenu("Help")
+        about_action = QAction("About MacroRunner", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+    def show_about(self):
+        QMessageBox.about(
+            self, "About MacroRunner",
+            f"<h3>MacroRunner v{app_version()}</h3>"
+            "Structured mouse, keyboard, and screen-region automation.<br>"
+            '<a href="https://github.com/kevinp260/macro-runner">GitHub repository</a>'
+        )
 
     def _selection_window_mode(self):
         mode = self.settings.value("selection_window_mode", "hide")
@@ -1018,6 +1032,7 @@ def main():
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("MacroRunner")
     app.setOrganizationName("MacroRunner")
+    app.setApplicationVersion(app_version())
     mutex, already_running = _windows_single_instance()
     if already_running:
         QMessageBox.warning(None, "Already running", "MacroRunner is already running.")
