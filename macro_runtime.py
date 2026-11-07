@@ -246,7 +246,10 @@ class MacroExecutor:
                     # Resume/Step continues this action; the next loop visit
                     # can break again. Disabled leaves never reach this point.
                     if idx in self.breakpoints:
-                        self.gate.pause()
+                        # Preserve a Step token queued before the worker reaches
+                        # this breakpoint (notably the first Step at startup).
+                        if not self.gate.paused:
+                            self.gate.pause()
                         self._emit("breakpoint", index=idx, cycle=repeat + 1)
                     self.gate.begin_action()
                     try:
