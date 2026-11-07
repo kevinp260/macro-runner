@@ -40,6 +40,7 @@ from macro_qt_windows import WindowPickerDialog
 from macro_qt_clipboard import QtClipboardClient
 from macro_launch import launch_target, LaunchError
 from macro_qt_preflight import PreflightDialog
+from macro_vision import locate_image, image_click_point
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
 import PySide6.QtSvg  # Ensure SVG chevrons also work in PyInstaller distributions.
@@ -386,6 +387,7 @@ class MacroWindow(QMainWindow):
         self.inspector.test_move.connect(self._test_move)
         self.inspector.pick_region.connect(self._pick_region)
         self.inspector.test_monitoring.connect(self._test_monitoring)
+        self.inspector.preview_image_click.connect(self._preview_image_click)
         self.inspector.test_launch.connect(self._test_launch)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
@@ -1059,6 +1061,50 @@ class MacroWindow(QMainWindow):
         elif self.region_monitor is not None:
             self.region_monitor.stop_monitoring()
             self._set_status("Stopping screen-region test…")
+
+    def _preview_image_click(self, action):
+        """Read-only single screenshot and match, using unsaved inspector fields."""
+        if self._busy():
+            QMessageBox.warning(
+                self, "Preview unavailable",
+                "Stop the current workflow or recording before previewing.")
+            return
+        try:
+            import pyautogui
+            client_rect = None
+            current = action
+            if self.window_target is not None:
+                binding = WindowBinding(self.window_target)
+                info = binding.resolve()  # Never activate another window.
+                current = binding.transform(action, info)
+                if binding.spec["relative"]:
+                    client_rect = (info.x, info.y, info.width, info.height)
+            if current.region_x is not None and (
+                    current.region_x < 0 or current.region_y < 0):
+                raise ValueError(
+                    "The screenshot region has a negative screen origin, "
+                    "which this screenshot backend does not support.")
+            match = locate_image(current, pyautogui.screenshot)
+            if match is None:
+                QMessageBox.warning(
+                    self, "No image match",
+                    "The reference image was not found at the configured "
+                    "confidence. Check the visible desktop, scaling and region.")
+                return
+            x, y = image_click_point(
+                action, match, screen_size=pyautogui.size(),
+                client_rect=client_rect)
+        except Exception as exc:
+            QMessageBox.warning(self, "Image click preview unavailable", str(exc))
+            return
+        QMessageBox.information(
+            self, "Image click point preview",
+            f"Matched image center: ({match[0]}, {match[1]})\n"
+            f"Offset: ({action.image_offset_x:+}, {action.image_offset_y:+}) px\n"
+            f"Computed click point: ({x}, {y})\n"
+            f"Similarity: {match[2]:.1%}\n\n"
+            "No click was sent. If the target is obscured by MacroRunner "
+            "or another window, adjust visibility before checking again.")
 
     def _test_launch(self, action):
         if self._busy():
