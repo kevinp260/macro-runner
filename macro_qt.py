@@ -34,6 +34,9 @@ from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_preflight import inspect_workflow
 from macro_recovery import RecoveryStore, atomic_json_write
+from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
+                           validate_target, target_from_window)
+from macro_qt_windows import WindowPickerDialog
 from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -212,6 +215,7 @@ class MacroWindow(QMainWindow):
         self.resize(1180, 760)
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
+        self.window_target = None
         self.history = ActionHistory(60)
         data_dir = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.AppLocalDataLocation)
@@ -386,6 +390,27 @@ class MacroWindow(QMainWindow):
         self.splitter.setStretchFactor(2, 0)
         root.addWidget(self.splitter, 1)
 
+        target_row = QHBoxLayout()
+        self.target_label = QLabel("Target: Screen (absolute)")
+        self.target_label.setToolTip("Normal screen-wide macros remain unchanged.")
+        target_row.addWidget(self.target_label, 1)
+        self.target_pick = QPushButton("Choose window…")
+        self.target_pick.clicked.connect(self.pick_target_window)
+        target_row.addWidget(self.target_pick)
+        self.target_clear = QPushButton("Clear target")
+        self.target_clear.clicked.connect(lambda: self._set_window_target(None))
+        self.target_clear.setEnabled(False)
+        target_row.addWidget(self.target_clear)
+        self.target_relative = QCheckBox("Client-relative coordinates")
+        self.target_relative.setEnabled(False)
+        self.target_relative.toggled.connect(self._target_options_changed)
+        target_row.addWidget(self.target_relative)
+        self.target_activate = QCheckBox("Activate before input")
+        self.target_activate.setEnabled(False)
+        self.target_activate.toggled.connect(self._target_options_changed)
+        target_row.addWidget(self.target_activate)
+        root.addLayout(target_row)
+
         status_row = QHBoxLayout()
         self.run_info = QLabel("Repeat")
         status_row.addWidget(self.run_info)
@@ -558,7 +583,59 @@ class MacroWindow(QMainWindow):
         self.status.setText(text)
 
     def _document_state(self):
-        return (tuple(self.actions), self.repeats.value(), self.delay.value())
+        return (tuple(self.actions), self.repeats.value(), self.delay.value(),
+                self.window_target)
+
+    def _set_window_target(self, value):
+        self.window_target = validate_target(value)
+        bound = self.window_target is not None
+        label = (f"Target: {self.window_target['title']}"
+                 if bound else "Target: Screen (absolute)")
+        self.target_label.setText(label)
+        self.target_label.setToolTip(
+            (f"Class: {self.window_target['class_name']} | "
+             f"PID at selection: {self.window_target['pid']}"
+             if bound else "Normal screen-wide macros remain unchanged."))
+        self.target_clear.setEnabled(bound and not self._busy())
+        for checkbox, option in ((self.target_relative, "relative"),
+                                 (self.target_activate, "activate")):
+            checkbox.blockSignals(True)
+            checkbox.setChecked(bool(bound and self.window_target[option]))
+            checkbox.setEnabled(bound and not self._busy())
+            checkbox.blockSignals(False)
+        self._after_edit()
+
+    def _target_options_changed(self, *_args):
+        if self.window_target is None:
+            return
+        changed = dict(self.window_target)
+        changed["relative"] = self.target_relative.isChecked()
+        changed["activate"] = self.target_activate.isChecked()
+        self._set_window_target(changed)
+
+    def pick_target_window(self):
+        if self._busy():
+            return
+        try:
+            dialog = WindowPickerDialog(WindowManager(), self)
+        except (WindowUnavailable, OSError) as exc:
+            QMessageBox.warning(self, "Window targeting unavailable", str(exc))
+            return
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected:
+            self._set_window_target(target_from_window(dialog.selected))
+            self._set_status("Target bound to selected window. Choose Save to persist it.")
+
+    def _client_coordinates(self, x, y, width=None, height=None):
+        if not self.window_target or not self.window_target["relative"]:
+            return (x, y) if width is None else (x, y, width, height)
+        binding = WindowBinding(self.window_target)
+        info = binding.resolve()
+        dx, dy = x - info.x, y - info.y
+        if width is None:
+            binding.point(dx, dy, info)
+            return dx, dy
+        binding.rect(dx, dy, width, height, info)
+        return dx, dy, width, height
 
     def _is_dirty(self):
         return self._saved_state is None or self._document_state() != self._saved_state
@@ -592,7 +669,8 @@ class MacroWindow(QMainWindow):
         try:
             self.recovery_store.write(
                 self.actions, self.repeats.value(), self.delay.value(),
-                self.current_file or self._recovery_source_file)
+                self.current_file or self._recovery_source_file,
+                self.window_target)
             self._recovery_warning_shown = False
         except (OSError, ValueError, TypeError) as exc:
             self._recovery_error(exc)
@@ -668,6 +746,7 @@ class MacroWindow(QMainWindow):
             self._replace_actions(snapshot.actions, remember=False)
             self.repeats.setValue(snapshot.repeat_count)
             self.delay.setValue(snapshot.start_delay)
+            self._set_window_target(snapshot.window_target)
             self.current_file = None  # Recovery never silently writes the source.
             self._recovery_source_file = snapshot.source_file
             self.history = ActionHistory(60)
@@ -707,6 +786,10 @@ class MacroWindow(QMainWindow):
         self.debug_gap.setEnabled(not busy)
         self.minimize_on_run.setEnabled(not busy)
         self.selection_mode_menu.setEnabled(not busy)
+        self.target_pick.setEnabled(not busy)
+        self.target_clear.setEnabled(not busy and self.window_target is not None)
+        self.target_relative.setEnabled(not busy and self.window_target is not None)
+        self.target_activate.setEnabled(not busy and self.window_target is not None)
 
     def _update_action_count(self, actions):
         disabled = sum(not action.enabled for action in actions
@@ -782,6 +865,7 @@ class MacroWindow(QMainWindow):
         self.history = ActionHistory(60)
         self.current_file = None
         self._recovery_source_file = None
+        self._set_window_target(None)
         self.repeats.setValue(1)
         self.delay.setValue(3.0)
         self._mark_clean()
@@ -811,6 +895,7 @@ class MacroWindow(QMainWindow):
         if settings is not None:
             self.repeats.setValue(settings["repeat_count"])
             self.delay.setValue(settings["start_delay"])
+        self._set_window_target(settings.get("window_target") if settings else None)
         self.current_file = filename
         self._recovery_source_file = None
         self._mark_clean()
@@ -822,7 +907,8 @@ class MacroWindow(QMainWindow):
             return False
         try:
             document = serialize_document(self.tree.actions(),
-                                          self.repeats.value(), self.delay.value())
+                                          self.repeats.value(), self.delay.value(),
+                                          self.window_target)
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Invalid workflow", str(exc))
             return False
@@ -859,7 +945,8 @@ class MacroWindow(QMainWindow):
             pass
         findings = inspect_workflow(
             self.actions, start_index=start_index, screen_size=screen_size,
-            session_type=os.environ.get("XDG_SESSION_TYPE"))
+            session_type=os.environ.get("XDG_SESSION_TYPE"),
+            window_target=self.window_target)
         if not findings:
             return True
 
@@ -886,6 +973,7 @@ class MacroWindow(QMainWindow):
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
                 start_index=begin, step_mode=step_mode,
                 breakpoints=self.tree.breakpoint_indices(), debug_gap=self.debug_gap.value(),
+                window_target=self.window_target,
                 on_diagnostic=self.run_signals.diagnostic.emit,
                 on_failure_capture=(self.run_signals.failure_capture.emit
                     if self.settings.value("diagnostics_capture_errors", False, type=bool)
@@ -1066,6 +1154,9 @@ class MacroWindow(QMainWindow):
             return
         try:
             import pyautogui
+            if self.window_target and self.window_target["relative"]:
+                info = WindowBinding(self.window_target).resolve()
+                x, y = WindowBinding(self.window_target).point(x, y, info)
             pyautogui.moveTo(x, y, duration=.15)
             self._set_status(f"Moved pointer to ({x}, {y}).")
         except Exception as exc:
@@ -1113,10 +1204,14 @@ class MacroWindow(QMainWindow):
         def selected(x, y, width, height):
             self.region_picker = None
             self._end_screen_selection()
-            self.inspector.update_picked_region(x, y, width, height)
-            self._set_status(
-                f"Selected region ({x}, {y}), {width}×{height}. "
-                "Choose Apply changes to save.")
+            try:
+                rx, ry, rw, rh = self._client_coordinates(x, y, width, height)
+                self.inspector.update_picked_region(rx, ry, rw, rh)
+                self._set_status(
+                    f"Selected region ({rx}, {ry}), {rw}×{rh}. "
+                    "Choose Apply changes to save.")
+            except (WindowUnavailable, ValueError) as exc:
+                QMessageBox.warning(self, "Region outside target window", str(exc))
 
         def cancelled():
             self.region_picker = None
@@ -1156,6 +1251,7 @@ class MacroWindow(QMainWindow):
                 if mode == "pixel":
                     rgb = pyautogui.screenshot(region=(x, y, 1, 1)).convert("RGB").getpixel((0, 0))
                     color = "#{:02X}{:02X}{:02X}".format(*rgb)
+                x, y = self._client_coordinates(x, y)
                 self.inspector.update_picked_coordinates(mode, x, y, color)
                 self._set_status(f"Captured ({x}, {y}). Choose Apply changes to save.")
             except Exception as exc:
