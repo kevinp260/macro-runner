@@ -57,6 +57,65 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Safe local file and folder actions (Issue #52)
+
+Five local filesystem actions are available in the action palette, without
+command-shell execution or additional dependencies:
+
+- **File exists:** Check that a regular file currently exists; otherwise fail
+  (On failure: Stop or Skip). It does not produce a workflow variable yet.
+- **Wait for file:** Poll until a regular file appears, using Timeout and
+  Poll interval. A zero-second timeout checks once. Pause suspends polling
+  time and Stop interrupts it; useful after an external download/export.
+- **Copy file:** Copy one regular local file to an explicit destination path.
+  The source stays in place. Existing destinations are **never overwritten**
+  unless **Replace an existing destination file** is checked.
+- **Move file:** Copy one file to the destination, then **remove the source
+  file only after a successful copy**. The existing destination remains
+  untouched by default; overwrite requires the same explicit setting.
+  This is a Move operation, **not** a general Delete action.
+- **Create folder:** Create the specified directory, including missing
+  parent directories. Existing real folders are accepted.
+
+The inspector includes **Browse…** buttons for file sources and destinations,
+and a folder picker for existing directories. To create a **new folder**,
+browse to its parent if desired, then type the new folder name in the path
+field. File Wait also accepts manually entered paths for files that do not
+exist yet. **Apply changes** saves the settings; editing alone never
+performs filesystem operations.
+
+All paths must be **absolute, OS-native local paths** (e.g. Windows
+`C:\\Users\\...\\file.txt` or Linux `/home/user/.../file.txt`).
+Home-directory `~` expansion is supported. Relative paths, `..` parent
+traversal, symlink source files, and symlink destination targets are rejected
+for writing actions. Paths can contain spaces and Unicode. The destination
+must include a filename; Copy/Move do **not** infer it from a folder path.
+Create the destination folder first if missing (using Create folder). No
+glob patterns, environment interpolation, scripting, recursive folder
+copy/move, or delete action is included in this phase.
+
+**Conflict and failure behavior:** Copy/Move refuse an existing destination
+by default. When overwrite is explicitly enabled, MacroRunner stages a
+complete copy in the destination folder and commits it with `os.replace`,
+so an interrupted write leaves the previous file intact. Without overwrite,
+exclusive creation prevents replacing existing files; an interrupted partial
+file is cleaned up. Move removes its source **only after** destination
+creation succeeds. A failure while removing the source can leave **both**
+files present, which must be handled manually. File-operation side effects
+already committed before Stop cannot be rolled back; long copies check Stop
+between 1 MiB chunks. There is no general-purpose delete operation.
+
+Preflight validates configured paths, warns for missing source files and
+current destination conflicts, but does not assume a future file will
+already exist when a workflow starts. Disabled actions have no filesystem
+side effects. New actions work in existing Repeat/If/Else groups and
+Step/Stop without activating windows or requiring a desktop input backend.
+Run History records action kinds and generic error categories, **never
+the contents of copied or observed files**. Configured filesystem paths
+remain in local macro JSON and recovery snapshots (no secret-store feature
+is introduced). Later workflow variables (Issue #58) can extend paths
+without changing these actions.
+
 ## Click Image offsets and point preview (Issue #49)
 
 **Click image** can now click beside a visual landmark instead of its center.
