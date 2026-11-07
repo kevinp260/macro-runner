@@ -214,7 +214,11 @@ class VariableContext:
                 if type(value) is not int:
                     raise ValueError(f"{field} requires a whole-number variable value.")
             values[field] = value
-        return replace(action, **values, bindings={})
+        # Revalidate the *resolved* action. For example, a numeric variable
+        # must not bypass Wait >= 0 or a Click Image confidence constraint.
+        from dataclasses import asdict
+        from macro_model import validate_action
+        return validate_action(asdict(replace(action, **values, bindings={})))
 
 
 def unset_warnings(actions, definitions, start_index=0, overrides=None):
