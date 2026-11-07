@@ -211,6 +211,8 @@ class VariableContext:
                 values.update({x: value[0], y: value[1]})
                 continue
             if field in ("scroll_amount", "image_offset_x", "image_offset_y"):
+                if type(value) is float and value.is_integer():
+                    value = int(value)
                 if type(value) is not int:
                     raise ValueError(f"{field} requires a whole-number variable value.")
             values[field] = value
