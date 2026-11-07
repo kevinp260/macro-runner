@@ -77,8 +77,10 @@ temporary file and atomic replacement. Each update replaces the prior snapshot;
 clears the recovery copy. At startup, **Restore** opens the previous snapshot as
 an **unsaved copy** (choose a destination using Save), while **Discard recovery**
 deletes it. The dialog shows the original file location and snapshot time (UTC).
-Recovery **never silently overwrites the user's saved macro**. An unreadable
-recovery file is retained for manual inspection, not automatically deleted.
+Recovery **never silently overwrites the user's saved macro**. If the
+recovery file is unreadable, the startup prompt offers **Discard** or **Cancel**.
+Cancel keeps the damaged file untouched and suspends new autosaves until the
+file is removed; Discard explicitly deletes it so autosaves can resume.
 
 **Privacy:** Recovery is local and is not uploaded, but its JSON contains the
 actual workflow contents, including typed strings, application paths and image
