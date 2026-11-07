@@ -1,0 +1,75 @@
+"""Clipboard text operations and best-effort cleanup, without UI dependencies."""
+from dataclasses import dataclass
+import sys
+
+
+class ClipboardUnavailable(RuntimeError):
+    """Clipboard is unavailable; messages must never contain clipboard contents."""
+
+
+@dataclass(frozen=True)
+class ClipboardState:
+    kind: str          # "text", "empty", or "other" (image/rich formats)
+    text: str = ""
+
+
+def paste_clipboard(clipboard, automation, gate, *, text=None,
+                    restore=True, prepare_focus=None):
+    """Paste current text, or temporary text with conditional text restoration.
+
+    Restores an earlier text/empty clipboard only if its contents still match
+    the text this action supplied, to avoid clobbering another app's edits.
+    Never attempts to copy/restore non-text MIME data.
+    """
+    gate.wait(0)
+    previous = None
+    if text is None:
+        existing = clipboard.read(gate=gate)
+        if existing.kind != "text" or not existing.text:
+            raise ClipboardUnavailable("Clipboard has no text to paste.")
+    else:
+        if not text:
+            raise ValueError("Paste text cannot be empty; use Set clipboard to clear it.")
+        if restore:
+            previous = clipboard.read(gate=gate)
+            if previous.kind == "other":
+                raise ClipboardUnavailable(
+                    "Cannot restore non-text clipboard data. "
+                    "Disable restoration to replace the clipboard explicitly.")
+    attempted = False
+    try:
+        if text is not None:
+            # Even a failed write might already have changed the clipboard.
+            attempted = True
+            clipboard.set_text(text, gate=gate)
+        if prepare_focus is not None:
+            prepare_focus()
+        gate.wait(0)
+        automation.hotkey("ctrl", "v")
+        if text is not None and restore:
+            # Allow the target to consume text before restoring. A mid-action
+            # Pause must not leave temporary clipboard contents indefinitely;
+            # Stop still interrupts this brief settle interval.
+            stopped = getattr(gate, "stopped", None)
+            if hasattr(stopped, "wait"):
+                if stopped.wait(0.2):
+                    raise RuntimeError("Stopped")
+            else:
+                gate.wait(0.2)
+    finally:
+        if attempted and restore:
+            # Cleanup is attempted even after Stop or failure. It is not
+            # governed by Pause/Stop, but never overwrites a changed clipboard.
+            in_flight_error = sys.exc_info()[1]
+            try:
+                current = clipboard.read(cleanup=True)
+                if current.kind == "text" and current.text == text:
+                    if previous.kind == "text":
+                        clipboard.set_text(previous.text, cleanup=True)
+                    else:
+                        clipboard.clear(cleanup=True)
+            except Exception:
+                # Do not hide Stop or unsafe target-focus errors merely
+                # because clipboard cleanup also failed.
+                if in_flight_error is None:
+                    raise

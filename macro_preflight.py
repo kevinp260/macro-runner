@@ -149,7 +149,7 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
 
     desktop_actions = {"click", "move", "drag", "scroll", "key", "key_down",
                        "key_up", "click_image", "watch_start", "wait_until",
-                       "if_start", "until_start"}
+                       "if_start", "until_start", "clipboard_paste"}
     active = normalized[start_index:]
     platform_name = platform_name if platform_name is not None else sys.platform
     if (platform_name.startswith("linux") and

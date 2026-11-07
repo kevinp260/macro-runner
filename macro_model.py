@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste"]
 
 @dataclass
 class Action:
@@ -48,6 +48,10 @@ class Action:
     watch_change_percent: float = 5.0
     watch_pixel_tolerance: int = 15
     watch_confirmations: int = 2
+    # Clipboard text is saved in local workflow JSON and must never be logged.
+    # None for clipboard_paste means use existing system clipboard text.
+    clipboard_text: Optional[str] = None
+    clipboard_restore: bool = True
 
 
 def _finite_nonnegative(value, field):
@@ -71,7 +75,7 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -172,6 +176,13 @@ def validate_action(item):
             raise ValueError("Poll interval must be positive.")
         if action.kind in ("click_image", "wait_until"):
             _finite_nonnegative(action.timeout, "Timeout")
+    if action.kind in ("clipboard_set", "clipboard_paste"):
+        if action.kind == "clipboard_set" and not isinstance(action.clipboard_text, str):
+            raise ValueError("Set clipboard requires text (empty text clears it).")
+        if action.clipboard_text is not None and not isinstance(action.clipboard_text, str):
+            raise ValueError("Clipboard text must be a string.")
+        if not isinstance(action.clipboard_restore, bool):
+            raise ValueError("Restore clipboard must be true or false.")
     if action.kind in ("click", "move", "drag"):
         for field, value in (("x", action.x), ("y", action.y)):
             if isinstance(value, bool) or not isinstance(value, int):

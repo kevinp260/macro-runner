@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added Set clipboard text and Paste clipboard/text actions with Unicode,
+  optional best-effort prior-text restoration, Pause/Stop support, Qt clipboard
+  thread safety, and redacted workflow labels/diagnostics (Issue #46).
+
 - Added foreground target-window selection on Windows/X11, safe re-identification,
   client-relative action coordinates, and explicit Wayland/background limitations
   (Issue #45).

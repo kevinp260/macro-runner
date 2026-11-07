@@ -118,4 +118,6 @@ def default_node(kind):
         return WorkflowNode(Action(kind=kind, condition_source="pixel"))
     if kind in ("key_down", "key_up"):
         return WorkflowNode(Action(kind=kind, keys="shift"))
+    if kind == "clipboard_set":
+        return WorkflowNode(Action(kind=kind, clipboard_text=""))
     return WorkflowNode(Action(kind=kind))

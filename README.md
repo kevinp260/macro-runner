@@ -57,6 +57,44 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Clipboard and paste actions (Issue #46)
+
+Add **Set clipboard text** from the action palette to put literal text on the
+system clipboard, including Unicode and multiline content. Empty text clears
+clipboard text. **Paste clipboard / text** has two modes: leave its text field
+blank to paste the current system clipboard, or enter text to temporarily put
+that text on the clipboard and paste it with Ctrl+V. This is useful for
+characters and languages not reliably supported by simulated keystrokes.
+
+For temporary text, **Restore previous clipboard text after paste** is enabled
+by default. This restores the prior plain text (or empty clipboard) after a
+brief 0.2-second delay, **only if the clipboard still contains the text the
+action supplied**, reducing accidental overwrites when another app changes the
+clipboard. Restoration is best-effort: some slow applications may consume
+clipboard data later, and rich/image clipboard formats cannot be restored. If
+non-text data is present and restoration is enabled, the action refuses to
+replace it; disable restoration only when you intentionally want to replace
+that data. With restoration off, temporary text remains on the clipboard.
+Pasting the existing clipboard fails clearly if it is empty or contains no
+text. Failed clipboard operations do not send the paste shortcut.
+
+Clipboard operations use the existing Qt clipboard on the GUI thread; playback
+waits in the worker without freezing the editor and honors Pause/Step/Stop.
+The paste shortcut uses regular foreground desktop input. With a target-window
+binding, the target must be active or successfully activated before paste;
+Wayland and focus restrictions still apply. Linux X11 clipboard ownership is
+application-dependent: the content may not survive exiting MacroRunner.
+
+**Privacy:** Literal action text is stored **in plaintext** in workflow JSON,
+local crash-recovery snapshots, and potentially on the system clipboard. Avoid
+storing passwords or secrets. Workflow cards and Run History do **not** include
+clipboard contents by default. If failure screenshots are explicitly enabled,
+those screenshots may show pasted content in the destination app. No clipboard
+data is transmitted by MacroRunner. Disabling or skipping a clipboard action
+avoids its side effects. The planned
+**Read clipboard into variable** integration belongs to Issue #58, when
+workflow variables are implemented; this PR introduces no new variable system.
+
 ## Target-window automation (Issue #45)
 
 Use **Choose window…** in the editor to bind a workflow to a visible application

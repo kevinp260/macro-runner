@@ -55,6 +55,7 @@ KINDS = [
     ("Press / Type", "key"), ("Hold key", "key_down"),
     ("Release key", "key_up"), ("Move mouse", "move"),
     ("Scroll", "scroll"), ("Drag", "drag"),
+    ("Set clipboard text", "clipboard_set"), ("Paste clipboard / text", "clipboard_paste"),
     ("Repeat block", "loop_start"),
     ("If / Else", "if_start"), ("Repeat until", "until_start"),
     ("Watch region changes", "watch_start"),
@@ -65,6 +66,7 @@ TITLES = {
     "wait": "Wait", "wait_until": "Wait until",
     "key": "Keyboard", "key_down": "Hold key", "key_up": "Release key",
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
+    "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
     "loop_start": "Repeat block", "if_start": "Condition",
     "until_start": "Repeat until", "watch_start": "Watch region changes"
 }
@@ -84,6 +86,12 @@ def description(action):
         detail = f"{action.match_mode.replace('_', ' ')} · {target}"
     elif kind in ("key", "key_down", "key_up"):
         detail = action.keys
+    elif kind == "clipboard_set":
+        detail = "clipboard text (hidden)"
+    elif kind == "clipboard_paste":
+        detail = ("existing clipboard" if action.clipboard_text is None
+                  else "temporary text (hidden)" if action.clipboard_restore
+                  else "text (leave on clipboard)")
     elif kind == "watch_start":
         detail = (f"({action.region_x}, {action.region_y}) "
                   f"{action.region_w}×{action.region_h} · "
