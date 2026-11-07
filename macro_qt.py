@@ -31,6 +31,8 @@ from macro_diagnostics import RunHistoryStore, RunSession
 from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
+from macro_preflight import inspect_workflow
+from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
 import PySide6.QtSvg  # Ensure SVG chevrons also work in PyInstaller distributions.
@@ -652,12 +654,42 @@ class MacroWindow(QMainWindow):
         except OSError as exc:
             QMessageBox.warning(self, "Cannot save macro", str(exc))
 
+    def _validate_before_run(self, start_index):
+        # Use the same physical coordinates as PyAutoGUI, not Qt's
+        # DPI-scaled logical screen geometry. Checking size sends no input.
+        screen_size = None
+        try:
+            import pyautogui
+            dimensions = pyautogui.size()
+            screen_size = (int(dimensions[0]), int(dimensions[1]))
+        except Exception:
+            # Restricted desktops may prevent geometry lookup; no unsupported
+            # assumption about monitor bounds should block a workflow.
+            pass
+        findings = inspect_workflow(
+            self.actions, start_index=start_index, screen_size=screen_size,
+            session_type=os.environ.get("XDG_SESSION_TYPE"))
+        if not findings:
+            return True
+
+        dialog = PreflightDialog(findings, self)
+        approved = dialog.exec() == QDialog.DialogCode.Accepted
+        if dialog.navigation_index is not None:
+            item = self.tree.index_map().get(dialog.navigation_index)
+            if item is not None:
+                self.tree.clearSelection()
+                self.tree.setCurrentItem(item)
+                self.tree.scrollToItem(item)
+        return approved and not dialog.has_errors
+
     def _begin_run(self, start_selected=False, step_mode=False):
         if self._busy():
             return
         try:
             begin = self.tree.selected_flat_index() if (start_selected or step_mode) else 0
             repeats = 1 if (start_selected or step_mode) else self.repeats.value()
+            if not self._validate_before_run(begin):
+                return
             self.executor = MacroExecutor(
                 self.actions, repeats, self.delay.value(),
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
