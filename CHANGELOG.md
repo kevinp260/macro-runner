@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added typed workflow variables with validated per-field bindings, optional v2 document defaults, session-only run overrides, clipboard-read and image-center outputs, scoped repeat resets, and editor undo/recovery (Issue #58).
+
 - Added explicit-path File Exists, Wait for File, Copy File, Move File and Create Folder actions with no-shell operations, no-overwrite defaults, atomic staged overwrite, Stop cleanup, and local file pickers (Issue #52).
 
 - Added signed X/Y offsets to Click Image (zero preserves center clicks),
