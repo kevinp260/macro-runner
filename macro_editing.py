@@ -13,19 +13,24 @@ class ActionHistory:
     @property
     def can_redo(self): return bool(self.future)
 
-    def record(self, actions):
-        self.past.append(deepcopy(list(actions)))
+    @staticmethod
+    def _snapshot(actions, variables=None):
+        entries = deepcopy(list(actions))
+        return entries if variables is None else (entries, deepcopy(list(variables)))
+
+    def record(self, actions, variables=None):
+        self.past.append(self._snapshot(actions, variables))
         if len(self.past)>self.limit: del self.past[0]
         self.future.clear()
 
-    def undo(self, actions):
+    def undo(self, actions, variables=None):
         if not self.past: return None
-        self.future.append(deepcopy(list(actions)))
+        self.future.append(self._snapshot(actions, variables))
         return self.past.pop()
 
-    def redo(self, actions):
+    def redo(self, actions, variables=None):
         if not self.future: return None
-        self.past.append(deepcopy(list(actions)))
+        self.past.append(self._snapshot(actions, variables))
         return self.future.pop()
 
 def _indices(actions, indices):
