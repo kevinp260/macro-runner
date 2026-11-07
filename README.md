@@ -78,6 +78,30 @@ Policies are stored in existing version-2 macro JSON, and older macros
 automatically default to stop. Run History shows retry attempts, skipped
 actions, and safe error categories without logging action parameters.
 
+## Breakpoints and slow-motion debugging
+
+Select one or more **executable** workflow actions and press **F9** (or click
+**Breakpoint (F9)**). A visible dot marks each breakpoint. On Run or Run
+from Selected, MacroRunner **pauses before** the marked action executes.
+Use **Resume** to continue normally or **Step** to execute one action
+before pausing again. Stop and the global emergency Stop remain available.
+A breakpoint inside Repeat/If/Else triggers each time that enabled action
+is reached; disabled actions do not trigger it. Structural Repeat/If/Watch
+headers are not executable breakpoints.
+
+The **Debug gap (s)** control (0–5 seconds, 0 by default) slows playback
+by inserting a cancellable pause **between** executable actions. It is
+a local editor preference, not a change to any action delay or saved JSON.
+It also applies when stepping, after the first action.
+
+Breakpoint marks are **editor-only**, are not written to macro JSON, and
+are cleared when a workflow is reopened or when Undo/Redo rebuilds the tree.
+Marks remain on the same tree item during normal property edits and
+reordering, and are not automatically copied to duplicated actions. While
+MacroRunner is set to minimize during playback, encountering a breakpoint
+restores the editor so Resume/Step are accessible; the editor minimizes
+again when continuing. OS window focus restoration varies by desktop.
+
 ## Pre-run validation
 
 Before **Run**, **Run from Selected**, or **Step**, MacroRunner checks the
