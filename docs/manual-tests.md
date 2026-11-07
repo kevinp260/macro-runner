@@ -69,6 +69,30 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Breakpoints and slow-motion debugging (Issue #39)
+
+- [ ] Set/clear a breakpoint with F9 or the toolbar on nested executable
+      actions; verify the visual dot, action checkbox, and properties remain
+      intact. Control-group headers should not accept breakpoints.
+- [ ] Run with a breakpoint at the first and a later action. Verify no
+      click/keypress occurs before the breakpoint, Resume continues exactly
+      once, and Step executes one action without skipping subsequent breaks.
+- [ ] Put a breakpoint inside Repeat and If/Else; confirm it triggers for
+      each reached iteration/branch and not on a skipped branch.
+- [ ] Mark a disabled action, confirm it never pauses, enable it again and
+      confirm the breakpoint then triggers.
+- [ ] Run from Selected after an earlier marked action; earlier breakpoints
+      must be skipped and later ones still reached.
+- [ ] Use Stop / emergency Stop while paused at a breakpoint; no subsequent
+      action should run and held keys must be released.
+- [ ] Try Debug gap 0, 0.5 and 2 seconds; verify a delay between actions,
+      cancellation during the gap, and Pause/Resume/Step interaction.
+- [ ] Save/reopen a workflow, Undo/Redo and rearrange/duplicate marked
+      actions; confirm breakpoints are editor-only and not in saved JSON.
+- [ ] With Minimize when running enabled, confirm the editor returns for
+      breakpoint controls then minimizes again on Resume/Step. Test both
+      Windows and Ubuntu/X11, including theme and focus behavior.
+
 ## Pre-run validation (Issue #38)
 
 - [ ] Run, Run from Selected, and Step first validate the applied workflow;
