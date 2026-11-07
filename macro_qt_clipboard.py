@@ -3,7 +3,6 @@
 All QClipboard operations are performed by a QObject on QApplication's thread.
 The playback worker waits for a bounded response and can still be stopped.
 """
-from dataclasses import dataclass
 import threading
 import time
 
@@ -11,14 +10,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
 
-class ClipboardUnavailable(RuntimeError):
-    """Clipboard read or write failed, without exposing clipboard contents."""
-
-
-@dataclass(frozen=True)
-class ClipboardState:
-    kind: str          # "text", "empty", or "other" (image/other mime types)
-    text: str = ""
+from macro_clipboard import ClipboardState, ClipboardUnavailable
 
 
 class QtClipboardClient(QObject):
@@ -46,6 +38,8 @@ class QtClipboardClient(QObject):
                 return ClipboardState("text", clipboard.text())
             if operation == "set":
                 clipboard.setText(value, clipboard.Mode.Clipboard)
+                if clipboard.text(clipboard.Mode.Clipboard) != value:
+                    raise ClipboardUnavailable("Unable to set clipboard text.")
                 return None
             if operation == "clear":
                 clipboard.clear(clipboard.Mode.Clipboard)
