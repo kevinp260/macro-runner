@@ -56,6 +56,7 @@ KINDS = [
     ("Release key", "key_up"), ("Move mouse", "move"),
     ("Scroll", "scroll"), ("Drag", "drag"),
     ("Set clipboard text", "clipboard_set"), ("Paste clipboard / text", "clipboard_paste"),
+    ("Read clipboard to variable", "clipboard_read"),
     ("Open application / file / URL", "launch"),
     ("Wait for window", "wait_window"),
     ("File exists", "file_check"), ("Wait for file", "file_wait"),
@@ -72,6 +73,7 @@ TITLES = {
     "key": "Keyboard", "key_down": "Hold key", "key_up": "Release key",
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
     "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
+    "clipboard_read": "Read clipboard to variable",
     "launch": "Open application / file / URL",
     "wait_window": "Wait for window",
     "file_check": "File exists", "file_wait": "Wait for file",
@@ -88,6 +90,8 @@ def description(action):
         detail = f"{action.button} at ({action.x}, {action.y})"
     elif kind == "click_image":
         detail = action.image_path or "Choose reference image"
+        if action.result_variable:
+            detail += f" → {action.result_variable}"
     elif kind in ("wait",):
         detail = f"{action.seconds:g} seconds"
     elif kind in ("wait_until", "if_start", "until_start"):
@@ -96,6 +100,8 @@ def description(action):
         detail = f"{action.match_mode.replace('_', ' ')} · {target}"
     elif kind in ("key", "key_down", "key_up"):
         detail = action.keys
+    elif kind == "clipboard_read":
+        detail = f"text → {action.result_variable or 'Choose text variable'}"
     elif kind == "clipboard_set":
         detail = "clipboard text (hidden)"
     elif kind == "clipboard_paste":
