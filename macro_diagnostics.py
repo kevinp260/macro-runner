@@ -28,6 +28,8 @@ ERROR_CODES = {
     "TimeoutError": "Timed out waiting for a condition or image",
     "PermissionError": "Permission denied by the operating system",
     "FileNotFoundError": "A required file could not be found",
+    "FileExistsError": "The destination already exists and overwrite is disabled",
+    "FileActionError": "An invalid or unsafe local file operation was blocked",
     "OSError": "Desktop capture or file I/O failed",
     "ValueError": "An invalid input or image caused an error",
     "RuntimeError": "The automation backend reported an error",
