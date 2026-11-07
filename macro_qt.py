@@ -38,6 +38,7 @@ from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
                            validate_target, target_from_window)
 from macro_qt_windows import WindowPickerDialog
 from macro_qt_clipboard import QtClipboardClient
+from macro_launch import launch_target, LaunchError
 from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -385,6 +386,7 @@ class MacroWindow(QMainWindow):
         self.inspector.test_move.connect(self._test_move)
         self.inspector.pick_region.connect(self._pick_region)
         self.inspector.test_monitoring.connect(self._test_monitoring)
+        self.inspector.test_launch.connect(self._test_launch)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
@@ -1057,6 +1059,23 @@ class MacroWindow(QMainWindow):
         elif self.region_monitor is not None:
             self.region_monitor.stop_monitoring()
             self._set_status("Stopping screen-region test…")
+
+    def _test_launch(self, action):
+        if self._busy():
+            QMessageBox.warning(
+                self, "Test launch unavailable",
+                "Stop the current run or recording before testing a launch.")
+            return
+        try:
+            launch_target(action)
+        except (LaunchError, OSError) as exc:
+            QMessageBox.warning(self, "Unable to open target", str(exc))
+        else:
+            self._set_status("Launch requested. The OS controls the opened app.")
+            QMessageBox.information(
+                self, "Launch requested",
+                "The OS accepted the launch request. "
+                "Confirm the application, file or URL opened correctly.")
 
     def _progress(self, cycle, cycles, action_index, completed, total):
         self._set_status(f"Run {cycle}/{cycles} · Action {completed}/{total or '?'}")
