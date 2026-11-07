@@ -27,6 +27,7 @@ class WindowInfo:
     width: int
     height: int
     minimized: bool = False
+    hidden: bool = False
 
 
 def validate_target(value):
@@ -131,12 +132,20 @@ class _Windows:
         u.ShowWindow.restype = wintypes.BOOL
 
     def windows(self):
+        return self._enumerate_windows(include_hidden=False)
+
+    def all_windows(self):
+        """Include hidden top-level windows so hidden differs from closed."""
+        return self._enumerate_windows(include_hidden=True)
+
+    def _enumerate_windows(self, *, include_hidden):
         result = []
         callback_t = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
         def collect(hwnd, unused):
             u = self.user
-            if not u.IsWindowVisible(hwnd):
+            visible = bool(u.IsWindowVisible(hwnd))
+            if not visible and not include_hidden:
                 return True
             length = u.GetWindowTextLengthW(hwnd)
             if not 0 < length <= 1024:
@@ -158,7 +167,8 @@ class _Windows:
             u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             result.append(WindowInfo(int(hwnd), title_buffer.value, class_buffer.value,
                                      int(pid.value), origin.x, origin.y, width, height,
-                                     bool(u.IsIconic(hwnd))))
+                                     bool(u.IsIconic(hwnd)),
+                                     not visible or bool(u.IsIconic(hwnd))))
             return True
 
         callback = callback_t(collect)
@@ -310,9 +320,10 @@ class _X11:
                     self.x.XFree(hint.res_class)
         pid_prop = self._property(display, window, "_NET_WM_PID")
         pid = int(pid_prop[0]) if isinstance(pid_prop, list) and pid_prop else 0
+        unmapped = attrs.map_state != 2
         return WindowInfo(window, title, classname[:1024], pid,
                           x.value, y.value, attrs.width, attrs.height,
-                          attrs.map_state != 2)
+                          unmapped, unmapped)
 
     def windows(self):
         display = self._open()
@@ -333,6 +344,12 @@ class _X11:
             return result
         finally:
             self.x.XCloseDisplay(display)
+
+    def all_windows(self):
+        # EWMH keeps managed clients in _NET_CLIENT_LIST even when unmapped
+        # on compliant window managers. Some WMs omit hidden clients; this
+        # is a documented backend limitation, not evidence they were closed.
+        return self.windows()
 
     def foreground_handle(self):
         display = self._open()
@@ -373,6 +390,13 @@ class WindowManager:
 
     def windows(self):
         return self.backend.windows()
+
+    def all_windows(self):
+        getter = getattr(self.backend, "all_windows", None)
+        if getter is None:
+            raise WindowUnavailable(
+                "The desktop backend cannot inspect hidden or closed windows.")
+        return getter()
 
     def foreground_handle(self):
         return self.backend.foreground_handle()
