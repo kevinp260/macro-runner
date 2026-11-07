@@ -30,7 +30,11 @@ def local_path(value, description, *, required=True):
     if not value or value != value.strip() or any(
             c in value for c in ("\x00", "\r", "\n")):
         raise FileActionError(f"Enter a valid {description.lower()} path.")
-    path = Path(value).expanduser()
+    try:
+        path = Path(value).expanduser()
+    except RuntimeError:
+        raise FileActionError(
+            f"Cannot expand the home directory in {description.lower()}.") from None
     if not path.is_absolute():
         raise FileActionError(
             f"{description} must be an absolute local path; select it using Browse.")
