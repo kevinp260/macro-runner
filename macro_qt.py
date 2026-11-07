@@ -225,6 +225,7 @@ class MacroWindow(QMainWindow):
         self._pending_failure_capture = None
         self.run_history_dialog = None
         self.current_file = None
+        self._recovery_source_file = None
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
         self._saved_state = None
         self._recovery_warning_shown = False
@@ -591,7 +592,7 @@ class MacroWindow(QMainWindow):
         try:
             self.recovery_store.write(
                 self.actions, self.repeats.value(), self.delay.value(),
-                self.current_file)
+                self.current_file or self._recovery_source_file)
             self._recovery_warning_shown = False
         except (OSError, ValueError, TypeError) as exc:
             self._recovery_error(exc)
@@ -668,6 +669,7 @@ class MacroWindow(QMainWindow):
             self.repeats.setValue(snapshot.repeat_count)
             self.delay.setValue(snapshot.start_delay)
             self.current_file = None  # Recovery never silently writes the source.
+            self._recovery_source_file = snapshot.source_file
             self.history = ActionHistory(60)
             self._saved_state = None
             self._after_edit()
@@ -779,6 +781,7 @@ class MacroWindow(QMainWindow):
         self._replace_actions([], remember=False)
         self.history = ActionHistory(60)
         self.current_file = None
+        self._recovery_source_file = None
         self.repeats.setValue(1)
         self.delay.setValue(3.0)
         self._mark_clean()
@@ -811,6 +814,7 @@ class MacroWindow(QMainWindow):
             self.repeats.setValue(settings["repeat_count"])
             self.delay.setValue(settings["start_delay"])
         self.current_file = filename
+        self._recovery_source_file = None
         self._mark_clean()
         self._update_controls()
         self._set_status(f"Opened {os.path.basename(filename)}")
@@ -838,6 +842,7 @@ class MacroWindow(QMainWindow):
             QMessageBox.warning(self, "Cannot save macro", str(exc))
             return False
         self.current_file = filename
+        self._recovery_source_file = None
         self._mark_clean()
         self._set_status(f"Saved {os.path.basename(filename)}")
         return True
