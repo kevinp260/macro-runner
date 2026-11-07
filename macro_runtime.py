@@ -17,6 +17,7 @@ from macro_windows import WindowBinding, WindowUnavailable
 from macro_clipboard import ClipboardUnavailable, paste_clipboard
 from macro_launch import launch_target
 from macro_files import FILE_KINDS, run_file_action
+from macro_variables import VariableContext, validate_references
 from macro_window_wait import wait_for_window
 
 
@@ -26,9 +27,12 @@ class MacroExecutor:
                  on_diagnostic=None, on_failure_capture=None,
                  breakpoints=(), debug_gap=0.0,
                  window_target=None, window_manager=None,
-                 clipboard=None):
+                 clipboard=None, variables=None, variable_overrides=None):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
+        self.variables = VariableContext(
+            validate_references(self.actions, variables or []),
+            variable_overrides)
         if not self.actions:
             raise ValueError("The workflow has no actions.")
         if not any(a.enabled and a.kind not in ("loop_start", "loop_end", "if_start",
@@ -154,7 +158,7 @@ class MacroExecutor:
         # executable action can acquire its Step token.
         if self.gate.stopped.is_set():
             raise RuntimeError("Stopped")
-        bound = self._bound_action(action)
+        bound = self._bound_action(self.variables.resolve(action))
         result = check_condition(bound, self._pag().screenshot)
         # Record state transitions, not every polling frame.
         key = id(action)
@@ -227,14 +231,18 @@ class MacroExecutor:
         return True
 
     def _execute(self, a):
+        original = a
+        a = self.variables.resolve(a)
         # Opening apps/files/URLs and setting clipboard text do not need
         # PyAutoGUI or a configured global input session.
         pag = self._pag() if a.kind not in (
-            "wait", "clipboard_set", "launch", "wait_window", *FILE_KINDS) else None
+            "wait", "clipboard_set", "clipboard_read", "launch",
+            "wait_window", *FILE_KINDS) else None
         self.gate.wait(0)
         # Set clipboard does not send input, so it must not steal focus.
         bound = self._bound_action(a) if a.kind not in (
-            "wait", "clipboard_set", "launch", "wait_window", *FILE_KINDS) else a
+            "wait", "clipboard_set", "clipboard_read", "launch",
+            "wait_window", *FILE_KINDS) else a
         if a.kind == "click_image":
             last_region = None
 
@@ -247,7 +255,7 @@ class MacroExecutor:
 
             match = self._poll_with_retries(
                 a, lambda: poll_until(a, find, self.gate))
-            self._emit("image_match", action=a, result=True)
+            self._emit("image_match", action=original, result=True)
             client_rect = None
             if self.window_binding is not None:
                 info = self.window_binding.prepare(self.gate)
@@ -266,6 +274,10 @@ class MacroExecutor:
             # Stop during matching, verification or Pause must not inject input.
             self.gate.wait(0)
             pag.click(x, y, button=a.button)
+            if a.result_variable:
+                # Output is the located image CENTER, not the offset click.
+                self.variables.set_result(
+                    a.result_variable, [int(match[0]), int(match[1])])
         elif a.kind == "wait_until":
             self._poll_with_retries(
                 a, lambda: poll_until(
@@ -301,6 +313,15 @@ class MacroExecutor:
             # shell; Stop before dispatch prevents launching.
             self.gate.wait(0)
             launch_target(a)
+        elif a.kind == "clipboard_read":
+            if self.clipboard is None:
+                raise ClipboardUnavailable("Desktop clipboard service is unavailable.")
+            state = self.clipboard.read(gate=self.gate)
+            if state.kind not in ("text", "empty"):
+                raise ClipboardUnavailable(
+                    "The clipboard contains non-text data; no variable was assigned.")
+            self.variables.set_result(
+                a.result_variable, state.text if state.kind == "text" else "")
         elif a.kind == "clipboard_set":
             if self.clipboard is None:
                 raise ClipboardUnavailable("Desktop clipboard service is unavailable.")
@@ -355,7 +376,8 @@ class MacroExecutor:
             # Launch-only workflows can work without an available display
             # automation backend; input, screen watchers and conditions still
             # load PyAutoGUI as before.
-            no_desktop = {"wait", "clipboard_set", "launch", "wait_window", "loop_start",
+            no_desktop = {"wait", "clipboard_set", "clipboard_read",
+                          "launch", "wait_window", "loop_start",
                           "loop_end", "else", "if_end", "until_end", "watch_end"}
             if any(a.enabled and a.kind not in (no_desktop | FILE_KINDS)
                    for a in self.actions):
@@ -368,6 +390,7 @@ class MacroExecutor:
                 remaining -= chunk
             done = 0
             for repeat in range(self.repeat_count):
+                self.variables.reset()
                 start = self.start_index if repeat == 0 else 0
                 iterator = (iter_flow_steps(self.actions, self._condition,
                             self.gate.stopped.is_set, start,
