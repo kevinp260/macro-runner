@@ -57,6 +57,7 @@ KINDS = [
     ("Scroll", "scroll"), ("Drag", "drag"),
     ("Set clipboard text", "clipboard_set"), ("Paste clipboard / text", "clipboard_paste"),
     ("Open application / file / URL", "launch"),
+    ("Wait for window", "wait_window"),
     ("Repeat block", "loop_start"),
     ("If / Else", "if_start"), ("Repeat until", "until_start"),
     ("Watch region changes", "watch_start"),
@@ -69,6 +70,7 @@ TITLES = {
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
     "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
     "launch": "Open application / file / URL",
+    "wait_window": "Wait for window",
     "loop_start": "Repeat block", "if_start": "Condition",
     "until_start": "Repeat until", "watch_start": "Watch region changes"
 }
@@ -94,6 +96,10 @@ def description(action):
         detail = ("existing clipboard" if action.clipboard_text is None
                   else "temporary text (hidden)" if action.clipboard_restore
                   else "text (leave on clipboard)")
+    elif kind == "wait_window":
+        source = ("workflow target" if action.window_wait_source == "workflow"
+                  else action.window_wait_title or "Choose window")
+        detail = f"{action.window_wait_state} · {source}"
     elif kind == "launch":
         from pathlib import Path
         from urllib.parse import urlsplit
