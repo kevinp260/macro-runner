@@ -77,11 +77,21 @@ Existing JSON version 2 macros remain supported, as do legacy action arrays.
 
 **Watch Region Changes** monitors a selected rectangle by taking screenshots
 at a configurable interval (default 0.5 s). A change triggers its nested
-actions when the percentage of pixels differing from the current baseline
-exceeds the configured threshold for the requested number of consecutive
-captures. The watcher pauses while nested actions execute, then takes a
-fresh baseline before monitoring again. Set maximum changes to 0 to watch
-until Stop, or choose a finite trigger count. Pausing and Stop are supported.
+actions when the percentage of pixels differing from the last accepted screen
+state reaches the configured threshold for the requested number of consecutive
+captures. The watcher pauses while nested actions execute, then retains the
+last confirmed state as its baseline: if the region changes again while those
+actions run, that change can still trigger the next cycle. Set maximum changes
+to 0 to watch until Stop, or choose a finite trigger count. Pausing and Stop
+are supported. A new watch block or whole-workflow repeat starts with a new
+initial baseline.
+
+For reliable detection, draw a tight region around the changing content.
+Small updates may not reach the default 5% changed-pixel threshold in a large
+rectangle; lower the percentage for small changes and use confirmations to
+filter flicker. **Minimize when running** is separate from the screen-selection
+visibility setting. If MacroRunner covers the watched area during playback,
+its own UI may be captured instead of the target application.
 The screen selection overlay uses Qt global coordinates; on multi-monitor
 mixed-DPI systems and restrictive Wayland sessions, screen capture and
 coordinates may depend on desktop permissions and display scaling.

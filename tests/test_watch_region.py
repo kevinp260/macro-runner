@@ -58,7 +58,7 @@ class WatchTests(unittest.TestCase):
         checks = []
         result = [a.keys for _, a in iter_flow_steps(
             actions, lambda a: False, lambda: False,
-            watch=lambda a: checks.append(a.kind))]
+            watch=lambda a, baseline=None: checks.append(a.kind))]
         self.assertEqual(result, ["body", "body", "after"])
         self.assertEqual(checks, ["watch_start", "watch_start"])
 
