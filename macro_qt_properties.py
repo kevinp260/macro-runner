@@ -317,6 +317,11 @@ class PropertiesPanel(QFrame):
             self.result_picker = picker
             self.form.addRow("Save result in", picker)
         for field, kind in BINDABLE.get(action.kind, {}).items():
+            # Keep the inspector compact until a compatible variable exists.
+            if (field not in action.bindings and
+                    not any(item["type"] == kind
+                            for item in self.variable_definitions)):
+                continue
             picker = QComboBox()
             picker.addItem("Use direct value", "")
             for item in self.variable_definitions:
