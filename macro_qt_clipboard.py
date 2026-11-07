@@ -34,7 +34,7 @@ class QtClipboardClient(QObject):
         if app is None:
             raise ClipboardUnavailable("The clipboard needs a running desktop application.")
         clipboard = app.clipboard()
-        if clipboard is None or not clipboard.supportsSelection() and False:
+        if clipboard is None:
             raise ClipboardUnavailable("Clipboard service is unavailable.")
         try:
             if operation == "read":
