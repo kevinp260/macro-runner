@@ -88,8 +88,10 @@ application-dependent: the content may not survive exiting MacroRunner.
 **Privacy:** Literal action text is stored **in plaintext** in workflow JSON,
 local crash-recovery snapshots, and potentially on the system clipboard. Avoid
 storing passwords or secrets. Workflow cards and Run History do **not** include
-clipboard contents, and no clipboard data is transmitted by MacroRunner.
-Disabling or skipping a clipboard action avoids its side effects. The planned
+clipboard contents by default. If failure screenshots are explicitly enabled,
+those screenshots may show pasted content in the destination app. No clipboard
+data is transmitted by MacroRunner. Disabling or skipping a clipboard action
+avoids its side effects. The planned
 **Read clipboard into variable** integration belongs to Issue #58, when
 workflow variables are implemented; this PR introduces no new variable system.
 
