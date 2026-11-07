@@ -54,6 +54,12 @@ def image_click_point(action, match, *, screen_size=None, client_rect=None):
     """
     x = int(match[0]) + action.image_offset_x
     y = int(match[1]) + action.image_offset_y
+    # Keep the exact legacy center-click behavior for existing macros:
+    # older workflows could use screenshot coordinates beyond the primary
+    # display on some desktop configurations. Apply the new containment
+    # rules only when an offset actually changes the click target.
+    if action.image_offset_x == 0 and action.image_offset_y == 0:
+        return x, y
     if x < 0 or y < 0:
         raise ValueError(
             f"Image click offset would target negative coordinates ({x}, {y}).")
