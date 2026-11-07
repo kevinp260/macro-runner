@@ -56,7 +56,7 @@ QLabel#actionCount {
   border-radius: 6px; padding: 3px 8px;
 }
 QFrame#panel { background: #1b222c; border: 1px solid #303a49; border-radius: 10px; }
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
   background: #222b37; color: #eaf0f7; border: 1px solid #3a4758;
   border-radius: 6px; padding: 7px; min-height: 20px;
 }
@@ -97,7 +97,7 @@ QLabel#actionCount {
   border-radius: 6px; padding: 3px 8px;
 }
 QFrame#panel { background: white; border: 1px solid #dce3ea; border-radius: 10px; }
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
+QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
   background: white; color: #253242; border: 1px solid #c9d3df;
   border-radius: 6px; padding: 7px; min-height: 20px;
 }
