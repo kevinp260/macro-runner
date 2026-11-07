@@ -156,6 +156,18 @@ class ClipboardActionTests(unittest.TestCase):
                                 RuntimeError("focus lost")))
         self.assertEqual(fake.state.text, "previous")
 
+    def test_pause_during_paste_does_not_leave_temporary_text_on_clipboard(self):
+        clipboard = FakeClipboard(ClipboardState("text", "previous"))
+        class PausedGate:
+            stopped = threading.Event()
+            def wait(self, seconds):
+                if seconds:
+                    raise AssertionError(
+                        "Clipboard settling must not block on a paused workflow")
+        paste_clipboard(clipboard, FakeDesktop(), PausedGate(),
+                        text="temporary", restore=True)
+        self.assertEqual(clipboard.state.text, "previous")
+
     def test_stop_after_shortcut_still_restores(self):
         fake = FakeClipboard(ClipboardState("text", "original"))
         gate = Gate()
