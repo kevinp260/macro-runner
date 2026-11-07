@@ -22,8 +22,17 @@ BINDABLE = {
     "key": {"keys": "text"},
     "key_down": {"keys": "text"},
     "key_up": {"keys": "text"},
-    "click_image": {"image_path": "text",
+    "click_image": {"image_path": "text", "confidence": "number",
                     "image_offset_x": "number", "image_offset_y": "number"},
+    "wait_until": {"image_path": "text", "confidence": "number",
+                   "pixel_x": "number", "pixel_y": "number",
+                   "pixel_color": "text", "timeout": "number"},
+    "if_start": {"image_path": "text", "confidence": "number",
+                 "pixel_x": "number", "pixel_y": "number",
+                 "pixel_color": "text"},
+    "until_start": {"image_path": "text", "confidence": "number",
+                    "pixel_x": "number", "pixel_y": "number",
+                    "pixel_color": "text"},
     "clipboard_set": {"clipboard_text": "text"},
     "clipboard_paste": {"clipboard_text": "text",
                         "clipboard_restore": "boolean"},
@@ -210,7 +219,8 @@ class VariableContext:
                 x, y = ("x", "y") if field == "point" else ("to_x", "to_y")
                 values.update({x: value[0], y: value[1]})
                 continue
-            if field in ("scroll_amount", "image_offset_x", "image_offset_y"):
+            if field in ("scroll_amount", "image_offset_x", "image_offset_y",
+                         "pixel_x", "pixel_y"):
                 if type(value) is float and value.is_integer():
                     value = int(value)
                 if type(value) is not int:
