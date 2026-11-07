@@ -152,7 +152,8 @@ class VariableModelTests(unittest.TestCase):
             validate_references(
                 [Action(kind="key", bindings={"keys": "unknown"})], [])
         with self.assertRaisesRegex(ValueError, "choose a text result"):
-            validate_references([Action(kind="clipboard_read")], [])
+            validate_references([Action(kind="clipboard_read")], [],
+                                require_outputs=True)
         with self.assertRaisesRegex(ValueError, "expects coordinates"):
             validate_references(
                 [Action(kind="click", x=0, y=0, bindings={"point": "name"})],
