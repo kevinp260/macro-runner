@@ -15,7 +15,7 @@ from PIL import Image
 from macro_flow import CONTROL, has_smart_actions, validate_flow, validate_start_selection
 from macro_model import validate_action
 from macro_launch import LaunchError, validate_launch
-from macro_windows import WindowBinding, WindowUnavailable
+from macro_windows import WindowBinding, WindowManager, WindowUnavailable
 
 
 @dataclass(frozen=True)
@@ -161,15 +161,70 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             "Wayland may restrict global input and screen capture. "
             "Use an X11 session where required; verify desktop permissions."))
 
+    # Window waits are read-only checks; they do not require their window
+    # to exist when a workflow starts. Verify the backend is available
+    # without activating anything, and validate the selected source.
+    wait_indices = [
+        index for index in range(start_index, len(normalized))
+        if normalized[index].enabled and normalized[index].kind == "wait_window"
+    ]
+    manager = window_manager
+    if wait_indices:
+        try:
+            manager = manager or WindowManager()
+            manager.all_windows()
+        except (WindowUnavailable, OSError) as exc:
+            findings.append(PreflightFinding("error", wait_indices[0], str(exc)))
+            return findings
+        for index in wait_indices:
+            action = normalized[index]
+            if action.window_wait_source == "workflow" and window_target is None:
+                findings.append(PreflightFinding(
+                    "error", index,
+                    "Window wait uses the workflow target, but no target is configured."))
+            elif (action.window_wait_source == "custom" and
+                  not action.window_wait_title.strip()):
+                findings.append(PreflightFinding(
+                    "error", index, "Choose a window or enter its exact title."))
+    if any(f.severity == "error" for f in findings):
+        return findings
+
     binding = None
     target_info = None
     if window_target is not None:
         try:
-            binding = WindowBinding(window_target, manager=window_manager)
-            # No activation is performed by preflight: checking a target
-            # must not change window focus or send desktop input.
+            binding = WindowBinding(window_target, manager=manager)
+            # No activation: a workflow may first launch a missing window
+            # and then wait for it before performing bound input.
             target_info = binding.resolve()
-        except (WindowUnavailable, ValueError, OSError) as exc:
+        except WindowUnavailable as exc:
+            if not str(exc).startswith("Target window was not found."):
+                findings.append(PreflightFinding("error", None, str(exc)))
+                return findings
+            binding_consumers = {
+                "click", "click_image", "move", "scroll", "drag",
+                "key", "key_down", "key_up", "clipboard_paste",
+                "wait_until", "if_start", "until_start", "watch_start",
+            }
+            first_bound = next((
+                index for index in range(start_index, len(normalized))
+                if normalized[index].enabled and
+                normalized[index].kind in binding_consumers
+            ), len(normalized))
+            earlier_wait = any(
+                index < first_bound and normalized[index].window_wait_source == "workflow"
+                and normalized[index].window_wait_state == "appears"
+                for index in wait_indices
+            )
+            if not earlier_wait and first_bound < len(normalized):
+                findings.append(PreflightFinding("error", None, str(exc)))
+                return findings
+            if first_bound < len(normalized):
+                findings.append(PreflightFinding(
+                    "warning", first_bound,
+                    "The target window is not open yet. Client coordinates "
+                    "will be verified when it appears, before input."))
+        except (ValueError, OSError) as exc:
             findings.append(PreflightFinding("error", None, str(exc)))
             return findings
 
@@ -188,7 +243,8 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             # Disabled image actions have no runtime dependency on their file.
             if required:
                 _image_issues(action, index, findings, required=True)
-        if required and binding is not None and binding.spec["relative"]:
+        if required and binding is not None and binding.spec["relative"] and (
+                target_info is not None):
             try:
                 bound = binding.transform(action, target_info)
                 if (action.kind in ("click_image", "wait_until", "if_start",
@@ -208,7 +264,8 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
                         "the screenshot backend.")
             except WindowUnavailable as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
-        elif required:
+        elif required and not (binding is not None and
+                               binding.spec["relative"] and target_info is None):
             _geometry_issues(action, index, screen_size, findings)
 
     return findings

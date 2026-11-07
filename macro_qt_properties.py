@@ -5,11 +5,13 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QScrollArea, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QCheckBox, QSpinBox, QPushButton, QLabel, QFileDialog, QHBoxLayout,
-    QMessageBox, QFrame, QPlainTextEdit
+    QMessageBox, QFrame, QPlainTextEdit, QDialog
 )
 
 from macro_model import Action, validate_action
 from macro_flow import CONTROL
+from macro_windows import WindowManager, WindowUnavailable
+from macro_qt_windows import WindowPickerDialog
 
 # Describes only fields that are relevant to an action kind.
 SPECS = {
@@ -26,6 +28,9 @@ SPECS = {
     "clipboard_set": ["clipboard_text"],
     "clipboard_paste": ["clipboard_text", "clipboard_restore"],
     "launch": ["launch_mode", "launch_target", "launch_args"],
+    "wait_window": ["window_wait_source", "window_wait_state",
+                    "window_wait_title", "window_wait_class",
+                    "timeout", "poll_interval"],
     "loop_start": [],
     "if_start": [],
     "until_start": [],
@@ -45,6 +50,8 @@ COMBOS = {
     "match_mode": ["matches", "not_matches"],
     "failure_policy": ["stop", "skip", "retry"],
     "launch_mode": ["application", "file", "url"],
+    "window_wait_source": ["custom", "workflow"],
+    "window_wait_state": ["appears", "active", "hidden", "closed"],
 }
 INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "pixel_x", "pixel_y", "pixel_tolerance",
@@ -154,6 +161,10 @@ class PropertiesPanel(QFrame):
     def show_action(self, action):
         self.current = action
         self._reset_form()
+        self._wait_identity = (
+            (action.window_wait_handle, action.window_wait_pid)
+            if action is not None and action.kind == "wait_window"
+            else (0, 0))
         if action is None:
             self.hint.setText("Select an action in the workflow.")
             self.apply.setEnabled(False)
@@ -214,6 +225,22 @@ class PropertiesPanel(QFrame):
                 widget.setCurrentText(str(value))
             else:
                 widget = QLineEdit("" if value is None else str(value))
+                if field == "window_wait_title":
+                    row = QWidget()
+                    layout = QHBoxLayout(row)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.addWidget(widget, 1)
+                    pick = QPushButton("Choose…")
+                    pick.clicked.connect(self.pick_wait_window)
+                    layout.addWidget(pick)
+                    self.wait_pick = pick
+                    widget.textEdited.connect(self._forget_wait_identity)
+                    self.form.addRow("Exact window title", row)
+                    self.controls[field] = widget
+                    continue
+                if field == "window_wait_class":
+                    widget.setPlaceholderText("Optional class filter")
+                    widget.textEdited.connect(self._forget_wait_identity)
                 if field == "launch_target":
                     row = QWidget()
                     layout = QHBoxLayout(row)
@@ -239,6 +266,20 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind == "wait_window":
+            self.controls["window_wait_source"].currentTextChanged.connect(
+                self.update_wait_window_visibility)
+            self.update_wait_window_visibility()
+            hint = QLabel(
+                "Choose a visible window or enter its exact title to wait "
+                "for one that is not open yet. Optional class filters "
+                "duplicate titles. Workflow uses the target selected above "
+                "the editor. Hidden means minimized/unmapped, only while "
+                "the window manager still enumerates it. Closed means absent. "
+                "No focus changes or keyboard input are sent.")
+            hint.setWordWrap(True)
+            hint.setObjectName("panelHint")
+            self.form.addRow(hint)
         if action.kind == "launch":
             self.controls["launch_mode"].currentTextChanged.connect(
                 self.update_launch_visibility)
@@ -335,6 +376,33 @@ class PropertiesPanel(QFrame):
                 self.controls["match_mode"].setEnabled(False)
             self.update_visual_visibility()
 
+    def _forget_wait_identity(self, _=None):
+        self._wait_identity = (0, 0)
+
+    def update_wait_window_visibility(self, _=None):
+        mode = self.controls.get("window_wait_source")
+        if mode is None:
+            return
+        custom = mode.currentText() == "custom"
+        self.wait_pick.setEnabled(custom)
+        for name in ("window_wait_title", "window_wait_class"):
+            self.controls[name].setEnabled(custom)
+
+    def pick_wait_window(self):
+        if self.current is None or self.current.kind != "wait_window":
+            return
+        try:
+            dialog = WindowPickerDialog(WindowManager(), self)
+        except (WindowUnavailable, OSError) as exc:
+            QMessageBox.warning(self, "Window picker unavailable", str(exc))
+            return
+        dialog.setWindowTitle("Choose window to observe")
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected is not None:
+            window = dialog.selected
+            self.controls["window_wait_title"].setText(window.title)
+            self.controls["window_wait_class"].setText(window.class_name)
+            self._wait_identity = (window.handle, window.pid)
+
     def update_launch_visibility(self, _=None):
         mode = self.controls.get("launch_mode")
         if mode is None:
@@ -427,6 +495,8 @@ class PropertiesPanel(QFrame):
             else:
                 value = convert(field, widget.text())
             data[field] = value
+        if data["kind"] == "wait_window":
+            data["window_wait_handle"], data["window_wait_pid"] = self._wait_identity
         if data["kind"] == "launch" and data["launch_mode"] != "application":
             data["launch_args"] = ""
         if data["kind"] == "click_image":

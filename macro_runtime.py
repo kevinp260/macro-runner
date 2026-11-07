@@ -16,6 +16,7 @@ from dataclasses import asdict
 from macro_windows import WindowBinding, WindowUnavailable
 from macro_clipboard import ClipboardUnavailable, paste_clipboard
 from macro_launch import launch_target
+from macro_window_wait import wait_for_window
 
 
 class MacroExecutor:
@@ -52,6 +53,8 @@ class MacroExecutor:
         self.window_binding = (WindowBinding(window_target, manager=window_manager)
                                if window_target is not None else None)
         self.clipboard = clipboard
+        self.window_manager = (self.window_binding.manager
+                               if self.window_binding is not None else window_manager)
         self.smart = has_smart_actions(self.actions)
         if self.smart:
             validate_start_selection(self.actions, start_index)
@@ -225,11 +228,12 @@ class MacroExecutor:
     def _execute(self, a):
         # Opening apps/files/URLs and setting clipboard text do not need
         # PyAutoGUI or a configured global input session.
-        pag = self._pag() if a.kind not in ("wait", "clipboard_set", "launch") else None
+        pag = self._pag() if a.kind not in (
+            "wait", "clipboard_set", "launch", "wait_window") else None
         self.gate.wait(0)
         # Set clipboard does not send input, so it must not steal focus.
         bound = self._bound_action(a) if a.kind not in (
-            "wait", "clipboard_set", "launch") else a
+            "wait", "clipboard_set", "launch", "wait_window") else a
         if a.kind == "click_image":
             last_region = None
 
@@ -270,6 +274,12 @@ class MacroExecutor:
                     self.gate.wait(a.interval)
         elif a.kind == "wait":
             self.gate.wait(a.seconds)
+        elif a.kind == "wait_window":
+            wait_for_window(
+                a, self.gate,
+                workflow_target=(self.window_binding.spec
+                                 if self.window_binding is not None else None),
+                manager=self.window_manager)
         elif a.kind == "launch":
             # OS-native app/file/browser open only. No window activation or
             # shell; Stop before dispatch prevents launching.
@@ -329,7 +339,7 @@ class MacroExecutor:
             # Launch-only workflows can work without an available display
             # automation backend; input, screen watchers and conditions still
             # load PyAutoGUI as before.
-            no_desktop = {"wait", "clipboard_set", "launch", "loop_start",
+            no_desktop = {"wait", "clipboard_set", "launch", "wait_window", "loop_start",
                           "loop_end", "else", "if_end", "until_end", "watch_end"}
             if any(a.enabled and a.kind not in no_desktop for a in self.actions):
                 pag = self._pag()

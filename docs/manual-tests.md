@@ -69,6 +69,30 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Wait for window state (Issue #48)
+
+- [ ] Windows 11 and Ubuntu X11/Xorg: choose an existing window in the inspector.
+      Verify title, class, handle/PID survive Apply/Save/Open/recovery; editing
+      title/class clears a previously selected handle and PID.
+- [ ] Wait for a delayed application launch, then detect Appears and Active
+      with focus changing between windows. Duplicate title matches must fail.
+      Check unique title/class matching after an app restart or title change.
+- [ ] Reuse main workflow target for waits; ensure status checks never
+      activate or raise the selected window.
+- [ ] Minimize/unmap a window and check Hidden versus Closed. Missing
+      windows are not Hidden; hidden/unmapped windows still enumerated
+      by the WM must not be treated as Closed. Record X11 WM limitations.
+- [ ] Test Open application → Wait for workflow target to appear →
+      client-relative click; preflight must allow waiting for a missing
+      window but never allow input before its existence is confirmed.
+- [ ] Test timeout, zero-timeout single-check, polling interval, Skip on
+      timeout, Stop during a wait and Pause/Step/Resume without UI freezes.
+- [ ] Test nested Repeat, If/Else, Run from Selected, disabled actions,
+      keyboard cleanup and closed/renamed windows after selection.
+- [ ] Wayland must block with unsupported-backend error, not silently
+      use an XWayland fallback. Test packaged Windows and Ubuntu builds,
+      multi-monitor layouts and virtual workspaces.
+
 ## Open application, file, or HTTP(S) URL (Issue #47)
 
 - [ ] Add the action, browse to a valid installed executable, and enter

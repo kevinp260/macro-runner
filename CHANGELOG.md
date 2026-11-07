@@ -5,6 +5,10 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added cancellable Wait for Window actions for appear/active/hidden/closed
+  states using the existing Win32/X11 targeting identity, including a picker,
+  title/class fallback, timeout and polling controls (Issue #48).
+
 - Added an Open Application/File/URL action with shell-free explicit arguments,
   OS default file/HTTP(S) handlers, preflight path/permission checks, and a
   direct inspector file picker and test-launch control (Issue #47).
