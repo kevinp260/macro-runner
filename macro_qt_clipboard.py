@@ -7,6 +7,7 @@ import threading
 import time
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtGui import QClipboard
 from PySide6.QtWidgets import QApplication
 
 
@@ -37,12 +38,12 @@ class QtClipboardClient(QObject):
                     return ClipboardState("other")
                 return ClipboardState("text", clipboard.text())
             if operation == "set":
-                clipboard.setText(value, clipboard.Mode.Clipboard)
-                if clipboard.text(clipboard.Mode.Clipboard) != value:
+                clipboard.setText(value, QClipboard.Mode.Clipboard)
+                if clipboard.text(QClipboard.Mode.Clipboard) != value:
                     raise ClipboardUnavailable("Unable to set clipboard text.")
                 return None
             if operation == "clear":
-                clipboard.clear(clipboard.Mode.Clipboard)
+                clipboard.clear(QClipboard.Mode.Clipboard)
                 return None
         except Exception:
             # Qt/platform errors may carry sensitive clipboard data.
