@@ -5,7 +5,7 @@ from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QScrollArea, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
     QCheckBox, QSpinBox, QPushButton, QLabel, QFileDialog, QHBoxLayout,
-    QMessageBox, QFrame
+    QMessageBox, QFrame, QPlainTextEdit
 )
 
 from macro_model import Action, validate_action
@@ -23,6 +23,8 @@ SPECS = {
     "move": ["x", "y", "move_duration"],
     "scroll": ["scroll_amount"],
     "drag": ["x", "y", "to_x", "to_y", "move_duration", "button"],
+    "clipboard_set": ["clipboard_text"],
+    "clipboard_paste": ["clipboard_text", "clipboard_restore"],
     "loop_start": [],
     "if_start": [],
     "until_start": [],
@@ -176,6 +178,23 @@ class PropertiesPanel(QFrame):
             self.form.addRow("", enabled)
         for field in fields_for_kind(action.kind):
             value = getattr(action, field)
+            if field == "clipboard_text":
+                widget = QPlainTextEdit()
+                widget.setPlainText("" if value is None else value)
+                widget.setMaximumHeight(110)
+                widget.setPlaceholderText(
+                    "Leave blank to paste existing clipboard text."
+                    if action.kind == "clipboard_paste"
+                    else "Text to place on the clipboard. Blank clears text.")
+                self.controls[field] = widget
+                self.form.addRow("Clipboard text", widget)
+                continue
+            if field == "clipboard_restore":
+                widget = QCheckBox("Restore previous clipboard text after paste")
+                widget.setChecked(bool(value))
+                self.controls[field] = widget
+                self.form.addRow("", widget)
+                continue
             if field in COMBOS:
                 widget = QComboBox()
                 widget.addItems(COMBOS[field])
@@ -195,6 +214,18 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind in ("clipboard_set", "clipboard_paste"):
+            info = QLabel(
+                "Clipboard text is saved as plaintext in macro files and local "
+                "crash recovery, but is not shown in action labels or run logs. "
+                + ("Empty text clears clipboard text."
+                   if action.kind == "clipboard_set" else
+                   "Blank text pastes the current clipboard. With custom text, "
+                   "the previous text is restored if unchanged; non-text clipboard "
+                   "cannot be restored."))
+            info.setWordWrap(True)
+            info.setObjectName("panelHint")
+            self.form.addRow(info)
         if action.kind not in CONTROL:
             self.controls["failure_policy"].currentTextChanged.connect(
                 self.update_failure_visibility)
@@ -330,6 +361,10 @@ class PropertiesPanel(QFrame):
                 value = widget.isChecked()
             elif isinstance(widget, QComboBox):
                 value = widget.currentText()
+            elif isinstance(widget, QPlainTextEdit):
+                value = widget.toPlainText()
+                if data["kind"] == "clipboard_paste" and not value:
+                    value = None
             else:
                 value = convert(field, widget.text())
             data[field] = value
