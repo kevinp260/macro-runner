@@ -195,6 +195,38 @@ class LaunchActionTests(unittest.TestCase):
         self.assertEqual(len(launched),1)
         self.assertTrue(results[0][0])
 
+    def test_launch_only_run_does_not_import_screen_input_backend(self):
+        results, dispatched = [], []
+        runner = MacroExecutor([
+            Action(kind="launch", launch_target=str(self.executable)),
+            Action(kind="wait", seconds=0),
+        ], 1, 0, lambda *args:None, lambda *args:results.append(args))
+        with patch.object(runner, "_pag", side_effect=AssertionError(
+                "No global input dependency for launch-only runs")), patch(
+                    "macro_runtime.launch_target", side_effect=dispatched.append):
+            runner.run()
+        self.assertTrue(results[0][0], results)
+        self.assertEqual(len(dispatched), 1)
+
+    def test_launch_failure_skip_policy_keeps_next_action_and_no_double_launch(self):
+        results, attempts, skipped = [], [], []
+        actions = [
+            Action(kind="launch", launch_target=str(self.executable),
+                   failure_policy="skip"),
+            Action(kind="wait", seconds=0),
+        ]
+        runner = MacroExecutor(
+            actions, 1, 0, lambda *args:None, lambda *args:results.append(args),
+            on_diagnostic=skipped.append)
+        def denied(action):
+            attempts.append(action.kind)
+            raise LaunchError("Executable was not available")
+        with patch("macro_runtime.launch_target", side_effect=denied):
+            runner.run()
+        self.assertTrue(results[0][0], results)
+        self.assertEqual(attempts, ["launch"])
+        self.assertTrue(any(x["event"] == "action_skipped" for x in skipped))
+
     def test_stop_before_dispatch_prevents_side_effects(self):
         launched, results = [], []
         runner = MacroExecutor([
