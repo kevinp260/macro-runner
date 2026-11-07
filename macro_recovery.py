@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from typing import Optional
 
 from macro_model import parse_document, serialize_document
 
@@ -21,7 +22,7 @@ class RecoverySnapshot:
     actions: list
     repeat_count: int
     start_delay: float
-    source_file: str | None
+    source_file: Optional[str]
     saved_at: str
 
 
