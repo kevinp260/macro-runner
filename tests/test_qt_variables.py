@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from macro_model import Action, parse_document, serialize_document
 from macro_qt import MacroWindow
@@ -165,9 +165,7 @@ class VariableQtTests(unittest.TestCase):
         with patch("macro_qt.QFileDialog.getOpenFileName",
                    return_value=(str(path),"")), patch(
                    "macro_qt.QMessageBox.question",
-                   return_value=__import__(
-                       "PySide6.QtWidgets", fromlist=["QMessageBox"]
-                   ).QMessageBox.StandardButton.Discard):
+                   return_value=QMessageBox.StandardButton.Discard):
             self.win.open_workflow()
         self.assertEqual(self.win.variables, defs)
         self.assertEqual(self.win.variable_overrides, {})
