@@ -176,6 +176,22 @@ class BreakpointRuntimeTests(unittest.TestCase):
             runner.stop()
             runner.thread.join(2)
 
+    def test_step_queued_before_first_breakpoint_is_not_lost(self):
+        runner, desktop, events, outcomes, finished = make_runner(
+            [Action(kind="key", keys="first")], breakpoints={0},
+            step_mode=True)
+        # The UI can grant the initial Step before worker scheduling starts.
+        runner.step()
+        runner.start()
+        try:
+            self.assertTrue(finished.wait(2))
+            self.assertTrue(outcomes[0][0], outcomes)
+            self.assertEqual(desktop.presses, ["first"])
+            self.assertEqual([e["event"] for e in events].count("breakpoint"), 1)
+        finally:
+            runner.stop()
+            runner.thread.join(2)
+
     def test_slow_gap_is_cancellable_and_does_not_change_action_json(self):
         actions = [Action(kind="key", keys="first"),
                    Action(kind="key", keys="second")]
