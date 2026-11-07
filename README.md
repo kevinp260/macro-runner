@@ -59,7 +59,7 @@ locally and is separate from **Minimize when running**.
 
 ## Unsaved changes and crash recovery
 
-MacroRunner marks unsaved changes with **\u002a** in the window title, including
+MacroRunner marks unsaved changes with an asterisk (`*`) in the window title, including
 changes to whole-workflow repeat count and start delay. **New**, **Open** and
 **Close** offer **Save / Discard / Cancel** when changes are pending. Cancelling
 keeps the current editor intact; canceling the Save As picker also keeps edits.
