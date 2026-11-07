@@ -26,10 +26,6 @@ def validate_window_wait(action):
         val = getattr(action, key)
         if isinstance(val, bool) or not isinstance(val, int) or val < 0:
             raise ValueError("Selected window handle/PID must be nonnegative integers.")
-    if (action.window_wait_source == "custom" and
-            not action.window_wait_title.strip()):
-        # A placeholder can be edited/saved. inspect_workflow blocks execution.
-        return
     if action.window_wait_source == "custom" and action.window_wait_handle:
         saved = {
             "handle": action.window_wait_handle,
