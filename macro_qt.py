@@ -392,6 +392,8 @@ class MacroWindow(QMainWindow):
 
         target_row = QHBoxLayout()
         self.target_label = QLabel("Target: Screen (absolute)")
+        self.target_label.setMinimumWidth(0)
+        self.target_label.setMaximumWidth(255)
         self.target_label.setToolTip("Normal screen-wide macros remain unchanged.")
         target_row.addWidget(self.target_label, 1)
         self.target_pick = QPushButton("Choose window…")
@@ -1155,8 +1157,9 @@ class MacroWindow(QMainWindow):
         try:
             import pyautogui
             if self.window_target and self.window_target["relative"]:
-                info = WindowBinding(self.window_target).resolve()
-                x, y = WindowBinding(self.window_target).point(x, y, info)
+                binding = WindowBinding(self.window_target)
+                info = binding.resolve()
+                x, y = binding.point(x, y, info)
             pyautogui.moveTo(x, y, duration=.15)
             self._set_status(f"Moved pointer to ({x}, {y}).")
         except Exception as exc:
