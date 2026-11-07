@@ -57,6 +57,47 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Target-window automation (Issue #45)
+
+Use **Choose window…** in the editor to bind a workflow to a visible application
+window. The picker shows its title, class, process ID (if available), client
+size, and client-area screen origin. Enable **Client-relative coordinates**
+(default for new bindings) to enter or pick action coordinates relative to the
+inside of that window; moving the target preserves these offsets. Disable it
+to keep absolute desktop coordinates while still targeting a foreground window.
+Use **Clear target** to return to ordinary screen-wide automation.
+
+**Activate before input** is on by default. Before input or screen operations,
+MacroRunner re-identifies the target using its original handle/PID/class,
+falling back to a *unique* exact title/class match when an application restarts.
+If the target is closed, ambiguous, resized so an action falls outside its
+client area, or cannot become foreground, the workflow fails rather than
+sending input to an unrelated window. When activation is off, the intended
+window must already be foreground. The target and options are saved with the
+workflow in optional version-2 settings and included in local recovery; old
+macros without a target behave exactly as before.
+
+Client-relative mode applies to Click/Move/Drag positions, pixel conditions,
+image-search regions (the whole client area when none is selected), and Watch
+Region Changes. Coordinate and region pickers convert physical screen positions
+to client offsets and reject picks outside the target. Images remain reference
+files in the existing workflow. Coordinates are **pixels**, not percentages;
+resizing can make offsets invalid. Native client geometry is queried again
+before each action and each live watcher screenshot; rapid movement during a
+single drag or image match may still cause a safe failure or missed input.
+
+**Platform support:** Windows uses native Win32 APIs; Ubuntu **X11/Xorg** uses
+the X11/EWMH window-manager protocol (requires an EWMH-capable WM and libX11).
+Some desktops/applications may refuse foreground activation. **Wayland is not
+supported for target-window enumeration/activation.** This is *foreground*
+automation via ordinary global desktop input, **not background injection**.
+It does not reliably click or type into covered/minimized windows without
+raising them, and cannot bypass OS input/focus restrictions. X11/Windows
+multi-monitor negative origins are supported for coordinates, but screenshot
+backends may reject negative-origin image/pixel regions; preflight blocks those
+scenarios rather than pretending they work. Check DPI/scaling behavior on the
+actual desktop (including mixed-DPI monitors) before relying on recorded picks.
+
 ## Unsaved changes and crash recovery
 
 MacroRunner marks unsaved changes with an asterisk (`*`) in the window title, including
