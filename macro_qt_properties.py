@@ -12,6 +12,7 @@ from macro_model import Action, validate_action
 from macro_flow import CONTROL
 from macro_windows import WindowManager, WindowUnavailable
 from macro_qt_windows import WindowPickerDialog
+from macro_variables import BINDABLE
 
 # Describes only fields that are relevant to an action kind.
 SPECS = {
@@ -28,6 +29,7 @@ SPECS = {
     "drag": ["x", "y", "to_x", "to_y", "move_duration", "button"],
     "clipboard_set": ["clipboard_text"],
     "clipboard_paste": ["clipboard_text", "clipboard_restore"],
+    "clipboard_read": [],
     "launch": ["launch_mode", "launch_target", "launch_args"],
     "wait_window": ["window_wait_source", "window_wait_state",
                     "window_wait_title", "window_wait_class",
@@ -165,9 +167,12 @@ class PropertiesPanel(QFrame):
                         child.widget().deleteLater()
         self.controls = {}
 
-    def show_action(self, action):
+    def show_action(self, action, variables=None):
         self.current = action
+        self.variable_definitions = variables or []
         self._reset_form()
+        self.variable_controls = {}
+        self.result_picker = None
         self._wait_identity = (
             (action.window_wait_handle, action.window_wait_pid)
             if action is not None and action.kind == "wait_window"
@@ -297,6 +302,34 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind in ("click_image", "clipboard_read"):
+            expected = ("coordinates" if action.kind == "click_image" else "text")
+            picker = QComboBox()
+            picker.addItem("Do not save match" if action.kind == "click_image"
+                           else "Choose a text variable", "")
+            for item in self.variable_definitions:
+                if item["type"] == expected:
+                    picker.addItem(item["name"], item["name"])
+            if action.result_variable and picker.findData(action.result_variable) < 0:
+                picker.addItem(action.result_variable + " (unavailable)",
+                               action.result_variable)
+            picker.setCurrentIndex(max(0, picker.findData(action.result_variable)))
+            self.result_picker = picker
+            self.form.addRow("Save result in", picker)
+        for field, kind in BINDABLE.get(action.kind, {}).items():
+            picker = QComboBox()
+            picker.addItem("Use direct value", "")
+            for item in self.variable_definitions:
+                if item["type"] == kind:
+                    picker.addItem(item["name"], item["name"])
+            selected = action.bindings.get(field, "")
+            if selected and picker.findData(selected) < 0:
+                picker.addItem(selected + " (unavailable)", selected)
+            picker.setCurrentIndex(max(0, picker.findData(selected)))
+            self.variable_controls[field] = picker
+            self.form.addRow(f"Bind {field.replace('_', ' ')}", picker)
+            picker.currentIndexChanged.connect(self._update_binding_visibility)
+        self._update_binding_visibility()
         if action.kind in ("file_check", "file_wait", "file_copy",
                            "file_move", "folder_create"):
             if action.kind == "file_copy":
@@ -442,6 +475,16 @@ class PropertiesPanel(QFrame):
                 self.controls["match_mode"].setEnabled(False)
             self.update_visual_visibility()
 
+    def _update_binding_visibility(self, _=None):
+        for field, picker in self.variable_controls.items():
+            bound = bool(picker.currentData())
+            names = (("x", "y") if field == "point" else
+                     ("to_x", "to_y") if field == "to_point" else (field,))
+            for name in names:
+                widget = self.controls.get(name)
+                if widget is not None:
+                    widget.setEnabled(not bound)
+
     def _forget_wait_identity(self, _=None):
         self._wait_identity = (0, 0)
 
@@ -576,6 +619,13 @@ class PropertiesPanel(QFrame):
             else:
                 value = convert(field, widget.text())
             data[field] = value
+        data["bindings"] = {
+            field: picker.currentData()
+            for field, picker in self.variable_controls.items()
+            if picker.currentData()
+        }
+        if self.result_picker is not None:
+            data["result_variable"] = self.result_picker.currentData()
         if data["kind"] == "wait_window":
             data["window_wait_handle"], data["window_wait_pid"] = self._wait_identity
         if data["kind"] == "launch" and data["launch_mode"] != "application":
