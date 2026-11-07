@@ -79,8 +79,10 @@ def iter_flow_steps(actions, check, stopped, start_index=0, watch=None):
         elif kind == "watch_start":
             if watch is None:
                 raise RuntimeError("Watch region requires a screen capture provider.")
-            frames.append([kind, pc, 0])
-            watch(action)
+            # The watch callback returns its confirmed screenshot. Keep it as
+            # this block's state, including while its child actions execute.
+            accepted = watch(action)
+            frames.append([kind, pc, 0, accepted])
             pc += 1
         elif kind == "watch_end":
             frame = frames[-1]
@@ -90,9 +92,9 @@ def iter_flow_steps(actions, check, stopped, start_index=0, watch=None):
                 frames.pop()
                 pc += 1
             else:
-                # The next watch captures a fresh baseline after the body.
-                # Actions in the body never trigger their own watcher.
-                watch(start)
+                # Compare against the last accepted image, not a fresh capture:
+                # child actions may have changed the region while executing.
+                frame[3] = watch(start, frame[3])
                 pc = frame[1] + 1
         elif kind == "loop_end":
             frame = frames[-1]

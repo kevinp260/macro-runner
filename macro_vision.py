@@ -83,17 +83,18 @@ def changed_pixel_percent(baseline, candidate, tolerance=15):
     return 100.0 * float(np.count_nonzero(changed)) / changed.size
 
 
-def watch_region_change(action, screenshot, gate):
-    """Wait for a stable change against a freshly captured region baseline.
+def watch_region_change(action, screenshot, gate, baseline=None):
+    """Wait for a stable change from the last *accepted* screen state.
 
-    During playback the caller runs its body only after this returns, and
-    calls again after the body to establish a fresh reference image. A stable
-    change requires consecutive matching candidate screenshots, which avoids
-    flicker and intermediate animation frames becoming the accepted state.
+    The first invocation captures an initial baseline. Subsequent invocations
+    must pass the previously accepted image: taking a new baseline after the
+    nested actions would silently discard changes that occurred during them.
+    Consecutive similar captures confirm the new state before it is accepted.
     """
     region = (action.region_x, action.region_y, action.region_w, action.region_h)
     gate.wait(0)
-    baseline = screenshot(region=region).convert("RGB")
+    if baseline is None:
+        baseline = screenshot(region=region).convert("RGB")
     pending = None
     confirmations = 0
     while True:

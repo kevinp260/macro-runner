@@ -77,12 +77,14 @@ class MacroExecutor:
             raise RuntimeError("Stopped")
         return check_condition(action, self._pag().screenshot)
 
-    def _watch_region(self, action):
+    def _watch_region(self, action, baseline=None):
         # Watch only on the worker thread. Step mode can grant one watch cycle,
-        # and Stop interrupts the polling gate immediately.
+        # and Stop interrupts the polling gate immediately. Preserve the last
+        # accepted screen image across nested action execution.
         self.gate.begin_action()
         try:
-            return watch_region_change(action, self._pag().screenshot, self.gate)
+            return watch_region_change(action, self._pag().screenshot, self.gate,
+                                       baseline=baseline)
         finally:
             self.gate.end_action()
 
