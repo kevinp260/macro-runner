@@ -33,7 +33,7 @@ from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_preflight import inspect_workflow
-from macro_recovery import RecoveryStore, atomic_json_write, MAX_RECOVERY_BYTES
+from macro_recovery import RecoveryStore, atomic_json_write
 from macro_qt_preflight import PreflightDialog
 from macro_keys import KeyboardRecorder, normalize_event_key
 from macro_ui_assets import ICON_DIR
@@ -798,8 +798,6 @@ class MacroWindow(QMainWindow):
         # Read and validate FIRST. A failed import must not discard edits or
         # recovery data from the current document.
         try:
-            if Path(filename).stat().st_size > MAX_RECOVERY_BYTES:
-                raise ValueError("Macro file exceeds the 10 MB import limit.")
             with open(filename, "r", encoding="utf-8") as file:
                 actions, settings = parse_document(json.load(file))
         except (OSError, ValueError, TypeError, UnicodeError, RecursionError) as exc:
