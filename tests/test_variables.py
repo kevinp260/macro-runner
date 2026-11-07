@@ -320,6 +320,19 @@ class VariableRuntimeTests(unittest.TestCase):
         self.assertTrue(outcome[0][0], outcome)
         self.assertEqual(seen, [("#112233", 12)])
 
+    def test_image_filename_variable_without_literal_placeholder(self):
+        defs = [definition("image", "text", "reference.png")]
+        action = Action(kind="click_image", image_path="",
+                        bindings={"image_path":"image"}, timeout=0)
+        self.assertEqual(validate_action(asdict(action)), action)
+        self.assertEqual([f for f in inspect_workflow(
+            [action], variables=defs) if f.severity == "error"], [])
+        desktop = FakeDesktop()
+        with patch("macro_runtime.locate_image", return_value=(30, 40, .99)):
+            _, outcome, _ = self.run_actions([action], defs, automation=desktop)
+        self.assertTrue(outcome[0][0], outcome)
+        self.assertEqual(desktop.clicks[0][0], (30, 40))
+
     def test_files_can_use_typed_text_variables(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = str(Path(tmp) / "folder with spaces")
