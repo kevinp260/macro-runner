@@ -92,6 +92,7 @@ class PropertiesPanel(QFrame):
     pick_coordinates = Signal(str)
     test_move = Signal(int, int)
     pick_region = Signal()
+    test_monitoring = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -210,9 +211,15 @@ class PropertiesPanel(QFrame):
                             "Set window visibility in View → During screen selection.")
             draw.clicked.connect(self.pick_region.emit)
             self.form.addRow(draw)
-            info = QLabel("0 maximum changes = keep watching until Stop. "
-                          "Monitoring pauses while the child actions execute; "
-                          "each new watch uses a fresh baseline.")
+            tester = QPushButton("Test monitoring…")
+            tester.setToolTip(
+                "Preview the live screenshots and change detection without "
+                "running any workflow actions. Uses the current form values.")
+            tester.clicked.connect(self._test_monitoring)
+            self.form.addRow(tester)
+            info = QLabel("0 maximum changes = watch until Stop. "
+                          "Live tests use current form values but never run "
+                          "the nested actions or save workflow changes.")
             info.setWordWrap(True)
             info.setObjectName("panelHint")
             self.form.addRow(info)
@@ -279,25 +286,39 @@ class PropertiesPanel(QFrame):
         if path:
             target.setText(path)
 
+    def _read_action(self):
+        """Validate current form fields without saving or mutating the workflow."""
+        data = asdict(self.current)
+        for field, widget in self.controls.items():
+            if isinstance(widget, QSpinBox):
+                value = widget.value()
+            elif isinstance(widget, QCheckBox):
+                value = widget.isChecked()
+            elif isinstance(widget, QComboBox):
+                value = widget.currentText()
+            else:
+                value = convert(field, widget.text())
+            data[field] = value
+        if data["kind"] == "click_image":
+            data["condition_source"] = "image"
+            data["match_mode"] = "matches"
+        return validate_action(data)
+
+    def _test_monitoring(self):
+        if self.current is None or self.current.kind != "watch_start":
+            return
+        try:
+            action = self._read_action()
+        except (ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Invalid region monitor settings", str(exc))
+            return
+        self.test_monitoring.emit(action)
+
     def commit(self):
         if self.current is None:
             return
         try:
-            data = asdict(self.current)
-            for field, widget in self.controls.items():
-                if isinstance(widget, QSpinBox):
-                    value = widget.value()
-                elif isinstance(widget, QCheckBox):
-                    value = widget.isChecked()
-                elif isinstance(widget, QComboBox):
-                    value = widget.currentText()
-                else:
-                    value = convert(field, widget.text())
-                data[field] = value
-            if data["kind"] == "click_image":
-                data["condition_source"] = "image"
-                data["match_mode"] = "matches"
-            action = validate_action(data)
+            action = self._read_action()
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Invalid action settings", str(exc))
             return

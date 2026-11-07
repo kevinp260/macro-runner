@@ -25,6 +25,7 @@ from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_region import RegionPicker
+from macro_qt_monitor import RegionMonitorDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_keys import KeyboardRecorder, normalize_event_key
@@ -224,6 +225,9 @@ class MacroWindow(QMainWindow):
         self.keyboard_listener = None
         self.hotkeys = None
         self.region_picker = None
+        self.region_monitor = None
+        self._monitor_restore_state = None
+        self._close_after_monitor = False
         self._screen_selection_active = False
         self._screen_selection_restore = None
         self._build_ui()
@@ -335,6 +339,7 @@ class MacroWindow(QMainWindow):
         self.inspector.pick_coordinates.connect(self._pick_coordinates)
         self.inspector.test_move.connect(self._test_move)
         self.inspector.pick_region.connect(self._pick_region)
+        self.inspector.test_monitoring.connect(self._test_monitoring)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
@@ -466,7 +471,7 @@ class MacroWindow(QMainWindow):
     def _busy(self):
         # Wait for the queued completion signal before allowing edits.
         return (self.recording or self.record_pending or self.executor is not None
-                or self._screen_selection_active)
+                or self._screen_selection_active or self.region_monitor is not None)
 
     def _update_controls(self):
         busy = self._busy()
@@ -481,7 +486,7 @@ class MacroWindow(QMainWindow):
         self.toolbar_actions["stop"].setEnabled(busy)
         self.toolbar_actions["step"].setEnabled(not recording)
         self.toolbar_actions["run_from"].setEnabled(not busy and bool(self.actions))
-        self.toolbar_actions["record"].setEnabled(not running)
+        self.toolbar_actions["record"].setEnabled(not busy or recording)
         self.toolbar_actions["record"].setText("Stop recording" if recording else "Record")
         self.tree.setEnabled(not busy)
         self.palette.setEnabled(not busy)
@@ -672,6 +677,9 @@ class MacroWindow(QMainWindow):
         elif self.executor:
             self.executor.stop()
             self._set_status("Stopping…")
+        elif self.region_monitor is not None:
+            self.region_monitor.stop_monitoring()
+            self._set_status("Stopping screen-region test…")
 
     def _progress(self, cycle, cycles, action_index, completed, total):
         self._set_status(f"Run {cycle}/{cycles} · Action {completed}/{total or '?'}")
@@ -699,6 +707,55 @@ class MacroWindow(QMainWindow):
         self._update_controls()
         if not success:
             QMessageBox.warning(self, "Workflow stopped", message)
+
+    def _test_monitoring(self, action):
+        """Preview the current inspector settings, without editing the macro."""
+        if self._busy():
+            return
+        dialog = RegionMonitorDialog(action)  # Independent window: stays visible if editor minimizes.
+        self.region_monitor = dialog
+        self._monitor_restore_state = None
+        dialog.finished.connect(self._monitor_closed)
+        self._set_status("Testing screen-region detection (read-only).")
+        self._update_controls()
+        dialog.show()
+        dialog.position_away_from_region()
+        # Match the playback visibility preference; screen-selection visibility
+        # controls picking, not this live test. The preview itself remains shown.
+        if (self.minimize_on_run.isChecked() and self.isVisible()
+                and not self.isMinimized()):
+            self._monitor_restore_state = self.windowState()
+            self.showMinimized()
+        dialog.raise_()
+        dialog.activateWindow()
+        QTimer.singleShot(
+            160,
+            lambda: dialog.start_monitoring()
+            if self.region_monitor is dialog and dialog.isVisible() else None,
+        )
+
+    def _monitor_closed(self, _result):
+        dialog = self.region_monitor
+        self.region_monitor = None
+        state = self._monitor_restore_state
+        self._monitor_restore_state = None
+        if state is not None and not self._close_after_monitor:
+            if state & Qt.WindowState.WindowFullScreen:
+                self.showFullScreen()
+            elif state & Qt.WindowState.WindowMaximized:
+                self.showMaximized()
+            else:
+                self.showNormal()
+            self.raise_()
+            self.activateWindow()
+        if dialog is not None:
+            dialog.deleteLater()
+        self._update_controls()
+        if self._close_after_monitor:
+            self._close_after_monitor = False
+            QTimer.singleShot(0, self.close)
+        else:
+            self._set_status("Screen-region test closed.")
 
     def _test_move(self, x, y):
         if self._busy():
@@ -981,6 +1038,12 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def closeEvent(self, event):
+        if self.region_monitor is not None:
+            self._close_after_monitor = True
+            self.region_monitor.close()
+            if self.region_monitor is not None:
+                event.ignore()
+                return
         if self.region_picker is not None:
             self.region_picker.cancel(notify=False)
             self.region_picker = None

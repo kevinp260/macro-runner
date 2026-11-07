@@ -5,7 +5,9 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
-<!-- Add changes after the upcoming v2.1.0 release here. -->
+- Added a read-only screen-region diagnostics window to test live screenshot
+  differences, confirmation rules, and A→B→A state transitions before
+  executing macros (Issue #35).
 
 ## [2.1.0] — Pending release
 

@@ -7,7 +7,8 @@ from PIL import Image
 from macro_model import Action, parse_document, serialize_document, validate_action
 from macro_flow import iter_flow_steps, validate_flow
 from macro_runtime import MacroExecutor
-from macro_vision import changed_pixel_percent, watch_region_change
+from macro_vision import (RegionChangeDetector, changed_pixel_mask,
+                          changed_pixel_percent, watch_region_change)
 from macro_workflow import default_node, to_actions, from_actions
 
 
@@ -37,6 +38,40 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(changed_pixel_percent(baseline, baseline, 10), 0)
         with self.assertRaises(ValueError):
             changed_pixel_percent(baseline, Image.new("RGB", (9, 10)), 10)
+
+    def test_shared_detector_reports_mask_and_A_B_A_transitions(self):
+        action = watcher(confirmations=2)
+        baseline = Image.new("RGB", (10, 10), "black")
+        white = Image.new("RGB", (10, 10), "white")
+        detector = RegionChangeDetector(action, baseline)
+
+        percentage, confirmations, triggered, prior, mask = detector.observe(white)
+        self.assertEqual(percentage, 100.0)
+        self.assertEqual(confirmations, 1)
+        self.assertFalse(triggered)
+        self.assertEqual(int(mask.sum()), 100)
+        self.assertEqual(prior.getpixel((0, 0)), (0, 0, 0))
+
+        result = detector.observe(white)
+        self.assertEqual((result[1], result[2]), (2, True))
+        self.assertEqual(detector.triggers, 1)
+        self.assertEqual(detector.baseline.getpixel((0, 0)), (255, 255, 255))
+        self.assertEqual(detector.observe(white)[:3], (0.0, 0, False))
+        self.assertEqual(detector.observe(baseline)[1:3], (1, False))
+        self.assertEqual(detector.observe(baseline)[1:3], (2, True))
+        self.assertEqual(detector.triggers, 2)
+        self.assertEqual(detector.baseline.getpixel((0, 0)), (0, 0, 0))
+
+    def test_shared_detector_resets_flicker_confirmations(self):
+        action = watcher(confirmations=2)
+        black = Image.new("RGB", (10, 10), "black")
+        white = Image.new("RGB", (10, 10), "white")
+        detector = RegionChangeDetector(action, black)
+        self.assertEqual(detector.observe(white)[1:3], (1, False))
+        self.assertEqual(detector.observe(black)[1:3], (0, False))
+        self.assertEqual(detector.observe(white)[1:3], (1, False))
+        self.assertEqual(detector.triggers, 0)
+        self.assertFalse(changed_pixel_mask(black, black, 10).any())
 
     def test_stable_change_confirmation_and_region(self):
         base = Image.new("RGB", (10, 10), "black")

@@ -80,6 +80,17 @@ Repeat and If containers correspond to the same legacy Start/End markers in
 the saved JSON. The editor **does not introduce a new macro format**.
 Existing JSON version 2 macros remain supported, as do legacy action arrays.
 
+For **Watch Region Changes**, select the block and click **Test monitoring…**
+in Properties to open a live read-only diagnostic window. It previews the
+accepted baseline, the newest screenshot and the changed-pixel mask, along
+with the actual measured percentage, threshold, tolerance, confirmation count
+and accepted transition count. **Recapture baseline** discards the previous
+reference state. **Stop testing** ends screenshot sampling; no nested actions
+are executed and unsaved form values are not committed. To avoid detecting the
+MacroRunner window instead of the target, enable **Minimize when running**
+before opening the tester, and keep its separate preview outside the watched
+region. Capture errors include platform-specific guidance.
+
 **Watch Region Changes** monitors a selected rectangle by taking screenshots
 at a configurable interval (default 0.5 s). A change triggers its nested
 actions when the percentage of pixels differing from the last accepted screen
