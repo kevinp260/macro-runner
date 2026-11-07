@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch"]
 
 @dataclass
 class Action:
@@ -52,6 +52,11 @@ class Action:
     # None for clipboard_paste means use existing system clipboard text.
     clipboard_text: Optional[str] = None
     clipboard_restore: bool = True
+    # Launch modes: application (direct executable), file (default app),
+    # url (OS browser). One literal argv argument per launch_args line.
+    launch_mode: str = "application"
+    launch_target: str = ""
+    launch_args: str = ""
 
 
 def _finite_nonnegative(value, field):
@@ -75,7 +80,7 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -176,6 +181,19 @@ def validate_action(item):
             raise ValueError("Poll interval must be positive.")
         if action.kind in ("click_image", "wait_until"):
             _finite_nonnegative(action.timeout, "Timeout")
+    if action.kind == "launch":
+        from macro_launch import validate_launch
+        if (action.launch_mode not in ("application", "file", "url") or
+                not isinstance(action.launch_target, str) or
+                not isinstance(action.launch_args, str)):
+            raise ValueError("Invalid launch mode, path/URL or argument text.")
+        # An unconfigured leaf is editable/savable, but cannot execute.
+        # Preflight always blocks empty or nonexistent targets.
+        if action.launch_target:
+            validate_launch(action)
+        elif action.launch_args and ("\x00" in action.launch_args or
+                                      "\r" in action.launch_args):
+            raise ValueError("Launch arguments contain invalid control characters.")
     if action.kind in ("clipboard_set", "clipboard_paste"):
         if action.kind == "clipboard_set" and not isinstance(action.clipboard_text, str):
             raise ValueError("Set clipboard requires text (empty text clears it).")
