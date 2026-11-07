@@ -100,6 +100,21 @@ class ImageOffsetTests(unittest.TestCase):
                 self.assertTrue(result[0][0], result)
                 self.assertEqual(desktop.clicks, [((point[0], point[1]), {"button":"left"})])
 
+    def test_zero_offset_does_not_restrict_legacy_secondary_monitor_coordinates(self):
+        # Some older desktop backends could click matched centers beyond
+        # PyAutoGUI's primary-screen size; zero offsets must not change that.
+        legacy = self.action()
+        self.assertEqual(
+            image_click_point(legacy, (2100, 250, .99),
+                              screen_size=(1920, 1080),
+                              client_rect=(0, 0, 100, 100)), (2100, 250))
+        desktop = Desktop(self.image)
+        with patch("macro_runtime.locate_image",
+                   return_value=(2100, 250, .99)):
+            result, _ = self.run_once(legacy, desktop)
+        self.assertTrue(result[0][0], result)
+        self.assertEqual(desktop.clicks[0][0], (2100, 250))
+
     def test_crop_match_center_offsets_include_region_origin_once(self):
         action = self.action(image_offset_x=-13, image_offset_y=7,
                              region_x=110, region_y=210,
