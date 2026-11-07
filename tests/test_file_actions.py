@@ -170,10 +170,9 @@ class FileActionTests(unittest.TestCase):
     def test_missing_dest_parent_and_permission_failure(self):
         invalid_target = self.root / "missing" / "file.txt"
         with self.assertRaises(FileNotFoundError):
-            run_file_action(self.action("file_copy",
-                         file_destination=str(invalid_target)) if False else
-                         Action(kind="file_copy", file_path=str(self.source),
-                                file_destination=str(invalid_target)), Gate())
+            run_file_action(
+                Action(kind="file_copy", file_path=str(self.source),
+                       file_destination=str(invalid_target)), Gate())
         self.assertTrue(self.source.exists())
         with patch("macro_files.Path.open", side_effect=PermissionError("denied")):
             with self.assertRaises(PermissionError):
