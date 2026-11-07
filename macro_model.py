@@ -242,7 +242,8 @@ def parse_sequence(data) -> List[Action]:
 DOCUMENT_VERSION = 2
 
 
-def serialize_document(actions: List[Action], repeat_count: int, start_delay: float):
+def serialize_document(actions: List[Action], repeat_count: int, start_delay: float,
+                       window_target=None):
     """Create a full saved macro, including execution settings."""
     _positive_int(repeat_count, "Whole-sequence repeat count")
     _finite_nonnegative(start_delay, "Start delay")
@@ -251,9 +252,13 @@ def serialize_document(actions: List[Action], repeat_count: int, start_delay: fl
     from macro_flow import validate_flow
     validate_flow(normalized)
     validated = [asdict(action) for action in normalized]
+    settings = {"repeat_count": repeat_count, "start_delay": start_delay}
+    if window_target is not None:
+        from macro_windows import validate_target
+        settings["window_target"] = validate_target(window_target)
     return {
         "version": DOCUMENT_VERSION,
-        "settings": {"repeat_count": repeat_count, "start_delay": start_delay},
+        "settings": settings,
         "actions": validated,
     }
 
@@ -273,4 +278,8 @@ def parse_document(data):
     _positive_int(repeat_count, "Whole-sequence repeat count")
     _finite_nonnegative(start_delay, "Start delay")
     actions = parse_sequence(data.get("actions"))
-    return actions, {"repeat_count": repeat_count, "start_delay": start_delay}
+    result = {"repeat_count": repeat_count, "start_delay": start_delay}
+    if "window_target" in settings:
+        from macro_windows import validate_target
+        result["window_target"] = validate_target(settings["window_target"])
+    return actions, result

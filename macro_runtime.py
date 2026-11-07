@@ -13,13 +13,15 @@ from macro_diagnostics import safe_error_code
 from macro_vision import (ConditionTimeout, locate_image, check_condition,
                           poll_until, watch_region_change)
 from dataclasses import asdict
+from macro_windows import WindowBinding, WindowUnavailable
 
 
 class MacroExecutor:
     def __init__(self, actions, repeat_count, start_delay, on_progress, on_finished,
                  start_index=0, step_mode=False, automation=None,
                  on_diagnostic=None, on_failure_capture=None,
-                 breakpoints=(), debug_gap=0.0):
+                 breakpoints=(), debug_gap=0.0,
+                 window_target=None, window_manager=None):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         if not self.actions:
@@ -44,6 +46,8 @@ class MacroExecutor:
             ("loop_start", "loop_end", "if_start", "if_end", "else",
              "until_start", "until_end", "watch_start", "watch_end"))
         self.debug_gap = float(debug_gap)
+        self.window_binding = (WindowBinding(window_target, manager=window_manager)
+                               if window_target is not None else None)
         self.smart = has_smart_actions(self.actions)
         if self.smart:
             validate_start_selection(self.actions, start_index)
@@ -115,12 +119,35 @@ class MacroExecutor:
             self.automation = pyautogui
         return self.automation
 
+    def _bound_action(self, action):
+        """Resolve target again immediately before a screen/input operation."""
+        if self.window_binding is None:
+            return action
+        info = self.window_binding.prepare(self.gate)
+        bound = self.window_binding.transform(action, info)
+        if (bound.kind in ("click_image", "wait_until", "if_start",
+                           "until_start", "watch_start") and
+                (bound.kind == "watch_start" or bound.condition_source == "image")
+                and bound.region_x is not None and
+                (bound.region_x < 0 or bound.region_y < 0)):
+            raise WindowUnavailable(
+                "Window screenshot region has a negative screen origin. "
+                "Move the window onto a positive-coordinate display.")
+        if (bound.kind in ("wait_until", "if_start", "until_start") and
+                bound.condition_source == "pixel" and
+                (bound.pixel_x < 0 or bound.pixel_y < 0)):
+            raise WindowUnavailable(
+                "Window pixel is on a negative-coordinate display, "
+                "which this screenshot backend does not support.")
+        return bound
+
     def _condition(self, action):
         # Markers run between actions: do not block on Pause before the next
         # executable action can acquire its Step token.
         if self.gate.stopped.is_set():
             raise RuntimeError("Stopped")
-        result = check_condition(action, self._pag().screenshot)
+        bound = self._bound_action(action)
+        result = check_condition(bound, self._pag().screenshot)
         # Record state transitions, not every polling frame.
         key = id(action)
         if self._last_conditions.get(key) != result:
@@ -134,7 +161,18 @@ class MacroExecutor:
         # accepted screen image across nested action execution.
         self.gate.begin_action()
         try:
-            result = watch_region_change(action, self._pag().screenshot, self.gate,
+            bound = self._bound_action(action)
+            screenshot = self._pag().screenshot
+            if self.window_binding is not None:
+                # Recheck foreground on every capture. In relative mode also
+                # re-resolve the rectangle after each window move.
+                def screenshot(region=None):
+                    current = self._bound_action(action)
+                    if self.window_binding.spec["relative"]:
+                        region = (current.region_x, current.region_y,
+                                  current.region_w, current.region_h)
+                    return self._pag().screenshot(region=region)
+            result = watch_region_change(bound, screenshot, self.gate,
                                          baseline=baseline)
             self._emit("watch_trigger", action=action, result=True)
             return result
@@ -170,6 +208,7 @@ class MacroExecutor:
             # Never suppress Stop, emergency mouse-corner fail-safe, or
             # unexpected cancellation, even when Skip was selected.
             if (self.gate.stopped.is_set() or str(exc) == "Stopped" or
+                    isinstance(exc, WindowUnavailable) or
                     type(exc).__name__ == "FailSafeException"):
                 raise
             if action.failure_policy == "skip":
@@ -182,20 +221,44 @@ class MacroExecutor:
     def _execute(self, a):
         pag = self._pag()
         self.gate.wait(0)
+        # No binding for a pure delay; other leaves use foreground activation
+        # even when coordinate mode remains absolute (e.g. keyboard actions).
+        bound = self._bound_action(a) if a.kind != "wait" else a
         if a.kind == "click_image":
+            last_region = None
+
+            def find():
+                nonlocal last_region
+                current = self._bound_action(a)
+                last_region = (current.region_x, current.region_y,
+                               current.region_w, current.region_h)
+                return locate_image(current, pag.screenshot)
+
             match = self._poll_with_retries(
-                a, lambda: poll_until(
-                    a, lambda: locate_image(a, pag.screenshot), self.gate))
+                a, lambda: poll_until(a, find, self.gate))
             self._emit("image_match", action=a, result=True)
+            if self.window_binding is not None:
+                current = self._bound_action(a)
+                if (current.region_x, current.region_y,
+                        current.region_w, current.region_h) != last_region:
+                    raise WindowUnavailable(
+                        "Target window moved after image matching. Run again.")
             pag.click(match[0], match[1], button=a.button)
         elif a.kind == "wait_until":
             self._poll_with_retries(
                 a, lambda: poll_until(
                     a, lambda: self._condition(a), self.gate))
         elif a.kind == "click":
-            pag.moveTo(a.x, a.y, duration=0)
+            pag.moveTo(bound.x, bound.y, duration=0)
             for n in range(a.clicks):
                 self.gate.wait(0)
+                if self.window_binding is not None:
+                    latest = self._bound_action(a)
+                    # Move again if the target changed position during a
+                    # multiple-click interval: never click the old screen spot.
+                    if (latest.x, latest.y) != (bound.x, bound.y):
+                        pag.moveTo(latest.x, latest.y, duration=0)
+                        bound = latest
                 pag.click(button=a.button)
                 if n + 1 < a.clicks:
                     self.gate.wait(a.interval)
@@ -205,6 +268,8 @@ class MacroExecutor:
             if a.key_mode == "type":
                 for character in a.keys:
                     self.gate.wait(0)
+                    if self.window_binding is not None:
+                        self._bound_action(a)
                     pag.write(character)
             else:
                 names = [part.strip() for part in a.keys.split("+") if part.strip()]
@@ -217,12 +282,23 @@ class MacroExecutor:
         elif a.kind == "key_up":
             self.held.release(a.keys.lower())
         elif a.kind == "move":
-            pag.moveTo(a.x, a.y, duration=a.move_duration)
+            pag.moveTo(bound.x, bound.y, duration=a.move_duration)
         elif a.kind == "scroll":
+            if self.window_binding is not None:
+                info = self.window_binding.prepare(self.gate)
+                pag.moveTo(info.x + info.width // 2,
+                           info.y + info.height // 2, duration=0)
             pag.scroll(a.scroll_amount)
         elif a.kind == "drag":
-            pag.moveTo(a.x, a.y, duration=0)
-            pag.dragTo(a.to_x, a.to_y, duration=a.move_duration, button=a.button)
+            pag.moveTo(bound.x, bound.y, duration=0)
+            if self.window_binding is not None:
+                latest = self._bound_action(a)
+                if ((latest.x, latest.y, latest.to_x, latest.to_y) !=
+                        (bound.x, bound.y, bound.to_x, bound.to_y)):
+                    raise WindowUnavailable(
+                        "Target window moved after drag preparation. Run again.")
+            pag.dragTo(bound.to_x, bound.to_y,
+                       duration=a.move_duration, button=a.button)
 
     def run(self):
         success, message = False, "Stopped."

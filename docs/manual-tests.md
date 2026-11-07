@@ -69,6 +69,41 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Target-window automation (Issue #45)
+
+- [ ] On Windows 11 and Ubuntu X11/Xorg, open **Choose window…**; confirm
+      visible window title, class, PID where available, client dimensions
+      and client screen origin. Confirm editor window is excluded.
+- [ ] Select a target and leave **Client-relative coordinates** and
+      **Activate before input** checked. Use Pick start/destination and
+      Draw screen region within the target; verify client offsets, including
+      a pixel sample, and save/reopen the workflow with target binding.
+- [ ] Move the target window while the workflow is idle and between
+      individual click/drag/move actions; verify relative positions still
+      land in the correct client coordinates. Resize and test out-of-bounds
+      actions; they must block before any input.
+- [ ] Cover the target with another ordinary window: with activation enabled,
+      verify MacroRunner brings it foreground before click/typing/scroll;
+      with activation disabled, verify it refuses to send unintended input.
+      Confirm no claim of true background input on minimized/covered windows.
+- [ ] Close/reopen the target application (new window ID or PID), then run.
+      Verify unique title/class re-identification. With two matching windows
+      open, preflight must report ambiguity and block execution.
+- [ ] Test Click Image/search region, If/Wait Until pixel and Watch Region
+      Change with client-relative coordinates; check moved window handling,
+      same-frame focus, and no wrong-window clicks.
+- [ ] Put the target on secondary monitors, including negative virtual
+      desktop origins and mixed display scaling. Verify real pixel alignment;
+      screenshot regions with unsupported negative origins fail explicitly.
+- [ ] Test global Stop, Pause/Step, action Skip policy, target loss during
+      playback, Run from Selected, and held-key cleanup; no input should
+      reach an unrelated window.
+- [ ] On Wayland verify the picker and bound macro fail with clear
+      unsupported-backend messaging, not silent fallback to XWayland.
+- [ ] Open and run an older version-2 or legacy JSON without a target;
+      screen-absolute behavior must remain unchanged. Verify crash recovery
+      retains window identity and activation/relative options.
+
 ## Unsaved changes and crash recovery (Issue #40)
 
 - [ ] Change actions, enabled flags, undo/redo, whole-workflow repeats and
