@@ -59,8 +59,12 @@ def _type_value(value, kind):
         return value
     if kind == "boolean" and type(value) is bool:
         return value
-    if kind == "number" and type(value) in (int, float) and math.isfinite(value):
-        return value
+    if kind == "number" and type(value) in (int, float):
+        try:
+            if math.isfinite(value):
+                return value
+        except OverflowError:
+            pass  # A huge JSON integer must fail validation, not crash loading.
     if (kind == "coordinates" and isinstance(value, (list, tuple))
             and len(value) == 2 and all(type(n) is int for n in value)):
         return [value[0], value[1]]
