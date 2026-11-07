@@ -81,6 +81,26 @@ def _geometry_issues(action, index, screen_size, findings):
                 f"{label} coordinates ({x}, {y}) are outside the primary screen "
                 f"({screen_size[0]}×{screen_size[1]}). Check the target display."))
 
+    if action.kind == "click_image" and (
+            action.image_offset_x or action.image_offset_y):
+        # The match center is not known until runtime. Flag only offsets
+        # guaranteed to exceed the primary screen for every possible
+        # center within the configured region (or entire primary screen).
+        if action.region_x is None:
+            bounds = (0, 0, screen_size[0], screen_size[1])
+        else:
+            bounds = (action.region_x, action.region_y,
+                      action.region_w, action.region_h)
+        bx, by, bw, bh = bounds
+        x1, x2 = bx + action.image_offset_x, bx + bw - 1 + action.image_offset_x
+        y1, y2 = by + action.image_offset_y, by + bh - 1 + action.image_offset_y
+        if x2 < 0 or y2 < 0 or x1 >= screen_size[0] or y1 >= screen_size[1]:
+            findings.append(PreflightFinding(
+                "warning", index,
+                "Image click offset cannot land on the primary screen from "
+                "the current search area. Check offsets, other monitors "
+                "and display scaling; runtime will block unsafe clicks."))
+
     if (action.kind == "watch_start" or
             action.kind in ("click_image", "if_start", "until_start", "wait_until")
             and action.condition_source == "image"):

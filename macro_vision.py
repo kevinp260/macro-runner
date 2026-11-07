@@ -44,6 +44,40 @@ def locate_image(action, screenshot):
     return ox + x + tw // 2, oy + y + th // 2, score
 
 
+def image_click_point(action, match, *, screen_size=None, client_rect=None):
+    """Return physical click coordinates, rejecting unsafe off-screen offsets.
+
+    The matched center is already in global physical pixels (including
+    region origin). Offsets apply once, after the final OpenCV result.
+    A client-relative workflow target must keep the click within its
+    client area; otherwise the click could hit a different application.
+    """
+    x = int(match[0]) + action.image_offset_x
+    y = int(match[1]) + action.image_offset_y
+    # Keep the exact legacy center-click behavior for existing macros:
+    # older workflows could use screenshot coordinates beyond the primary
+    # display on some desktop configurations. Apply the new containment
+    # rules only when an offset actually changes the click target.
+    if action.image_offset_x == 0 and action.image_offset_y == 0:
+        return x, y
+    if x < 0 or y < 0:
+        raise ValueError(
+            f"Image click offset would target negative coordinates ({x}, {y}).")
+    if screen_size is not None:
+        width, height = screen_size[:2]
+        if not (0 <= x < width and 0 <= y < height):
+            raise ValueError(
+                f"Image click offset targets ({x}, {y}) outside the primary "
+                f"screen ({width}×{height}); check display scaling and monitors.")
+    if client_rect is not None:
+        left, top, width, height = client_rect
+        if not (left <= x < left + width and top <= y < top + height):
+            raise ValueError(
+                "Image click offset is outside the target window's client area. "
+                "Adjust the offset or move/resize the target.")
+    return x, y
+
+
 def pixel_matches(action, screenshot):
     rgb = screenshot(region=(action.pixel_x, action.pixel_y, 1, 1))
     found = rgb.convert("RGB").getpixel((0, 0))

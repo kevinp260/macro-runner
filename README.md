@@ -57,6 +57,44 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Click Image offsets and point preview (Issue #49)
+
+**Click image** can now click beside a visual landmark instead of its center.
+Configure **Image offset X** and **Image offset Y** in the inspector, measured
+in **physical desktop pixels** from the center returned by the image matcher:
+positive X goes right, positive Y goes down; negative offsets go left or up.
+Both default to zero so existing workflows continue clicking the matched
+center exactly as before.
+
+Use **Preview click point…** to take a single screenshot with the current
+**unsaved** image, confidence, search region and offset settings. The
+read-only result reports the matched center, signed offset, final physical
+screen coordinates and similarity score. **Preview does not click or apply
+changes to the workflow.** If no match is found, or the computed point is
+outside the supported screen/target, a clear warning is shown. Move or
+minimize overlapping windows before previewing; preview deliberately does
+not activate or expose a covered target window.
+
+On playback, the existing OpenCV match and poll/timeout/retry controls are
+reused. After the match, MacroRunner adds the offset **once** to the
+physical global match center and checks the final point **before clicking**.
+For **nonzero offsets**, a negative or out-of-primary-screen click
+point is rejected; with a client-relative target window, the offset point
+must additionally remain inside the target's client rectangle. With
+**zero offsets**, the previous center-click behavior (including any supported
+secondary-monitor coordinate conventions) is unchanged. Target movement/focus
+after matching is checked, and Stop before click dispatch prevents input.
+A missing reference image or match never triggers a click.
+
+**Display limitations:** On Windows and X11 the screenshot/mouse backend
+primarily supports the primary screen. A secondary monitor, negative
+coordinates, mixed DPI scaling, or inconsistent screenshot and input
+scaling may produce out-of-range points; MacroRunner fails safely rather
+than guessing. Test on the actual desktop at the intended scaling, and
+keep the image and click point within the supported screen/client area.
+Wayland remains restricted by the existing global capture/input limits.
+No new vision dependency or image-search algorithm is introduced.
+
 ## Wait for window state (Issue #48)
 
 Add **Wait for window** after launching an application, before typing or

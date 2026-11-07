@@ -69,6 +69,38 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Image-relative click offset (Issue #49)
+
+- [ ] On Windows 11 and Ubuntu X11, use a small cropped landmark image
+      with adjacent controls. With zero X/Y offsets verify the legacy center
+      click; try positive and negative X/Y offsets and both mouse buttons.
+- [ ] Confirm Click Image's confidence, search region, timeout and retry
+      still work; ensure detected centers already include region origin
+      and offsets are applied exactly once.
+- [ ] Open **Preview click point…** with unsaved offset settings: check
+      reported center, signed offsets, final physical point and similarity.
+      Confirm preview does not click, alter the saved action, or activate
+      the target; no match and missing/corrupt image produce clear warnings.
+- [ ] Offset beyond left/top or primary right/bottom edge must fail
+      without a click; check exactly on screen border and just outside.
+      Confirm known-obstructed and visually scaled images do not cause
+      unexpected clicks.
+- [ ] Bind a target window in client-relative mode: move/resize it and
+      verify the offset targets the correct client point; reject offsets
+      beyond its client rectangle, and abort if the target moves/focus
+      changes between match and click.
+- [ ] Test high DPI, display scaling, Windows secondary display,
+      negative monitor origins and Ubuntu X11 multi-monitor layouts.
+      Record unsupported screenshot/mouse coordinate behavior explicitly;
+      do not infer support from CI.
+- [ ] Pause/Resume/Step/Stop during matching and immediately before click,
+      including disabled actions, skip/retry policies, and nested flows.
+      Verify no click occurs after Stop or on a missing/no-match image.
+- [ ] Save/reopen old macros lacking offsets, new signed-offset documents,
+      Undo/Redo and local crash recovery. Test installed Ubuntu .deb and
+      Windows installer, Wayland preflight limitation and no dependency
+      changes.
+
 ## Wait for window state (Issue #48)
 
 - [ ] Windows 11 and Ubuntu X11/Xorg: choose an existing window in the inspector.

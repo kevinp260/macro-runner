@@ -16,7 +16,8 @@ from macro_qt_windows import WindowPickerDialog
 # Describes only fields that are relevant to an action kind.
 SPECS = {
     "click": ["x", "y", "button", "clicks", "interval"],
-    "click_image": ["button", "timeout", "poll_interval"],
+    "click_image": ["button", "image_offset_x", "image_offset_y",
+                    "timeout", "poll_interval"],
     "wait": ["seconds"],
     "wait_until": ["timeout", "poll_interval"],
     "key": ["key_mode", "keys"],
@@ -57,7 +58,7 @@ INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "pixel_x", "pixel_y", "pixel_tolerance",
                      "region_x", "region_y", "region_w", "region_h",
                      "watch_pixel_tolerance", "watch_confirmations",
-                     "watch_max_changes", "retry_count"))
+                     "watch_max_changes", "retry_count", "image_offset_x", "image_offset_y"))
 FLOAT = frozenset(("interval", "seconds", "move_duration", "timeout",
                    "poll_interval", "confidence", "watch_change_percent",
                    "retry_delay"))
@@ -110,6 +111,7 @@ class PropertiesPanel(QFrame):
     test_move = Signal(int, int)
     pick_region = Signal()
     test_monitoring = Signal(object)
+    preview_image_click = Signal(object)
     test_launch = Signal(object)
 
     def __init__(self, parent=None):
@@ -280,6 +282,18 @@ class PropertiesPanel(QFrame):
             hint.setWordWrap(True)
             hint.setObjectName("panelHint")
             self.form.addRow(hint)
+        if action.kind == "click_image":
+            hint = QLabel(
+                "Offsets are physical pixels from the center of the matched "
+                "reference image: positive X moves right, positive Y moves "
+                "down. Negative offsets are allowed. Zero clicks the center. "
+                "Preview checks the target without clicking.")
+            hint.setWordWrap(True)
+            hint.setObjectName("panelHint")
+            self.form.addRow(hint)
+            preview = QPushButton("Preview click point…")
+            preview.clicked.connect(self._preview_image_click)
+            self.form.addRow(preview)
         if action.kind == "launch":
             self.controls["launch_mode"].currentTextChanged.connect(
                 self.update_launch_visibility)
@@ -503,6 +517,16 @@ class PropertiesPanel(QFrame):
             data["condition_source"] = "image"
             data["match_mode"] = "matches"
         return validate_action(data)
+
+    def _preview_image_click(self):
+        if self.current is None or self.current.kind != "click_image":
+            return
+        try:
+            action = self._read_action()
+        except (ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Invalid image-click settings", str(exc))
+            return
+        self.preview_image_click.emit(action)
 
     def _test_launch(self):
         if self.current is None or self.current.kind != "launch":
