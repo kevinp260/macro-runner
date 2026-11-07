@@ -21,7 +21,8 @@ MAX_JSON_BYTES = 3_000_000
 EVENT_TYPES = frozenset({
     "action_start", "action_done", "action_error", "condition",
     "image_match", "watch_trigger", "pause", "resume", "step",
-    "stop_requested", "screenshot_unavailable",
+    "stop_requested", "screenshot_unavailable", "action_retry",
+    "action_skipped",
 })
 ERROR_CODES = {
     "TimeoutError": "Timed out waiting for a condition or image",
@@ -38,6 +39,8 @@ CAPTURE_NAME = re.compile(r"^[a-f0-9]{32}\.jpg$")
 
 def safe_error_code(error):
     """Only store known error categories, never raw exception text."""
+    if isinstance(error, TimeoutError):
+        return "TimeoutError"
     if isinstance(error, str):
         label = error
     else:
@@ -82,7 +85,7 @@ def safe_event(raw, elapsed=0.0):
     if event_type not in EVENT_TYPES:
         return None
     result = {"event": event_type, "at_s": round(max(0, float(elapsed)), 3)}
-    for name in ("index", "cycle", "step"):
+    for name in ("index", "cycle", "step", "attempt", "max_attempts"):
         value = raw.get(name)
         if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1_000_000:
             result[name] = value
@@ -115,6 +118,7 @@ class RunSession:
         self.events = []
         self.dropped_events = 0
         self.completed_actions = 0
+        self.skipped_actions = 0
         self.last_error = None
 
     def add(self, event):
@@ -127,6 +131,8 @@ class RunSession:
             return
         if clean["event"] == "action_done":
             self.completed_actions += 1
+        if clean["event"] == "action_skipped":
+            self.skipped_actions += 1
         if clean["event"] == "action_error":
             self.last_error = clean.get("error", "Exception")
         if len(self.events) == MAX_EVENTS:
@@ -147,6 +153,7 @@ class RunSession:
             "repeat_count": self.repeat_count,
             "action_count": self.action_count,
             "completed_actions": self.completed_actions,
+            "skipped_actions": self.skipped_actions,
             "events": self.events,
             "dropped_events": self.dropped_events,
         }
@@ -195,6 +202,7 @@ class RunHistoryStore:
                     "repeat_count": int(run.get("repeat_count", 1)),
                     "action_count": int(run.get("action_count", 0)),
                     "completed_actions": int(run.get("completed_actions", 0)),
+                    "skipped_actions": int(run.get("skipped_actions", 0)),
                     "dropped_events": int(run.get("dropped_events", 0)),
                     "events": [],
                 }
@@ -240,7 +248,8 @@ class RunHistoryStore:
         """Persist a completed run. Images are only saved when caller opts in."""
         allowed = ("id", "started_at", "ended_at", "duration_s",
                    "status", "mode", "repeat_count", "action_count",
-                   "completed_actions", "dropped_events", "error_code")
+                   "completed_actions", "skipped_actions",
+                   "dropped_events", "error_code")
         clean = {key: record[key] for key in allowed if key in record}
         clean["events"] = [
             sanitized

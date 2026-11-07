@@ -40,14 +40,16 @@ COMBOS = {
     "key_mode": ["press", "type"],
     "condition_source": ["image", "pixel"],
     "match_mode": ["matches", "not_matches"],
+    "failure_policy": ["stop", "skip", "retry"],
 }
 INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "pixel_x", "pixel_y", "pixel_tolerance",
                      "region_x", "region_y", "region_w", "region_h",
                      "watch_pixel_tolerance", "watch_confirmations",
-                     "watch_max_changes"))
+                     "watch_max_changes", "retry_count"))
 FLOAT = frozenset(("interval", "seconds", "move_duration", "timeout",
-                   "poll_interval", "confidence", "watch_change_percent"))
+                   "poll_interval", "confidence", "watch_change_percent",
+                   "retry_delay"))
 OPTIONAL = frozenset(("region_x", "region_y", "region_w", "region_h"))
 
 
@@ -71,9 +73,13 @@ def pad_spinbox_text(spinbox, left=11):
 
 
 def fields_for_kind(kind):
-    fields = SPECS.get(kind, [])
+    fields = list(SPECS.get(kind, []))
     if kind in VISUAL:
-        fields = fields + VISUAL_FIELDS
+        fields.extend(VISUAL_FIELDS)
+    if kind not in CONTROL:
+        fields.append("failure_policy")
+        if kind in ("click_image", "wait_until"):
+            fields.extend(("retry_count", "retry_delay"))
     return fields
 
 
@@ -189,6 +195,21 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind not in CONTROL:
+            self.controls["failure_policy"].currentTextChanged.connect(
+                self.update_failure_visibility)
+            caution = QLabel(
+                "Stop is safest. Skip continues after an error, even if a "
+                "click or keystroke might already have taken effect. "
+                "Retry is supported only for image/condition timeouts "
+                "before input is sent.")
+            caution.setWordWrap(True)
+            caution.setObjectName("panelHint")
+            self.form.addRow(caution)
+            if action.kind not in ("click_image", "wait_until"):
+                retry_option = self.controls["failure_policy"]
+                retry_option.removeItem(retry_option.findText("retry"))
+            self.update_failure_visibility()
         if action.kind in ("click", "move", "drag"):
             pick = QPushButton("Pick start (3 s)")
             pick.setToolTip("Move the pointer to the start position; capture after 3 seconds. "
@@ -239,6 +260,19 @@ class PropertiesPanel(QFrame):
                 self.controls["match_mode"].setCurrentText("matches")
                 self.controls["match_mode"].setEnabled(False)
             self.update_visual_visibility()
+
+    def update_failure_visibility(self, _=None):
+        policy = self.controls.get("failure_policy")
+        if policy is None:
+            return
+        retry = policy.currentText() == "retry"
+        for field in ("retry_count", "retry_delay"):
+            widget = self.controls.get(field)
+            if widget is not None:
+                widget.setVisible(retry)
+                label = self.form.labelForField(widget)
+                if label is not None:
+                    label.setVisible(retry)
 
     def update_visual_visibility(self, _=None):
         widget = self.controls.get("condition_source")

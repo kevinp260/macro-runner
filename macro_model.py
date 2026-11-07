@@ -11,6 +11,11 @@ class Action:
     name: str = ""
     repeats: int = 1
     enabled: bool = True
+    # A failed leaf action stops by default. Retry is restricted to
+    # condition/image polling (before any mouse/keyboard side effect).
+    failure_policy: str = "stop"
+    retry_count: int = 2       # Extra attempts after the first one (max 10).
+    retry_delay: float = 1.0  # Seconds between attempts.
     x: Optional[int] = None
     y: Optional[int] = None
     button: str = "left"
@@ -73,9 +78,27 @@ def validate_action(item):
     _positive_int(action.repeats, "Action repeats")
     if not isinstance(action.enabled, bool):
         raise ValueError("Enabled must be true or false.")
+    if action.failure_policy not in ("stop", "skip", "retry"):
+        raise ValueError("On failure must be Stop workflow, Skip action, or Retry.")
+    if (isinstance(action.retry_count, bool) or
+            not isinstance(action.retry_count, int) or
+            not 0 <= action.retry_count <= 10):
+        raise ValueError("Extra retry attempts must be an integer from 0 to 10.")
+    _finite_nonnegative(action.retry_delay, "Retry delay")
+    if action.retry_delay > 60:
+        raise ValueError("Retry delay must be 0–60 seconds.")
+    if action.failure_policy == "retry":
+        if action.kind not in ("click_image", "wait_until"):
+            raise ValueError(
+                "Retry is supported only for Click Image and Wait Until. "
+                "Other actions may have already sent mouse/keyboard input.")
+        if action.retry_count < 1:
+            raise ValueError("Retry needs at least one extra attempt.")
     markers = ("loop_start", "loop_end", "if_start", "else", "if_end",
                "until_start", "until_end", "watch_start", "watch_end")
     if action.kind in markers:
+        if action.failure_policy != "stop":
+            raise ValueError("Failure handling applies only to executable actions.")
         if not action.enabled:
             raise ValueError("Control markers must remain enabled.")
         if action.kind not in ("loop_start", "until_start") and action.repeats != 1:
