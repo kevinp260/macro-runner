@@ -39,7 +39,7 @@ class VariablesDialog(QDialog):
         outer.addWidget(self.table)
         row = QHBoxLayout()
         add = QPushButton("Add variable")
-        add.clicked.connect(self.add_row)
+        add.clicked.connect(lambda: self.add_row())
         row.addWidget(add)
         remove = QPushButton("Remove selected")
         remove.clicked.connect(self.remove_rows)
