@@ -643,11 +643,12 @@ class MacroWindow(QMainWindow):
             f"Original file: {source}\nSnapshot (UTC): {snapshot.saved_at}\n\n"
             "Restore opens an unsaved copy. Your original file will NOT be "
             "overwritten; use Save to choose where to save the recovered work.")
-        restore = dialog.addButton("Restore", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Restore", QMessageBox.ButtonRole.AcceptRole)
         discard = dialog.addButton("Discard recovery", QMessageBox.ButtonRole.DestructiveRole)
-        dialog.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
         dialog.exec()
-        if dialog.clickedButton() is restore:
+        # Closing the prompt also restores, rather than risking a silent
+        # overwrite of the existing snapshot during subsequent editing.
+        if dialog.clickedButton() is not discard:
             self._replace_actions(snapshot.actions, remember=False)
             self.repeats.setValue(snapshot.repeat_count)
             self.delay.setValue(snapshot.start_delay)
@@ -657,7 +658,7 @@ class MacroWindow(QMainWindow):
             self._after_edit()
             self._update_controls()
             self._set_status("Recovered as an unsaved workflow. Use Save to choose a file.")
-        elif dialog.clickedButton() is discard:
+        else:
             self._clear_recovery()
 
     def _busy(self):
