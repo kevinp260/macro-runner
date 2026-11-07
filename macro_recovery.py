@@ -25,6 +25,7 @@ class RecoverySnapshot:
     source_file: Optional[str]
     saved_at: str
     window_target: Optional[dict] = None
+    variables: Optional[list] = None
 
 
 def atomic_json_write(path, payload, max_bytes=None):
@@ -55,9 +56,9 @@ class RecoveryStore:
         self.path = Path(path)
 
     def write(self, actions, repeat_count, start_delay, source_file=None,
-              window_target=None):
+              window_target=None, variables=None):
         document = serialize_document(actions, repeat_count, start_delay,
-                                      window_target)
+                                      window_target, variables)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         atomic_json_write(self.path, {
             "schema": RECOVERY_SCHEMA,
@@ -93,7 +94,8 @@ class RecoveryStore:
             settings = {"repeat_count": 1, "start_delay": 3.0}
         return RecoverySnapshot(actions, settings["repeat_count"],
                                 settings["start_delay"], source, saved_at,
-                                settings.get("window_target"))
+                                settings.get("window_target"),
+                                settings.get("variables", []))
 
     def clear(self):
         self.path.unlink(missing_ok=True)
