@@ -33,6 +33,9 @@ class Action:
     match_mode: str = "matches"
     image_path: str = ""
     confidence: float = 0.9
+    # Click Image offsets are physical screen pixels from the matched center.
+    image_offset_x: int = 0
+    image_offset_y: int = 0
     region_x: Optional[int] = None
     region_y: Optional[int] = None
     region_w: Optional[int] = None
@@ -156,8 +159,14 @@ def validate_action(item):
             action.condition_source != "image" or action.match_mode != "matches"
         ):
             raise ValueError("Click Image requires an image match.")
-        if action.kind == "click_image" and action.button not in ("left", "right", "middle"):
-            raise ValueError("Invalid image-click mouse button.")
+        if action.kind == "click_image":
+            if action.button not in ("left", "right", "middle"):
+                raise ValueError("Invalid image-click mouse button.")
+            for field in ("image_offset_x", "image_offset_y"):
+                value = getattr(action, field)
+                if isinstance(value, bool) or not isinstance(value, int) or not -100000 <= value <= 100000:
+                    raise ValueError(
+                        f"{field} must be an integer offset between -100000 and 100000 pixels.")
         if action.condition_source == "image":
             if not isinstance(action.image_path, str) or not action.image_path.strip():
                 raise ValueError("Select a reference image.")
