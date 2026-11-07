@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added explicit-path File Exists, Wait for File, Copy File, Move File and Create Folder actions with no-shell operations, no-overwrite defaults, atomic staged overwrite, Stop cleanup, and local file pickers (Issue #52).
+
 - Added signed X/Y offsets to Click Image (zero preserves center clicks),
   read-only click-point preview, final-point bounds checks, and target-client
   containment before clicking (Issue #49).
