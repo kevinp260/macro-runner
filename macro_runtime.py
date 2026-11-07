@@ -16,6 +16,7 @@ from dataclasses import asdict
 from macro_windows import WindowBinding, WindowUnavailable
 from macro_clipboard import ClipboardUnavailable, paste_clipboard
 from macro_launch import launch_target
+from macro_files import FILE_KINDS, run_file_action
 from macro_window_wait import wait_for_window
 
 
@@ -229,11 +230,11 @@ class MacroExecutor:
         # Opening apps/files/URLs and setting clipboard text do not need
         # PyAutoGUI or a configured global input session.
         pag = self._pag() if a.kind not in (
-            "wait", "clipboard_set", "launch", "wait_window") else None
+            "wait", "clipboard_set", "launch", "wait_window", *FILE_KINDS) else None
         self.gate.wait(0)
         # Set clipboard does not send input, so it must not steal focus.
         bound = self._bound_action(a) if a.kind not in (
-            "wait", "clipboard_set", "launch", "wait_window") else a
+            "wait", "clipboard_set", "launch", "wait_window", *FILE_KINDS) else a
         if a.kind == "click_image":
             last_region = None
 
@@ -285,6 +286,10 @@ class MacroExecutor:
                     self.gate.wait(a.interval)
         elif a.kind == "wait":
             self.gate.wait(a.seconds)
+        elif a.kind in FILE_KINDS:
+            # File operations are local and must not activate a window or
+            # depend on PyAutoGUI/display availability.
+            run_file_action(a, self.gate)
         elif a.kind == "wait_window":
             wait_for_window(
                 a, self.gate,
@@ -352,7 +357,8 @@ class MacroExecutor:
             # load PyAutoGUI as before.
             no_desktop = {"wait", "clipboard_set", "launch", "wait_window", "loop_start",
                           "loop_end", "else", "if_end", "until_end", "watch_end"}
-            if any(a.enabled and a.kind not in no_desktop for a in self.actions):
+            if any(a.enabled and a.kind not in (no_desktop | FILE_KINDS)
+                   for a in self.actions):
                 pag = self._pag()
                 self.held = HeldKeys(pag.keyDown, pag.keyUp)
             remaining = self.start_delay

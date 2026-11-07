@@ -69,6 +69,38 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Safe file and folder actions (Issue #52)
+
+- [ ] On Windows 11 and Ubuntu, add File Exists, Wait for File, Copy File,
+      Move File and Create Folder; browse local source/destination and
+      type folder names manually. Verify absolute paths with Unicode and
+      spaces and no command-shell interpolation.
+- [ ] File Exists succeeds for a regular file and fails for missing files.
+      Wait for File accepts a not-yet-present path, times out, notices newly
+      created files, and honors Pause/Stop/Step and zero-second one-shot.
+- [ ] Copy a text or binary file; verify byte-for-byte integrity and source
+      preservation. Existing destinations must fail with Overwrite unchecked
+      and replace only when explicitly checked.
+- [ ] Move a file into an existing destination folder; verify the source
+      is removed only when transfer completes. Existing destination conflicts
+      never silently overwrite; test explicit overwrite separately.
+- [ ] Stop in the middle of a large copy/move: no corrupted pre-existing
+      destination or unwanted source deletion; temporary/partial files
+      cleaned after cancellation and permission errors. Test low disk space
+      and unavailable/removable/network drives if possible.
+- [ ] Create nested directories, create the same folder twice and try a
+      regular file at the target path. All failures should be actionable.
+- [ ] Invalid relative paths, `..` traversal, missing destination
+      directories, source/destination same inode, symlinks, directory-as-file
+      misuse and permission-denied cases must fail without modifying
+      unrelated files. Confirm no general delete action exists.
+- [ ] Verify default Stop versus Skip failure policy, disabled actions,
+      nested Repeat/If/Else, Run from Selected and that file-only workflows
+      do not require PyAutoGUI, Windows focus or X11.
+- [ ] Save/reload/recover new action settings, preserve old macro JSON,
+      inspect Run History for no file contents, and test packaged Windows
+      and Ubuntu builds.
+
 ## Image-relative click offset (Issue #49)
 
 - [ ] On Windows 11 and Ubuntu X11, use a small cropped landmark image

@@ -58,6 +58,9 @@ KINDS = [
     ("Set clipboard text", "clipboard_set"), ("Paste clipboard / text", "clipboard_paste"),
     ("Open application / file / URL", "launch"),
     ("Wait for window", "wait_window"),
+    ("File exists", "file_check"), ("Wait for file", "file_wait"),
+    ("Copy file", "file_copy"), ("Move file", "file_move"),
+    ("Create folder", "folder_create"),
     ("Repeat block", "loop_start"),
     ("If / Else", "if_start"), ("Repeat until", "until_start"),
     ("Watch region changes", "watch_start"),
@@ -71,6 +74,9 @@ TITLES = {
     "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
     "launch": "Open application / file / URL",
     "wait_window": "Wait for window",
+    "file_check": "File exists", "file_wait": "Wait for file",
+    "file_copy": "Copy file", "file_move": "Move file",
+    "folder_create": "Create folder",
     "loop_start": "Repeat block", "if_start": "Condition",
     "until_start": "Repeat until", "watch_start": "Watch region changes"
 }
@@ -96,6 +102,19 @@ def description(action):
         detail = ("existing clipboard" if action.clipboard_text is None
                   else "temporary text (hidden)" if action.clipboard_restore
                   else "text (leave on clipboard)")
+    elif kind in ("file_check", "file_wait", "file_copy",
+                  "file_move", "folder_create"):
+        from pathlib import Path
+        source = Path(action.file_path).name if action.file_path else "Choose path"
+        if kind in ("file_copy", "file_move"):
+            target = (Path(action.file_destination).name
+                      if action.file_destination else "Choose destination")
+            detail = f"{source} → {target}" + (
+                " · overwrite" if action.file_overwrite else " · no overwrite")
+        elif kind == "file_wait":
+            detail = f"{source} · {action.timeout:g}s timeout"
+        else:
+            detail = source
     elif kind == "wait_window":
         source = ("workflow target" if action.window_wait_source == "workflow"
                   else action.window_wait_title or "Choose window")

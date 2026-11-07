@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check", "file_wait", "file_copy", "file_move", "folder_create"]
 
 @dataclass
 class Action:
@@ -67,6 +67,10 @@ class Action:
     window_wait_class: str = ""
     window_wait_handle: int = 0
     window_wait_pid: int = 0
+    # Local filesystem operations; no path interpolation or deletion action.
+    file_path: str = ""
+    file_destination: str = ""
+    file_overwrite: bool = False
 
 
 def _finite_nonnegative(value, field):
@@ -90,7 +94,8 @@ def validate_action(item):
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
-    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window"):
+    if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check",
+                            "file_wait", "file_copy", "file_move", "folder_create"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -197,6 +202,10 @@ def validate_action(item):
             raise ValueError("Poll interval must be positive.")
         if action.kind in ("click_image", "wait_until"):
             _finite_nonnegative(action.timeout, "Timeout")
+    if action.kind in ("file_check", "file_wait", "file_copy",
+                       "file_move", "folder_create"):
+        from macro_files import validate_file_action
+        validate_file_action(action)
     if action.kind == "wait_window":
         from macro_window_wait import validate_window_wait
         validate_window_wait(action)

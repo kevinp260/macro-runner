@@ -32,6 +32,11 @@ SPECS = {
     "wait_window": ["window_wait_source", "window_wait_state",
                     "window_wait_title", "window_wait_class",
                     "timeout", "poll_interval"],
+    "file_check": ["file_path"],
+    "file_wait": ["file_path", "timeout", "poll_interval"],
+    "file_copy": ["file_path", "file_destination", "file_overwrite"],
+    "file_move": ["file_path", "file_destination", "file_overwrite"],
+    "folder_create": ["file_path"],
     "loop_start": [],
     "if_start": [],
     "until_start": [],
@@ -215,6 +220,12 @@ class PropertiesPanel(QFrame):
                 self.controls[field] = widget
                 self.form.addRow("Clipboard text", widget)
                 continue
+            if field == "file_overwrite":
+                widget = QCheckBox("Replace an existing destination file")
+                widget.setChecked(value)
+                self.controls[field] = widget
+                self.form.addRow("", widget)
+                continue
             if field == "clipboard_restore":
                 widget = QCheckBox("Restore previous clipboard text after paste")
                 widget.setChecked(bool(value))
@@ -227,6 +238,24 @@ class PropertiesPanel(QFrame):
                 widget.setCurrentText(str(value))
             else:
                 widget = QLineEdit("" if value is None else str(value))
+                if field in ("file_path", "file_destination"):
+                    row = QWidget()
+                    layout = QHBoxLayout(row)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.addWidget(widget, 1)
+                    browse = QPushButton("Browse…")
+                    browse.clicked.connect(
+                        lambda _, target=widget, part=field:
+                        self.browse_file_action(target, part))
+                    layout.addWidget(browse)
+                    label = ("Destination file" if field == "file_destination"
+                             else "Folder path" if action.kind == "folder_create"
+                             else "File path" if action.kind in
+                                  ("file_check", "file_wait")
+                             else "Source file")
+                    self.form.addRow(label, row)
+                    self.controls[field] = widget
+                    continue
                 if field == "window_wait_title":
                     row = QWidget()
                     layout = QHBoxLayout(row)
@@ -268,6 +297,29 @@ class PropertiesPanel(QFrame):
                     continue
             self.controls[field] = widget
             self.form.addRow(field.replace("_", " ").capitalize(), widget)
+        if action.kind in ("file_check", "file_wait", "file_copy",
+                           "file_move", "folder_create"):
+            if action.kind == "file_copy":
+                message = ("Copies one regular file. Existing destinations "
+                           "are protected unless Overwrite is checked.")
+            elif action.kind == "file_move":
+                message = ("Moves one regular file: the source is removed after "
+                           "the destination is written. Overwrite replaces an "
+                           "existing destination only when explicitly checked.")
+            elif action.kind == "folder_create":
+                message = ("Creates this folder and any missing parent folders. "
+                           "Existing real folders are accepted.")
+            elif action.kind == "file_wait":
+                message = ("Waits until a regular file exists; 0-second timeout "
+                           "checks once. Pause/Stop interrupt polling.")
+            else:
+                message = "Checks a file exists; otherwise the action fails."
+            hint = QLabel(
+                message + " Choose absolute local paths (no .. traversal). "
+                "The workflow never invokes a shell or deletes directories.")
+            hint.setWordWrap(True)
+            hint.setObjectName("panelHint")
+            self.form.addRow(hint)
         if action.kind == "wait_window":
             self.controls["window_wait_source"].currentTextChanged.connect(
                 self.update_wait_window_visibility)
@@ -477,6 +529,21 @@ class PropertiesPanel(QFrame):
             QMessageBox.warning(self, "Invalid coordinates", "Enter valid X/Y coordinates.")
             return
         self.test_move.emit(x, y)
+
+    def browse_file_action(self, target, field):
+        if self.current is None:
+            return
+        if self.current.kind == "folder_create":
+            path = QFileDialog.getExistingDirectory(
+                self, "Choose folder (edit the path to create a new folder)")
+        elif field == "file_destination":
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Choose destination file", "", "All files (*)")
+        else:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Choose local source file", "", "All files (*)")
+        if path:
+            target.setText(path)
 
     def browse_launch(self, target):
         path, _ = QFileDialog.getOpenFileName(
