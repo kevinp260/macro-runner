@@ -97,8 +97,8 @@ def validate_action_variables(action):
         raise ValueError("Only image clicks and clipboard reads produce variable results.")
 
 
-def validate_references(actions, definitions):
-    """Check every binding and output reference against its declared type."""
+def validate_references(actions, definitions, *, require_outputs=False):
+    """Check all binding/result types; runtime also requires output targets."""
     definitions = validate_variables(definitions)
     types = {item["name"]: item["type"] for item in definitions}
     for index, action in enumerate(actions):
@@ -110,7 +110,7 @@ def validate_references(actions, definitions):
                 raise ValueError(
                     f"Action {index + 1}: {field} expects {expected}, "
                     f"but {name} is {types[name]}.")
-        if action.kind == "clipboard_read" and not action.result_variable:
+        if require_outputs and action.kind == "clipboard_read" and not action.result_variable:
             raise ValueError(
                 f"Action {index + 1}: choose a text result variable for Read clipboard.")
         if action.result_variable:
