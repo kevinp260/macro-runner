@@ -176,6 +176,25 @@ class TargetIdentityTests(unittest.TestCase):
             binding.prepare(FastGate())
         self.assertEqual(refused.activations, [100])
 
+    def test_minimized_target_must_restore_before_coordinates_are_used(self):
+        old = replace(example(), x=-32000, y=-32000, minimized=True)
+        restored = replace(example(), x=500, y=300)
+        class Backend(FakeBackend):
+            def activate(self, handle):
+                super().activate(handle)
+                self.items = [restored]
+        backend = Backend([old], active=900)
+        binding = WindowBinding(target_from_window(old), WindowManager(backend))
+        class FastGate:
+            def wait(self, seconds): return None
+        current = binding.prepare(FastGate())
+        self.assertEqual((current.x, current.y), (500, 300))
+        self.assertEqual(backend.activations, [100])
+        backend = FakeBackend([old], active=900, accepts_activation=False)
+        binding = WindowBinding(target_from_window(old), WindowManager(backend))
+        with self.assertRaises(WindowUnavailable):
+            binding.prepare(FastGate())
+
     def test_wayland_is_explicitly_unsupported(self):
         with patch("macro_windows.sys.platform", "linux"), patch.dict(
                 os.environ, {"XDG_SESSION_TYPE":"wayland","DISPLAY":":0"}):
