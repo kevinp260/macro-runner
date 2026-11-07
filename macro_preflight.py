@@ -34,7 +34,7 @@ def _inside_primary_screen(x, y, screen_size):
 
 
 def _image_issues(action, index, findings, required):
-    path = Path(action.image_path).expanduser()
+    path = Path(action.image_path)
     severity = "error" if required else "warning"
     try:
         # A reference can exist but still be corrupt or unreadable.
