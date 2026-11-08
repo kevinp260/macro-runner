@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
+from dataclasses import replace
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QPushButton
 
@@ -73,6 +74,71 @@ class RegionMonitorTests(unittest.TestCase):
             self.assertTrue(worker.wait(2000))
             app.processEvents()
         self.assertIsNone(worker.detector)  # No retained screenshots after Stop.
+
+    def test_preview_transforms_client_relative_region_without_input(self):
+        from macro_windows import WindowInfo, target_from_window
+        region_calls = []
+        info = WindowInfo(123, "Example", "Class", 45, 300, 200, 400, 300)
+        spec = target_from_window(info)
+
+        class Binding:
+            def resolve(self):
+                return info
+            def transform(self, current, window):
+                return replace(current, region_x=current.region_x + window.x,
+                               region_y=current.region_y + window.y)
+
+        def screenshot(region=None):
+            region_calls.append(region)
+            return Image.new("RGB", (region[2], region[3]), "black")
+
+        worker = RegionMonitorWorker(action(), screenshot=screenshot,
+                                     window_target=spec)
+        received = []
+        worker.frame.connect(received.append)
+        with patch("macro_qt_monitor.WindowBinding", return_value=Binding()) as binding:
+            try:
+                worker.start()
+                self.assertTrue(pump_until(lambda: len(region_calls) >= 2))
+                self.assertEqual(region_calls[:2], [(310, 220, 10, 10)] * 2)
+                self.assertEqual(received[0]["region"], (310, 220, 10, 10))
+                self.assertEqual(action().region_x, 10)
+                binding.assert_called_once_with(spec)
+            finally:
+                worker.stop()
+                self.assertTrue(worker.wait(2000))
+                app.processEvents()
+
+    def test_close_during_monitoring_stops_worker_and_finishes_dialog(self):
+        dialog = RegionMonitorDialog(
+            action(),
+            screenshot=lambda region=None: Image.new("RGB", (10, 10), "black"))
+        finished = []
+        dialog.finished.connect(finished.append)
+        try:
+            dialog.show()
+            dialog.start_monitoring()
+            self.assertTrue(pump_until(lambda: dialog.worker is not None
+                                       and dialog.worker.isRunning()))
+            dialog.close_button.click()
+            self.assertTrue(pump_until(lambda: len(finished) == 1))
+            self.assertFalse(dialog.isVisible())
+            self.assertIsNone(dialog.worker)
+            self.assertEqual(finished, [QDialog.DialogCode.Rejected])
+        finally:
+            if dialog.worker is not None:
+                dialog.worker.stop()
+                dialog.worker.wait(2000)
+            dialog.close()
+
+    def test_close_after_stop_and_reject_are_not_recursive(self):
+        dialog = RegionMonitorDialog(action())
+        finished = []
+        dialog.finished.connect(finished.append)
+        dialog.show()
+        dialog.reject()
+        self.assertEqual(finished, [QDialog.DialogCode.Rejected])
+        self.assertFalse(dialog.isVisible())
 
     def test_reset_baseline_without_executing_macro(self):
         captures = []
@@ -166,9 +232,10 @@ class RegionMonitorTests(unittest.TestCase):
 
     def test_main_window_minimizes_and_restores_on_monitor_close(self):
         class FakeDialog(QDialog):
-            def __init__(self, a):
+            def __init__(self, a, window_target=None):
                 super().__init__(None)
                 self.action = a
+                self.window_target = window_target
                 self.started = False
             def position_away_from_region(self): pass
             def start_monitoring(self): self.started = True
