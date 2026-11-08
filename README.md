@@ -4,6 +4,29 @@ MacroRunner is a Python desktop automation app for building and running mouse,
 keyboard, and screenshot-based workflows. Version 2 uses **PySide6 / Qt Widgets**
 and a **structured workflow editor**, replacing the former Tkinter interface.
 
+## Help and User Guide (F1)
+
+Choose **Help → User Guide…** or press **F1** to open a searchable guide
+**inside MacroRunner**. Search for any button, action, setting or problem
+using everyday terms such as **breakpoint**, **debug gap**, **wrong window**
+or **click image**. Filter by chapter to browse the guide, click a topic
+to read a plain-language explanation and example, and leave the Help window
+open beside the editor while you work.
+
+Choose **Help → Help for selected action…** after selecting an action in the
+middle workflow panel to jump directly to its explanation. With no selected
+action, it opens the overview of the editor.
+
+The guide covers all **26 available action types**, the editing panels,
+toolbar and menu commands, workflow examples, run/debug controls, common
+settings, privacy, and troubleshooting. **Breakpoint** is a temporary pause
+before a particular action; **Debug gap** is an automatic extra delay between
+actions. Neither changes the saved workflow file.
+
+The guide is **bundled offline**, does not access the internet, stores no
+search history and does not inspect or change workflow values. **Help →
+About MacroRunner** continues to show the installed version.
+
 ## Interface
 
 See **Help → About MacroRunner** for the installed application version and
