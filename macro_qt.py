@@ -26,6 +26,8 @@ from macro_flow import CONTROL
 from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
+from macro_qt_variables import VariablesDialog
+from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
 from macro_diagnostics import RunHistoryStore, RunSession
@@ -218,6 +220,8 @@ class MacroWindow(QMainWindow):
         self.resize(1180, 760)
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
+        self.variables = []
+        self.variable_overrides = {}  # local session only; never saved
         self.window_target = None
         self.clipboard_client = QtClipboardClient(self)
         self.history = ActionHistory(60)
@@ -293,6 +297,7 @@ class MacroWindow(QMainWindow):
             ("new", "New", "Ctrl+N", self.new_workflow),
             ("open", "Open", "Ctrl+O", self.open_workflow),
             ("save", "Save", "Ctrl+S", self.save_workflow),
+            ("variables", "Variables…", "", self.edit_variables),
             ("run", "Run", "F5", self.run_workflow),
             ("pause", "Pause", "F6", self.pause_run),
             ("stop", "Stop", "Esc", self.stop_run),
@@ -592,7 +597,7 @@ class MacroWindow(QMainWindow):
 
     def _document_state(self):
         return (tuple(self.actions), self.repeats.value(), self.delay.value(),
-                self.window_target)
+                self.window_target, tuple(self.variables))
 
     def _set_window_target(self, value):
         self.window_target = validate_target(value)
@@ -678,7 +683,7 @@ class MacroWindow(QMainWindow):
             self.recovery_store.write(
                 self.actions, self.repeats.value(), self.delay.value(),
                 self.current_file or self._recovery_source_file,
-                self.window_target)
+                self.window_target, self.variables)
             self._recovery_warning_shown = False
         except (OSError, ValueError, TypeError) as exc:
             self._recovery_error(exc)
@@ -751,6 +756,8 @@ class MacroWindow(QMainWindow):
         # Closing the prompt also restores, rather than risking a silent
         # overwrite of the existing snapshot during subsequent editing.
         if dialog.clickedButton() is not discard:
+            self.variables = list(snapshot.variables or [])
+            self.variable_overrides = {}
             self._replace_actions(snapshot.actions, remember=False)
             self.repeats.setValue(snapshot.repeat_count)
             self.delay.setValue(snapshot.start_delay)
@@ -774,7 +781,7 @@ class MacroWindow(QMainWindow):
         busy = self._busy()
         running = self.executor is not None
         recording = self.recording or self.record_pending
-        for key in ("new", "open", "save", "undo", "redo"):
+        for key in ("new", "open", "save", "variables", "undo", "redo"):
             self.toolbar_actions[key].setEnabled(not busy)
         self.toolbar_actions["undo"].setEnabled(not busy and self.history.can_undo)
         self.toolbar_actions["redo"].setEnabled(not busy and self.history.can_redo)
@@ -810,7 +817,7 @@ class MacroWindow(QMainWindow):
     def _changed(self, result):
         if result == self.actions:
             return
-        self.history.record(self.actions)
+        self.history.record(self.actions, self.variables)
         self.actions = result
         self._update_action_count(result)
         self._selection_changed()
@@ -821,7 +828,7 @@ class MacroWindow(QMainWindow):
         if result == self.actions:
             return
         if remember:
-            self.history.record(self.actions)
+            self.history.record(self.actions, self.variables)
         self.actions = result
         self.tree.set_actions(result)
         self._update_action_count(result)
@@ -830,7 +837,7 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def _selection_changed(self):
-        self.inspector.show_action(self.tree.selected_action())
+        self.inspector.show_action(self.tree.selected_action(), self.variables)
 
     def _apply_property(self, action):
         if self._busy():
@@ -839,6 +846,33 @@ class MacroWindow(QMainWindow):
             self.tree.update_selected_action(action)
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid edit", str(exc))
+
+    def edit_variables(self):
+        if self._busy():
+            return
+        dialog = VariablesDialog(self.variables, self.variable_overrides, self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            try:
+                validate_references(self.actions, dialog.definitions)
+            except ValueError as exc:
+                QMessageBox.warning(
+                    self, "Variable still in use",
+                    "Update the affected action bindings or results before "
+                    f"changing this variable.\n\n{exc}")
+                return
+            if dialog.definitions != self.variables:
+                self.history.record(self.actions, self.variables)
+                self.variables = dialog.definitions
+            self.variable_overrides = dialog.overrides
+            self._selection_changed()
+            self._after_edit()
+            self._update_controls()
+        finally:
+            # Repeated opens must not retain a modal dialog until the whole
+            # application is destroyed.
+            dialog.deleteLater()
 
     def toggle_breakpoint(self):
         if not self._busy():
@@ -852,23 +886,40 @@ class MacroWindow(QMainWindow):
         if not self._busy():
             self.tree.duplicate_selection()
 
+    def _restore_history(self, snapshot):
+        actions, variables = snapshot
+        self.variables = variables
+        if actions != self.actions:
+            self._replace_actions(actions, remember=False)
+        else:
+            self._selection_changed()
+            self._after_edit()
+            self._update_controls()
+        names = {item["name"] for item in self.variables}
+        self.variable_overrides = {
+            name: value for name, value in self.variable_overrides.items()
+            if name in names
+        }
+
     def undo(self):
         if self._busy():
             return
-        result = self.history.undo(self.actions)
+        result = self.history.undo(self.actions, self.variables)
         if result is not None:
-            self._replace_actions(result, remember=False)
+            self._restore_history(result)
 
     def redo(self):
         if self._busy():
             return
-        result = self.history.redo(self.actions)
+        result = self.history.redo(self.actions, self.variables)
         if result is not None:
-            self._replace_actions(result, remember=False)
+            self._restore_history(result)
 
     def new_workflow(self):
         if self._busy() or not self._confirm_unsaved():
             return
+        self.variables = []
+        self.variable_overrides = {}
         self._replace_actions([], remember=False)
         self.history = ActionHistory(60)
         self.current_file = None
@@ -897,6 +948,8 @@ class MacroWindow(QMainWindow):
             return
         if not self._confirm_unsaved():
             return
+        self.variables = list(settings.get("variables", []) if settings else [])
+        self.variable_overrides = {}
         self._replace_actions(actions, remember=False)
         self.tree.clear_breakpoints()
         self.history = ActionHistory(60)
@@ -916,7 +969,7 @@ class MacroWindow(QMainWindow):
         try:
             document = serialize_document(self.tree.actions(),
                                           self.repeats.value(), self.delay.value(),
-                                          self.window_target)
+                                          self.window_target, self.variables)
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Invalid workflow", str(exc))
             return False
@@ -954,7 +1007,8 @@ class MacroWindow(QMainWindow):
         findings = inspect_workflow(
             self.actions, start_index=start_index, screen_size=screen_size,
             session_type=os.environ.get("XDG_SESSION_TYPE"),
-            window_target=self.window_target)
+            window_target=self.window_target, variables=self.variables,
+            variable_overrides=self.variable_overrides)
         if not findings:
             return True
 
@@ -982,7 +1036,8 @@ class MacroWindow(QMainWindow):
                 start_index=begin, step_mode=step_mode,
                 breakpoints=self.tree.breakpoint_indices(), debug_gap=self.debug_gap.value(),
                 window_target=self.window_target,
-                clipboard=self.clipboard_client,
+                clipboard=self.clipboard_client, variables=self.variables,
+                variable_overrides=self.variable_overrides,
                 on_diagnostic=self.run_signals.diagnostic.emit,
                 on_failure_capture=(self.run_signals.failure_capture.emit
                     if self.settings.value("diagnostics_capture_errors", False, type=bool)
@@ -1439,7 +1494,7 @@ class MacroWindow(QMainWindow):
 
     def _append_recorded(self, action, timestamp):
         if self.capture_history:
-            self.history.record(self.actions)
+            self.history.record(self.actions, self.variables)
             self.capture_history = False
         updated = list(self.actions)
         if self.capture_waits and self.capture_last is not None:

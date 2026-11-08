@@ -1,9 +1,9 @@
 """Serializable macro actions and validation (no GUI dependencies)."""
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check", "file_wait", "file_copy", "file_move", "folder_create"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check", "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read"]
 
 @dataclass
 class Action:
@@ -71,6 +71,9 @@ class Action:
     file_path: str = ""
     file_destination: str = ""
     file_overwrite: bool = False
+    # Explicit per-field references; outputs can update declared variables.
+    bindings: dict = field(default_factory=dict)
+    result_variable: str = ""
 
 
 def _finite_nonnegative(value, field):
@@ -95,7 +98,7 @@ def validate_action(item):
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
     if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check",
-                            "file_wait", "file_copy", "file_move", "folder_create"):
+                            "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -173,8 +176,11 @@ def validate_action(item):
                     raise ValueError(
                         f"{field} must be an integer offset between -100000 and 100000 pixels.")
         if action.condition_source == "image":
-            if not isinstance(action.image_path, str) or not action.image_path.strip():
-                raise ValueError("Select a reference image.")
+            if (not isinstance(action.image_path, str) or
+                    (not action.image_path.strip() and
+                     not (isinstance(action.bindings, dict) and
+                          action.bindings.get("image_path")))):
+                raise ValueError("Select a reference image or bind an image-path variable.")
             _finite_nonnegative(action.confidence, "Image confidence")
             if not 0 < action.confidence <= 1:
                 raise ValueError("Image confidence must be greater than 0 and at most 1.")
@@ -223,6 +229,8 @@ def validate_action(item):
         elif action.launch_args and ("\x00" in action.launch_args or
                                       "\r" in action.launch_args):
             raise ValueError("Launch arguments contain invalid control characters.")
+    from macro_variables import validate_action_variables
+    validate_action_variables(action)
     if action.kind in ("clipboard_set", "clipboard_paste"):
         if action.kind == "clipboard_set" and not isinstance(action.clipboard_text, str):
             raise ValueError("Set clipboard requires text (empty text clears it).")
@@ -301,7 +309,7 @@ DOCUMENT_VERSION = 2
 
 
 def serialize_document(actions: List[Action], repeat_count: int, start_delay: float,
-                       window_target=None):
+                       window_target=None, variables=None):
     """Create a full saved macro, including execution settings."""
     _positive_int(repeat_count, "Whole-sequence repeat count")
     _finite_nonnegative(start_delay, "Start delay")
@@ -311,6 +319,10 @@ def serialize_document(actions: List[Action], repeat_count: int, start_delay: fl
     validate_flow(normalized)
     validated = [asdict(action) for action in normalized]
     settings = {"repeat_count": repeat_count, "start_delay": start_delay}
+    from macro_variables import validate_references
+    definitions = validate_references(normalized, variables or [])
+    if definitions:
+        settings["variables"] = definitions
     if window_target is not None:
         from macro_windows import validate_target
         settings["window_target"] = validate_target(window_target)
@@ -336,7 +348,11 @@ def parse_document(data):
     _positive_int(repeat_count, "Whole-sequence repeat count")
     _finite_nonnegative(start_delay, "Start delay")
     actions = parse_sequence(data.get("actions"))
+    from macro_variables import validate_references
+    definitions = validate_references(actions, settings.get("variables", []))
     result = {"repeat_count": repeat_count, "start_delay": start_delay}
+    if "variables" in settings:
+        result["variables"] = definitions
     if "window_target" in settings:
         from macro_windows import validate_target
         result["window_target"] = validate_target(settings["window_target"])

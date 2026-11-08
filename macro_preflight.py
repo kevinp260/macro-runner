@@ -16,6 +16,7 @@ from macro_flow import CONTROL, has_smart_actions, validate_flow, validate_start
 from macro_model import validate_action
 from macro_launch import LaunchError, validate_launch
 from macro_files import FILE_KINDS, validate_file_action
+from macro_variables import validate_references, unset_warnings
 from macro_windows import WindowBinding, WindowManager, WindowUnavailable
 
 
@@ -118,7 +119,7 @@ def _geometry_issues(action, index, screen_size, findings):
 
 def inspect_workflow(actions, *, start_index=0, screen_size=None,
                      platform_name=None, session_type=None, window_target=None,
-                     window_manager=None):
+                     window_manager=None, variables=None, variable_overrides=None):
     """Return pre-run findings in workflow order, without performing actions.
 
     The same model and structural checks as MacroExecutor are applied first.
@@ -149,6 +150,17 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
     except ValueError as exc:
         findings.append(PreflightFinding(
             "error", _flow_error_index(str(exc)), f"Invalid workflow structure: {exc}"))
+        return findings
+
+    try:
+        definitions = validate_references(
+            normalized, variables or [], require_outputs=True)
+        for index, message in unset_warnings(
+                normalized, definitions, start_index, variable_overrides):
+            findings.append(PreflightFinding("warning", index, message))
+    except ValueError as exc:
+        findings.append(PreflightFinding(
+            "error", None, f"Invalid variable settings: {exc}"))
         return findings
 
     if isinstance(start_index, bool) or not isinstance(start_index, int) or not (
@@ -254,27 +266,44 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         # Control markers are necessary for flow execution even though they
         # are not leaf actions. Disabled leaf actions never access the screen.
         required = action.enabled
-        if required and action.kind == "launch":
+        if required and action.kind == "launch" and (
+                "launch_target" not in action.bindings):
             try:
                 validate_launch(action, check_files=True, platform_name=platform_name)
             except LaunchError as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
         if required and action.kind in FILE_KINDS:
+            # Runtime resolves bound paths, including values from an earlier
+            # action result; the editor can only check literal paths here.
+            bound_paths = any(field in action.bindings
+                              for field in ("file_path", "file_destination"))
             try:
-                src, dest = validate_file_action(action, require_paths=True)
+                src, dest = validate_file_action(
+                    action, require_paths=not bound_paths)
             except ValueError as exc:
                 findings.append(PreflightFinding("error", index, str(exc)))
             else:
+                for field, value in (("file_path", src),
+                                     ("file_destination", dest)):
+                    if (field == "file_destination" and
+                            action.kind not in ("file_copy", "file_move")):
+                        continue
+                    if field not in action.bindings and value is None:
+                        findings.append(PreflightFinding(
+                            "error", index, f"Choose a {field.replace('_', ' ')} "
+                            "or bind a typed text variable."))
                 # Paths may be produced by earlier steps. Filesystem absence
                 # is advisory; inaccessible drives return a useful warning.
                 try:
-                    if (action.kind in ("file_check", "file_copy", "file_move")
+                    if (not bound_paths
+                            and action.kind in ("file_check", "file_copy", "file_move")
                             and not src.is_file()):
                         findings.append(PreflightFinding(
                             "warning", index,
                             "Source file is not present yet. Ensure an earlier "
                             "step creates it, or verify the selected file path."))
-                    if (action.kind in ("file_copy", "file_move")
+                    if (not bound_paths
+                            and action.kind in ("file_copy", "file_move")
                             and (dest.exists() or dest.is_symlink())
                             and not action.file_overwrite):
                         findings.append(PreflightFinding(
@@ -289,7 +318,7 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         if (action.kind in ("click_image", "wait_until", "if_start", "until_start")
                 and action.condition_source == "image"):
             # Disabled image actions have no runtime dependency on their file.
-            if required:
+            if required and "image_path" not in action.bindings:
                 _image_issues(action, index, findings, required=True)
         if required and binding is not None and binding.spec["relative"] and (
                 target_info is not None):

@@ -69,6 +69,39 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Typed workflow variables and action results (Issue #58)
+
+- [ ] Windows and Ubuntu: use toolbar Variables… editor; add and rename
+      Text, Number, Boolean and Coordinates variables. Verify typed value
+      parsing, blank/unset behavior, duplicate names, invalid names and
+      error messages. Use Unicode and multi-line text safely.
+- [ ] Bind compatible variables to Click/Move/Drag points, Wait seconds,
+      Scroll amount, keyboard text, clipboard text and restore, local
+      file paths, overwrite, image source and offsets, and application path.
+      Type-incompatible dropdown options must be absent or rejected.
+- [ ] Use Click Image's **Save result in** to capture matched-center
+      coordinates, then Click/Move using that variable. Verify offsets
+      do not change the reported center, and missing/moved matches do
+      not leave a misleading result.
+- [ ] Use Read clipboard to variable and reuse it for a subsequent paste
+      or typing action. Test empty clipboard, non-text data, Unicode
+      characters, Stop and Skip; ensure clipboard values are absent from
+      Run History metadata and error notifications.
+- [ ] Use default values, temporary run overrides, and an unset variable
+      with and without an earlier producer. Check preflight warnings,
+      missing/type-invalid values, and Run from Selected starting after
+      the producer; never execute unexpected input on missing values.
+- [ ] Repeat whole workflows and nested Repeat/If blocks. Check values
+      persist within one iteration and reset from default/override on
+      the next whole-workflow repeat. Test Pause, Stop and Step.
+- [ ] Save/open older version-2 JSON and legacy list files; save a new
+      document with definitions and field references. Verify Undo/Redo
+      restores variable definitions with action edits and recovery retains
+      unsaved definitions without persisting ephemeral overrides.
+- [ ] Test installed Windows and Ubuntu packages. No arbitrary Python,
+      shell or expression evaluation should be introduced. Ensure secret
+      defaults are saved only where explicitly documented.
+
 ## Safe file and folder actions (Issue #52)
 
 - [ ] On Windows 11 and Ubuntu, add File Exists, Wait for File, Copy File,

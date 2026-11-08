@@ -57,6 +57,58 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Typed workflow variables and action results (Issue #58)
+
+Use **Variables…** on the toolbar to add up to 100 named workflow variables.
+Names are ASCII letters/digits/underscores (starting with a letter or
+underscore). Each variable has one declared type: **Text**, **Number**,
+**Boolean**, or **Coordinates** (`x,y` integer pixels). Set a typed
+**Default** value or check **Unset** to require an earlier action result.
+Optional **Use override** sets an ephemeral, local run override. Overrides
+apply instead of defaults when starting a run and are **not saved in JSON,
+recovery, or Run History**. They remain for the current editor session until
+a new workflow is opened/created. Default text (including sensitive text)
+**is saved in plaintext** in the macro and local crash recovery.
+
+To use a variable, select an action and choose **Bind ...** in Properties,
+then **Apply changes**. Compatible typed variables are listed for supported
+fields only. A coordinate variable can replace a full X/Y point for
+Click/Move or the source/destination of Drag. Number variables can replace
+Wait seconds, Scroll amount, Click Image offsets and image/pixel-condition
+coordinates, confidence or timeout. Text variables can provide keyboard
+text, clipboard text, local file paths, application paths, image filenames,
+and pixel-condition expected colors. If/Else and Repeat Until conditions
+can use these bindings when evaluating their current screen probes. Boolean variables can control clipboard restoration
+or file overwrite. The entire field is substituted as one typed value;
+there is **no template interpolation, Python, shell, or expression engine**.
+Incorrect types, undefined names, and invalid resolved action values fail
+before performing the action.
+
+**Action results:** Set **Save result in** on Click Image to store the
+located image's **center coordinates** in a declared Coordinates variable
+(after a successful click). Add **Read clipboard to variable** to capture
+current text into a declared Text variable. An empty clipboard yields empty
+text; non-text data fails without assigning an output. Clipboard text is
+never placed in diagnostics; it can later be used in Paste clipboard/text,
+keyboard typing, or another supported whole-field text binding.
+
+Variable values belong to the **current workflow run**. At the start of
+**each whole-workflow repeat**, defaults are loaded, overrides applied, and
+previous action outputs discarded. Within nested repeat/conditional groups,
+outputs remain available until overwritten, or until the whole-workflow
+repeat resets. **Run from Selected** starts with defaults/overrides; skipped
+producers do not supply outputs. Using an Unset variable before it receives
+a result fails safely. Preflight warns about variables that lack a default
+or earlier producer and blocks missing/type-incompatible references. Stop
+or Skip on failure uses the existing workflow policy.
+
+Variables are optional additional data in the current **version-2**
+`settings.variables` document field. Old version-2 macros and legacy
+action-list files still open unchanged; unused files have no variable
+settings. Variable definitions, bindings and outputs participate in
+undo/redo, save/open, and crash recovery. Untrusted macro documents should
+not be run simply because variable references are typed.
+
 ## Safe local file and folder actions (Issue #52)
 
 Five local filesystem actions are available in the action palette, without
