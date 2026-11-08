@@ -19,6 +19,7 @@ from macro_launch import launch_target
 from macro_files import FILE_KINDS, run_file_action
 from macro_variables import VariableContext, validate_references
 from macro_window_wait import wait_for_window
+from macro_ocr import find_text as ocr_find_text, check_engine as check_ocr_engine
 
 
 class MacroExecutor:
@@ -138,8 +139,9 @@ class MacroExecutor:
         info = self.window_binding.prepare(self.gate)
         bound = self.window_binding.transform(action, info)
         if (bound.kind in ("click_image", "wait_until", "if_start",
-                           "until_start", "watch_start") and
-                (bound.kind == "watch_start" or bound.condition_source == "image")
+                           "until_start", "watch_start", "find_text", "wait_text") and
+                (bound.kind in ("watch_start", "find_text", "wait_text") or
+                 bound.condition_source == "image")
                 and bound.region_x is not None and
                 (bound.region_x < 0 or bound.region_y < 0)):
             raise WindowUnavailable(
@@ -278,6 +280,46 @@ class MacroExecutor:
                 # Output is the located image CENTER, not the offset click.
                 self.variables.set_result(
                     a.result_variable, [int(match[0]), int(match[1])])
+        elif a.kind in ("find_text", "wait_text"):
+            engine = check_ocr_engine(a.text_language)
+            last_region = None
+
+            def probe():
+                nonlocal last_region
+                current = self._bound_action(a)
+                last_region = (current.region_x, current.region_y,
+                               current.region_w, current.region_h)
+                return ocr_find_text(current, pag.screenshot, executable=engine)
+
+            if a.kind == "wait_text":
+                match = self._poll_with_retries(
+                    a, lambda: poll_until(a, probe, self.gate))
+            else:
+                match = probe()
+                if match is None:
+                    raise ConditionTimeout("Find text did not locate the phrase.")
+            # No raw recognized text or target phrase is emitted in diagnostics.
+            self._emit("text_match", action=original, result=True)
+            if a.kind == "find_text" and a.text_click:
+                if self.window_binding is not None:
+                    info = self.window_binding.prepare(self.gate)
+                    current = self.window_binding.transform(a, info)
+                    if (current.region_x, current.region_y,
+                            current.region_w, current.region_h) != last_region:
+                        raise WindowUnavailable(
+                            "Target window moved after OCR matching. Run again.")
+                    if self.window_binding.spec["relative"]:
+                        if not (info.x <= match.center[0] < info.x + info.width
+                                and info.y <= match.center[1] < info.y + info.height):
+                            raise WindowUnavailable(
+                                "Recognized text center lies outside the target window.")
+                x, y = match.center
+                if hasattr(pag, "size"):
+                    width, height = pag.size()
+                    if not (0 <= x < width and 0 <= y < height):
+                        raise ValueError("OCR click point is outside the primary screen.")
+                self.gate.wait(0)
+                pag.click(x, y)
         elif a.kind == "wait_until":
             self._poll_with_retries(
                 a, lambda: poll_until(
