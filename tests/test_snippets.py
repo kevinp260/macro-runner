@@ -140,6 +140,20 @@ class SnippetTests(unittest.TestCase):
             prepare_insertion(snippet, [
                 definition("template", "text", str(self.root / "missing.png"))])
 
+    def test_import_windows_style_relative_image_paths(self):
+        image_dir = self.root / "images"
+        image_dir.mkdir()
+        image = image_dir / "reference.png"
+        Image.new("RGB", (3, 3), color="blue").save(image)
+        source = self.root / "win-relative.json"
+        snippet = make_snippet("Relative image", [
+            Action(kind="click_image", image_path=r"images\reference.png")], [])
+        source.write_text(json.dumps(snippet), encoding="utf-8")
+        imported = self.store.read(self.store.import_file(source))
+        if os.name != "nt":
+            self.assertEqual(imported["actions"][0]["image_path"], str(image))
+            prepare_insertion(imported, [])
+
     def test_foreign_windows_path_is_not_resolved_as_posix_relative(self):
         path = r"C:\Users\someone\reference.png"
         snippet = make_snippet("Windows image", [
