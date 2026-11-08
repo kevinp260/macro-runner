@@ -36,6 +36,13 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Test from an extracted Windows build and from the Inno Setup installer.
 - [ ] Open on a display around 1280×720 and resize to the minimum allowed
       dimensions; all controls must remain reachable.
+- [ ] On a clean settings profile, confirm Actions/Workflow/Inspector
+      widths start near 285/500/400 px (allowing for Qt dividers), and
+      cannot shrink below 285/450/350 px.
+- [ ] Resize and save the splitter; restart and confirm the saved widths
+      override fresh defaults while respecting the new minimums.
+- [ ] Confirm the main window cannot shrink below 1130 px and stays
+      usable on the installed desktop.
 - [ ] Resize each splitter pane, close/reopen, and confirm geometry is restored.
 - [ ] Switch light/dark mode and restart, checking theme persistence.
 - [ ] In View → During screen selection, test Show, Minimize, and Hide modes
