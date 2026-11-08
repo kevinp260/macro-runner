@@ -8,7 +8,7 @@ from dataclasses import asdict
 import json
 
 from PySide6.QtCore import Qt, QByteArray, QMimeData, QSignalBlocker, Signal
-from PySide6.QtGui import QDrag
+from PySide6.QtGui import QBrush, QColor, QDrag
 from PySide6.QtWidgets import (
     QAbstractItemView, QListWidget, QTreeWidget, QTreeWidgetItem,
     QMessageBox, QFileDialog
@@ -200,6 +200,7 @@ class WorkflowTree(QTreeWidget):
         self.setDropIndicatorShown(True)
         self.setIndentation(22)
         self._snapshot = []
+        self._search_highlights = []
         self.setAlternatingRowColors(False)
         self.itemChanged.connect(self._check_state_changed)
 
@@ -278,6 +279,7 @@ class WorkflowTree(QTreeWidget):
         return item
 
     def set_actions(self, actions):
+        self.clear_search_highlights()
         # Programmatic population must not generate individual checkbox edits.
         nodes = from_actions(actions)
         with QSignalBlocker(self):
@@ -527,6 +529,75 @@ class WorkflowTree(QTreeWidget):
                         self._set_action_label(item, node.action)
                         if not node.is_group:
                             self._decorate_leaf(item, node.action)
+
+    def clear_search_highlights(self):
+        for item, original in self._search_highlights:
+            item.setBackground(0, original)
+        self._search_highlights.clear()
+
+    def highlight_search_matches(self, indices):
+        """Temporary tree decoration; action data and Undo state stay untouched."""
+        self.clear_search_highlights()
+        mapping = self.index_map()
+        seen = set()
+        for index in indices:
+            item = mapping.get(index)
+            if item is None or id(item) in seen:
+                continue
+            seen.add(id(item))
+            self._search_highlights.append((item, QBrush(item.background(0))))
+            item.setBackground(0, QBrush(QColor(66, 105, 150, 160)))
+
+    def jump_to_action(self, index):
+        item = self.index_map().get(index)
+        if item is None:
+            raise ValueError("The selected search result is no longer present.")
+        parent = item.parent()
+        while parent is not None:
+            parent.setExpanded(True)
+            parent = parent.parent()
+        self.clearSelection()
+        self.setCurrentItem(item)
+        item.setSelected(True)
+        self.scrollToItem(
+            item, QAbstractItemView.ScrollHint.PositionAtCenter)
+
+    def apply_bulk_replacements(self, updated, indices):
+        """Update existing leaf items atomically without losing breakpoint marks."""
+        before = deepcopy(self._snapshot)
+        if len(updated) != len(before):
+            raise ValueError("Bulk replacement cannot add or remove actions.")
+        mapping = self.index_map()
+        edits = sorted(set(indices))
+        if not edits or any(type(i) is not int or i < 0 or i >= len(before)
+                            for i in edits):
+            raise ValueError("No valid actions selected for replacement.")
+        edited_indices = set(edits)
+        for index in range(len(before)):
+            if before[index].kind != updated[index].kind:
+                raise ValueError("Bulk replacement cannot change action types.")
+            if index not in edited_indices and before[index] != updated[index]:
+                raise ValueError("Bulk replacement contains unexpected action changes.")
+        # Validate all targets before mutating any Qt node.
+        for index in edits:
+            node = unpack_node(mapping[index])
+            if node is None or node.is_group or before[index].kind in OPENERS or (
+                    before[index].kind.endswith("_end")):
+                raise ValueError("Structural workflow markers cannot be replaced.")
+        self.clear_search_highlights()
+        with QSignalBlocker(self):
+            for index in edits:
+                item = mapping[index]
+                node = unpack_node(item)
+                node.action = deepcopy(updated[index])
+                item.setData(0, NODE_ROLE, pack_node(node))
+                self._set_action_label(item, node.action)
+                item.setCheckState(
+                    0, Qt.CheckState.Checked if node.action.enabled
+                    else Qt.CheckState.Unchecked)
+                self._decorate_leaf(item, node.action)
+        if not self._commit(before):
+            raise ValueError("Bulk replacement failed workflow validation.")
 
     def selected_action(self):
         items = self.selected_nodes()

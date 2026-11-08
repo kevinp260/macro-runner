@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added Ctrl+F workflow find/replace dialog with type/name/state/key/coordinate/image searches across nested groups, temporary highlights and navigation, preview-validated compatible text/numeric replacements, and atomic single-step Undo (Issue #62).
+
 - Added opt-in Tesseract-backed Find text and Wait for text with region/window scoping, confidence thresholds, optional guarded center click, live local preview and language-pack diagnostics (Issue #61). OCR engine remains separately installed; no remote OCR.
 
 - Added portable workflow ZIP export/import with bundled image references, automatic managed-asset rebasing, atomic output, strict archive validation, checksum verification and review prompts (Issue #60).

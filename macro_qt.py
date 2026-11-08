@@ -31,6 +31,7 @@ from macro_qt_variables import VariablesDialog
 from macro_snippets import SnippetStore, make_snippet, prepare_insertion
 from macro_packages import plan_package, write_package, inspect_package, import_package
 from macro_qt_snippets import SnippetLibraryDialog
+from macro_qt_find_replace import WorkflowFindReplaceDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
@@ -499,6 +500,10 @@ class MacroWindow(QMainWindow):
         for name in ("undo", "redo", "breakpoint"):
             menu.addAction(self.toolbar_actions[name])
         menu.addSeparator()
+        self.find_replace_action = QAction("Find / Replace…", self)
+        self.find_replace_action.setShortcut(QKeySequence("Ctrl+F"))
+        self.find_replace_action.triggered.connect(self.show_find_replace)
+        menu.addAction(self.find_replace_action)
         menu.addAction(self.toolbar_actions["snippets"])
         menu.addSeparator()
         for title, slot, key in [
@@ -810,6 +815,7 @@ class MacroWindow(QMainWindow):
             self.toolbar_actions[key].setEnabled(not busy)
         self.import_package_action.setEnabled(not busy)
         self.export_package_action.setEnabled(not busy)
+        self.find_replace_action.setEnabled(not busy and bool(self.actions))
         self.toolbar_actions["undo"].setEnabled(not busy and self.history.can_undo)
         self.toolbar_actions["redo"].setEnabled(not busy and self.history.can_redo)
         self.toolbar_actions["run"].setEnabled(not busy and bool(self.actions))
@@ -911,6 +917,28 @@ class MacroWindow(QMainWindow):
             dialog.exec()
         finally:
             dialog.deleteLater()
+
+    def show_find_replace(self):
+        if self._busy() or not self.actions:
+            return
+        directory = Path(self.current_file).parent if self.current_file else Path.cwd()
+        dialog = WorkflowFindReplaceDialog(
+            self.actions, self.variables, directory,
+            self.tree.highlight_search_matches, self.tree.jump_to_action,
+            self._apply_find_replace, self)
+        try:
+            dialog.exec()
+        finally:
+            self.tree.clear_search_highlights()
+            dialog.deleteLater()
+
+    def _apply_find_replace(self, updated, changed_indices):
+        if self._busy():
+            raise ValueError("Stop playback or recording before editing workflow values.")
+        self.tree.apply_bulk_replacements(updated, changed_indices)
+        self._set_status(
+            f"Bulk replaced values in {len(changed_indices)} actions. "
+            "Undo restores the previous workflow.")
 
     def _save_snippet_selection(self, name, replace_id=None):
         if self._busy():

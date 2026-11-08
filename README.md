@@ -57,6 +57,37 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Find and bulk replace workflow values (Issue #62)
+
+Use **Edit → Find / Replace…** or **Ctrl+F** to search an open workflow.
+Choose **All searchable fields**, **Action type**, **Name**, **Enabled /
+disabled**, **Keyboard key / text**, **Coordinates** or **Image filename**.
+Results include actions inside collapsed Repeat, If/Else, Repeat Until and
+Watch groups. Click a result to expand its parents, select the action and
+scroll to it. Matches are highlighted temporarily; closing the dialog
+removes highlights without editing the workflow.
+
+To change repeated values, choose a **Field to change** (Name, keyboard
+key/text, X/Y or drag destination coordinates, reference image path, Wait
+seconds, Scroll steps, OCR phrase or Timeout). Choose **Set value** or, for
+text only, **Replace substring**. Click **Preview changes**: all eligible
+actions are validated **before any change**, and the dialog shows old →
+new values with the number skipped. Only after preview may you choose
+**Apply changes**. This is exactly **one Undo step** (Ctrl+Z); Redo restores
+it. Cancel, an invalid value or a failed preview changes nothing.
+
+The search can find structural markers such as Else and If End, but **bulk
+replacement never changes group/Else/End markers, action types, enabled
+state, or variable bindings**. Only compatible leaf actions are edited.
+Fields supplied by workflow variables are skipped rather than silently
+changing an unused literal. Replaced image paths must point to readable
+existing images. When a search has more than 250 matches, the first 250
+are shown/highlighted; the preview and replacement still consider **all**
+matching actions. Preview and search are local editor operations and do
+not run automation or persist a search history. As with existing property
+editing, avoid putting secrets in editable action text or sharing workflows
+that contain them.
+
 ## Optional local OCR (Issue #61)
 
 MacroRunner supports **Find text (offline OCR)** and **Wait for text (offline
