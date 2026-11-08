@@ -24,6 +24,7 @@ class RegionOverlay(QWidget):
         self.screen = screen
         self.start = None
         self.end = None
+        self.start_native = None
         self.setWindowFlags(Qt.WindowType.Tool |
                             Qt.WindowType.FramelessWindowHint |
                             Qt.WindowType.WindowStaysOnTopHint)
@@ -45,8 +46,21 @@ class RegionOverlay(QWidget):
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(20, 32, "Drag to select a screen region · Esc to cancel")
 
+    @staticmethod
+    def _pointer_pixel():
+        # Qt events report logical widget coordinates. PyAutoGUI screenshot
+        # regions use physical desktop pixels, which can differ with DPI.
+        import pyautogui
+        x, y = pyautogui.position()
+        return QPoint(int(x), int(y))
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            try:
+                self.start_native = self._pointer_pixel()
+            except Exception:
+                self.cancelled.emit()
+                return
             self.start = event.position().toPoint()
             self.end = self.start
             self.update()
@@ -60,12 +74,16 @@ class RegionOverlay(QWidget):
         if event.button() != Qt.MouseButton.LeftButton or self.start is None:
             return
         self.end = event.position().toPoint()
-        a = self.mapToGlobal(self.start)
-        b = self.mapToGlobal(self.end)
-        x, y, width, height = normalized_region(a, b)
+        try:
+            end_native = self._pointer_pixel()
+        except Exception:
+            self.cancelled.emit()
+            return
+        x, y, width, height = normalized_region(self.start_native, end_native)
         if width < 3 or height < 3:
             self.start = None
             self.end = None
+            self.start_native = None
             self.update()
             return
         self.selected.emit(x, y, width, height)
