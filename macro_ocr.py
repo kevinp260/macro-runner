@@ -136,11 +136,13 @@ def _words(tsv, image_size, confidence):
         raise OCRError("Tesseract returned unreadable text bounding boxes.") from exc
 
 
-def match_tsv(tsv, query, width, height, confidence, origin=(0, 0)):
-    """Find a contiguous case-insensitive phrase within one OCR line."""
+def match_tsv(tsv, query, width, height, confidence, origin=(0, 0),
+              require_unique=False):
+    """Match one contiguous phrase; ambiguous click targets are rejected."""
     expected = query.casefold().split()
     if not expected:
         raise ValueError("Enter the text to locate.")
+    matches = []
     for line in _words(tsv, (width, height), confidence):
         for i in range(len(line) - len(expected) + 1):
             chunk = line[i:i + len(expected)]
@@ -150,10 +152,14 @@ def match_tsv(tsv, query, width, height, confidence, origin=(0, 0)):
             y = min(entry[2] for entry in chunk)
             right = max(entry[1] + entry[3] for entry in chunk)
             bottom = max(entry[2] + entry[4] for entry in chunk)
-            return TextMatch(x + origin[0], y + origin[1],
-                             right - x, bottom - y,
-                             min(entry[5] for entry in chunk))
-    return None
+            matches.append(TextMatch(x + origin[0], y + origin[1],
+                                     right - x, bottom - y,
+                                     min(entry[5] for entry in chunk)))
+            if require_unique and len(matches) > 1:
+                raise OCRError(
+                    "OCR found multiple matching phrases. Restrict the region "
+                    "to a single target before enabling a click.")
+    return matches[0] if matches else None
 
 
 def find_text(action, screenshot, *, executable=None):
@@ -187,4 +193,5 @@ def find_text(action, screenshot, *, executable=None):
         raise OCRError("Tesseract returned invalid text encoding.") from exc
     return match_tsv(output, action.text_target, image.width, image.height,
                      action.text_confidence,
-                     (region[0], region[1]) if region else (0, 0))
+                     (region[0], region[1]) if region else (0, 0),
+                     require_unique=action.text_click)
