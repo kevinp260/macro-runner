@@ -57,6 +57,63 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Optional local OCR (Issue #61)
+
+MacroRunner supports **Find text (offline OCR)** and **Wait for text (offline
+OCR)**. Both are optional: they use only a Tesseract executable installed on
+the current computer. They never send screenshots or recognized text to a
+network service, and **do not record OCR text or screenshots in Run History**.
+Normal macros and installers do not require Tesseract; the engine and language
+models are **not bundled** with MacroRunner, avoiding an unconditional increase
+in installer size.
+
+To enable it:
+- On Ubuntu: install the engine and English pack with
+  `sudo apt install tesseract-ocr tesseract-ocr-eng`. For other languages
+  install corresponding `tesseract-ocr-<language-code>` packs, e.g.
+  `tesseract-ocr-deu`.
+- On Windows: install a trusted Tesseract 5 build (the Tesseract project lists
+  the UB Mannheim installer), choose language packs, and put
+  `tesseract.exe` on PATH. Standard `Program Files/Tesseract-OCR` is also
+  detected. If necessary set the `TESSERACT_CMD` environment variable to
+  the full executable path before launching MacroRunner.
+- Verify `tesseract --list-langs` in a terminal. The default language is
+  `eng`; combined codes such as `eng+deu` need both packs.
+
+In the workflow palette, add **Find text** to check whether a phrase is visible
+right now. By default it only detects; check **Click center of recognized
+phrase** for an optional left-click once the phrase meets the confidence
+threshold. Add **Wait for text** to poll until the phrase appears or its timeout
+expires; its retry/skip/stop policies work like other condition actions, but
+it never clicks. Text matching is **case-insensitive, contiguous words within
+one OCR line**, not fuzzy matching. Use clear, short phrases rather than text
+buried among paragraphs. Minimum per-word confidence defaults to 70%.
+
+Use **Draw screen region…** (or edit the region fields) to restrict recognition.
+Leave the region blank to scan the desktop. When a workflow target window has
+**Client-relative coordinates** enabled, blank OCR regions scan its client
+area and specified regions are transformed with the window. OCR clicks
+recheck target foreground, window position and click coordinates immediately
+before input; the action refuses to click after a target move. Negative-origin
+screenshot regions and targets outside supported capture bounds are rejected.
+
+**Live OCR preview…** continuously shows a read-only thumbnail and highlighted
+matching bounds without running the workflow, clicking, or persisting captures.
+Move the preview dialog outside the region being recognized; it does not bring
+the target app to foreground. Preview uses the current inspector fields,
+including edits not yet applied. Review on the actual installed desktop:
+very small text, unusual fonts, low contrast, overlapping windows, scaled
+screens, animations, unsupported language packs and Wayland restrictions can
+cause missed or incorrect recognition. Use a higher confidence threshold
+before enabling clicks. Each recognition pass is bounded to avoid hanging
+on the native OCR engine.
+
+The target phrase itself is saved in workflow JSON and crash recovery as
+plaintext, just like other action inputs. Do not put secrets in OCR phrases
+or share sensitive workflows without review. This feature is offline and
+**opt-in only**; no automatic language downloads, remote APIs or OCR
+background service are started.
+
 ## Portable workflow packages (Issue #60)
 
 Use **File → Export portable package…** to transfer a workflow to another
