@@ -1,8 +1,11 @@
 from qt_test_helpers import close_test_window
 """Regression coverage for three-panel sizing and custom field controls."""
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QFrame, QPushButton, QFormLayout, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit,
@@ -21,13 +24,13 @@ class EditorLayoutTests(unittest.TestCase):
     def test_minimum_widths_and_rounded_three_panel_gutters(self):
         window = MacroWindow()
         try:
-            window.resize(1020, 680)
+            window.resize(1130, 680)
             window.show()
             app.processEvents()
             window.splitter.setSizes([1, 1, 1])
             app.processEvents()
 
-            self.assertGreaterEqual(window.minimumWidth(), 1020)
+            self.assertEqual(window.minimumWidth(), 1130)
             self.assertEqual(window.splitter.handleWidth(), 12)
             self.assertFalse(window.splitter.childrenCollapsible())
             for i in range(3):
@@ -35,10 +38,53 @@ class EditorLayoutTests(unittest.TestCase):
                 self.assertIsInstance(panel, QFrame)
                 self.assertEqual(panel.objectName(), "panel")
                 self.assertGreaterEqual(panel.width(), panel.minimumWidth())
-            self.assertGreaterEqual(window.inspector.width(), 345)
+            self.assertEqual(
+                [window.splitter.widget(i).minimumWidth() for i in range(3)],
+                [285, 450, 350])
+            self.assertGreaterEqual(window.inspector.width(), 350)
             self.assertIn("QSplitter::handle", app.styleSheet())
         finally:
             close_test_window(window)
+
+    def test_initial_sizes_and_saved_layout_take_priority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / "layout.ini"),
+                                 QSettings.Format.IniFormat)
+
+            def open_window():
+                with patch("macro_qt.QSettings", return_value=settings), \
+                        patch.object(MacroWindow, "_start_hotkeys"):
+                    window = MacroWindow()
+                window.show()
+                app.processEvents()
+                return window
+
+            first = open_window()
+            try:
+                for actual, expected in zip(first.splitter.sizes(),
+                                            (285, 500, 400)):
+                    self.assertAlmostEqual(actual, expected, delta=15)
+
+                # Change the splitter without exceeding the default window
+                # width: Qt's offscreen platform has a small virtual screen.
+                first.splitter.setSizes([310, 480, 390])
+                app.processEvents()
+                saved_sizes = first.splitter.sizes()
+            finally:
+                close_test_window(first)
+
+            self.assertTrue(settings.contains("splitter"))
+            # Test splitter persistence independently of desktop geometry.
+            # Qt restoreGeometry() clamps an oversized saved window to the
+            # 800px offscreen virtual screen, shrinking panels to minimums.
+            settings.remove("geometry")
+            second = open_window()
+            try:
+                for actual, expected in zip(second.splitter.sizes(),
+                                            saved_sizes):
+                    self.assertAlmostEqual(actual, expected, delta=15)
+            finally:
+                close_test_window(second)
 
     def test_long_inspector_buttons_use_full_form_width(self):
         window = MacroWindow()

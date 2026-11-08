@@ -67,6 +67,12 @@ text values align horizontally across text, number and select fields.
 Numeric spinboxes apply the inset to their embedded text editor rather than
 relying on outer-widget CSS padding, which Qt platform styles handle differently.
 
+The minimum panel widths are **285 px** for Actions, **450 px** for
+Workflow, and **350 px** for Inspector. On a fresh layout the default sizes are
+**285 / 500 / 400 px** in that order; a previously saved layout takes priority,
+subject to those minimums. The editor's minimum window width is 1130 px to
+keep all three panels usable.
+
 Panel widths and window position/size persist between sessions. Use
 **View → Dark theme** to switch appearance. The layout resizes and the
 properties panel scrolls instead of clipping long action forms.

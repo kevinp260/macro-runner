@@ -131,7 +131,7 @@ class PropertiesPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("panel")
         # The inspector needs room for both labels and inputs (plus browse).
-        self.setMinimumWidth(345)
+        self.setMinimumWidth(350)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(8)

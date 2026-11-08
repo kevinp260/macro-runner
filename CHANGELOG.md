@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Updated Actions/Workflow/Inspector panel minimum widths to 285/450/350 px, fresh-session defaults to 285/500/400 px, and the main window width to accommodate these constraints while preserving saved layouts.
+
 - Fixed Watch Region Changes preview alignment on scaled desktops and with client-relative target windows, plus reliable Close/X/Stop shutdown of the read-only monitoring tester and editor unlock (Issue #82).
 
 - Added offline searchable Help → User Guide (F1) with everyday explanations, examples and troubleshooting across every workflow action and editor control, plus Help for selected action. No network access or search history.

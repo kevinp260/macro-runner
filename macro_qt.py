@@ -223,8 +223,8 @@ class MacroWindow(QMainWindow):
         if os.path.isfile(icon_file):
             self.setWindowIcon(QIcon(icon_file))
         # Enforce usable panel widths rather than letting the inspector clip.
-        self.setMinimumSize(1020, 620)
-        self.resize(1180, 760)
+        self.setMinimumSize(1130, 620)
+        self.resize(1230, 760)
         self.settings = QSettings("MacroRunner", "Desktop")
         self.actions = []
         self.variables = []
@@ -339,7 +339,7 @@ class MacroWindow(QMainWindow):
 
         palette_panel = QFrame()
         palette_panel.setObjectName("panel")
-        palette_panel.setMinimumWidth(195)
+        palette_panel.setMinimumWidth(285)
         palette_layout = QVBoxLayout(palette_panel)
         heading = QLabel("Actions")
         heading.setObjectName("panelHeading")
@@ -361,7 +361,7 @@ class MacroWindow(QMainWindow):
 
         editor_panel = QFrame()
         editor_panel.setObjectName("panel")
-        editor_panel.setMinimumWidth(410)
+        editor_panel.setMinimumWidth(450)
         editor_layout = QVBoxLayout(editor_panel)
         title_row = QHBoxLayout()
         label = QLabel("Workflow")
@@ -638,10 +638,10 @@ class MacroWindow(QMainWindow):
         state = self.settings.value("splitter")
         if state is not None:
             self.splitter.restoreState(state)
-        else:
-            self.splitter.setSizes([205, 600, 365])
         # Saved splitter state can restore an outdated handle width.
         self.splitter.setHandleWidth(12)
+        if state is None:
+            self.splitter.setSizes([285, 500, 400])
 
     def set_theme(self, name):
         app = QApplication.instance()
