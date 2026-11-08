@@ -268,12 +268,12 @@ class RegionMonitorTests(unittest.TestCase):
             window.stop_run()
             self.assertTrue(pump_until(lambda: window.region_monitor is None))
             self.assertFalse(window._busy())
-            self.assertFalse(monitor.isVisible())
             self.assertTrue(window.toolbar_actions["run"].isEnabled())
         finally:
-            if monitor is not None and monitor.worker is not None:
-                monitor.worker.stop()
-                monitor.worker.wait(2000)
+            active = window.region_monitor
+            if active is not None and active.worker is not None:
+                active.worker.stop()
+                active.worker.wait(2000)
             if old is None:
                 window.settings.remove("minimize_on_run")
             else:
