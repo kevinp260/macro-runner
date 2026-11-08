@@ -314,6 +314,11 @@ class MacroExecutor:
                             raise WindowUnavailable(
                                 "Recognized text center lies outside the target window.")
                 x, y = match.center
+                if last_region[0] is None and hasattr(pag, "size"):
+                    if tuple(pag.screenshot().size) != tuple(pag.size()):
+                        raise ValueError(
+                            "OCR screenshot and input coordinates differ, possibly due "
+                            "to display scaling. Set a smaller region and retest.")
                 if hasattr(pag, "size"):
                     width, height = pag.size()
                     if not (0 <= x < width and 0 <= y < height):
