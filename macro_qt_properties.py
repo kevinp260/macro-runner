@@ -21,6 +21,11 @@ SPECS = {
                     "timeout", "poll_interval"],
     "wait": ["seconds"],
     "wait_until": ["timeout", "poll_interval"],
+    "find_text": ["text_target", "text_language", "text_confidence", "text_click",
+                  "region_x", "region_y", "region_w", "region_h"],
+    "wait_text": ["text_target", "text_language", "text_confidence",
+                  "region_x", "region_y", "region_w", "region_h",
+                  "timeout", "poll_interval"],
     "key": ["key_mode", "keys"],
     "key_down": ["keys"],
     "key_up": ["keys"],
@@ -97,7 +102,7 @@ def fields_for_kind(kind):
         fields.extend(VISUAL_FIELDS)
     if kind not in CONTROL:
         fields.append("failure_policy")
-        if kind in ("click_image", "wait_until"):
+        if kind in ("click_image", "wait_until", "wait_text"):
             fields.extend(("retry_count", "retry_delay"))
     return fields
 
@@ -119,6 +124,7 @@ class PropertiesPanel(QFrame):
     pick_region = Signal()
     test_monitoring = Signal(object)
     preview_image_click = Signal(object)
+    preview_text = Signal(object)
     test_launch = Signal(object)
 
     def __init__(self, parent=None):
