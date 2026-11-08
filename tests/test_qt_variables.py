@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtCore import QCoreApplication, QEvent
 
 from macro_model import Action, parse_document, serialize_document
 from macro_qt import MacroWindow
@@ -29,12 +30,24 @@ class VariableQtTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.win = MacroWindow()
         self.win.recovery_store = RecoveryStore(self.root / "recovery.json")
+        self.dialogs = []
+
+    def make_dialog(self, *args, **kwargs):
+        dialog = VariablesDialog(*args, **kwargs)
+        self.dialogs.append(dialog)
+        return dialog
 
     def tearDown(self):
+        for dialog in self.dialogs:
+            dialog.close()
+            dialog.deleteLater()
         close_test_window(self.win)
+        self.win.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
 
     def test_dialog_validates_typed_defaults_and_session_overrides(self):
-        dialog = VariablesDialog([])
+        dialog = self.make_dialog([])
         dialog.add_row()
         dialog.table.item(0, 0).setText("Clicks")
         dialog.table.cellWidget(0, 1).setCurrentText("number")
@@ -51,7 +64,7 @@ class VariableQtTests(unittest.TestCase):
             defn("center", "coordinates", None),
             defn("label", "text", ""),
             defn("enabled", "boolean", True)]
-        dialog = VariablesDialog(definitions, {"label":"private"})
+        dialog = self.make_dialog(definitions, {"label":"private"})
         self.assertTrue(dialog.table.cellWidget(0,3).isChecked())
         self.assertTrue(dialog.table.cellWidget(1,5).isChecked())
         dialog._accept()
@@ -59,7 +72,7 @@ class VariableQtTests(unittest.TestCase):
         self.assertEqual(dialog.overrides, {"label":"private"})
 
     def test_dialog_refuses_bad_type_without_accepting(self):
-        dialog = VariablesDialog([defn("test","boolean",False)])
+        dialog = self.make_dialog([defn("test","boolean",False)])
         dialog.table.item(0, 2).setText("not a bool")
         with patch("macro_qt_variables.QMessageBox.warning") as warning:
             dialog._accept()
