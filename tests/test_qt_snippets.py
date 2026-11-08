@@ -113,7 +113,8 @@ class SnippetQtTests(unittest.TestCase):
 
     def test_browser_search_and_preview_do_not_expose_clipboard_text(self):
         saved = make_snippet("Paste example", [
-            Action(kind="clipboard_set", clipboard_text="private clipboard value")], [])
+            Action(kind="clipboard_set", clipboard_text="private clipboard value"),
+            Action(kind="key", key_mode="type", keys="private typed value")], [])
         self.window.snippet_store.save(saved)
         dialog = SnippetLibraryDialog(
             self.window.snippet_store, self.window._save_snippet_selection,
@@ -122,6 +123,7 @@ class SnippetQtTests(unittest.TestCase):
             self.assertEqual(dialog.items.count(), 1)
             self.assertIn("independent copy", dialog.preview.toPlainText())
             self.assertNotIn("private clipboard value", dialog.preview.toPlainText())
+            self.assertNotIn("private typed value", dialog.preview.toPlainText())
             dialog.search.setText("no match")
             self.assertEqual(dialog.items.count(), 0)
             dialog.search.setText("paste")
