@@ -25,6 +25,20 @@ class OCRCoreTests(unittest.TestCase):
         self.assertEqual(match, TextMatch(110, 55, 56, 12, .91))
         self.assertEqual(match.center, (138, 61))
 
+    def test_ambiguous_text_blocks_optional_click(self):
+        second = (
+            "5\t1\t1\t1\t2\t2\t51\t25\t15\t12\t95\tIn\n"
+        )
+        duplicate = TSV + second.replace("2\t2\t51", "2\t1\t51")
+        # A different OCR line containing the same phrase.
+        duplicate += (
+            "5\t1\t1\t1\t3\t1\t10\t40\t35\t12\t98\tSign\n"
+            "5\t1\t1\t1\t3\t2\t51\t40\t15\t12\t97\tIn\n"
+        )
+        with self.assertRaisesRegex(OCRError, "multiple"):
+            match_tsv(duplicate, "sign in", 200, 70, .8, require_unique=True)
+        self.assertIsNotNone(match_tsv(duplicate, "sign in", 200, 70, .8))
+
     def test_threshold_and_missing_words(self):
         self.assertIsNone(match_tsv(TSV, "sign in", 200, 50, .95))
         self.assertIsNone(match_tsv(TSV, "sign out", 200, 50, .7))
