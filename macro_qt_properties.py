@@ -73,7 +73,7 @@ INTEGER = frozenset(("x", "y", "to_x", "to_y", "clicks", "scroll_amount",
                      "watch_max_changes", "retry_count", "image_offset_x", "image_offset_y"))
 FLOAT = frozenset(("interval", "seconds", "move_duration", "timeout",
                    "poll_interval", "confidence", "watch_change_percent",
-                   "retry_delay"))
+                   "retry_delay", "text_confidence"))
 OPTIONAL = frozenset(("region_x", "region_y", "region_w", "region_h"))
 
 
@@ -237,6 +237,12 @@ class PropertiesPanel(QFrame):
                 self.controls[field] = widget
                 self.form.addRow("", widget)
                 continue
+            if field == "text_click":
+                widget = QCheckBox("Click center of recognized phrase")
+                widget.setChecked(bool(value))
+                self.controls[field] = widget
+                self.form.addRow("", widget)
+                continue
             if field == "clipboard_restore":
                 widget = QCheckBox("Restore previous clipboard text after paste")
                 widget.setChecked(bool(value))
@@ -249,6 +255,10 @@ class PropertiesPanel(QFrame):
                 widget.setCurrentText(str(value))
             else:
                 widget = QLineEdit("" if value is None else str(value))
+                if field == "text_target":
+                    widget.setPlaceholderText("Exact words or phrase (case-insensitive)")
+                elif field == "text_language":
+                    widget.setPlaceholderText("e.g. eng or eng+deu")
                 if field in ("file_path", "file_destination"):
                     row = QWidget()
                     layout = QHBoxLayout(row)
@@ -431,7 +441,7 @@ class PropertiesPanel(QFrame):
             caution.setWordWrap(True)
             caution.setObjectName("panelHint")
             self.form.addRow(caution)
-            if action.kind not in ("click_image", "wait_until"):
+            if action.kind not in ("click_image", "wait_until", "wait_text"):
                 retry_option = self.controls["failure_policy"]
                 retry_option.removeItem(retry_option.findText("retry"))
             self.update_failure_visibility()
@@ -451,6 +461,25 @@ class PropertiesPanel(QFrame):
                                    "Set window visibility in View → During screen selection.")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
                 self.form.addRow(destination)
+        if action.kind in ("find_text", "wait_text"):
+            draw = QPushButton("Draw screen region…")
+            draw.clicked.connect(self.pick_region.emit)
+            self.form.addRow(draw)
+            preview = QPushButton("Live OCR preview…")
+            preview.setToolTip(
+                "Read-only local OCR of the visible screen or configured region. "
+                "No mouse clicks, saved images, or network services.")
+            preview.clicked.connect(self._preview_text)
+            self.form.addRow(preview)
+            hint = QLabel(
+                "Requires local Tesseract and the selected language pack. "
+                "Uses exact words ignoring case (not fuzzy matching). "
+                "Prefer a small region for accuracy and speed. "
+                "A click is sent only after a recognized phrase exceeds "
+                "the confidence threshold. Text and screenshots stay local.")
+            hint.setWordWrap(True)
+            hint.setObjectName("panelHint")
+            self.form.addRow(hint)
         if action.kind == "watch_start":
             draw = QPushButton("Draw screen region…")
             draw.setToolTip("Drag a rectangle on your desktop; Esc cancels. "
@@ -655,6 +684,16 @@ class PropertiesPanel(QFrame):
             QMessageBox.warning(self, "Invalid image-click settings", str(exc))
             return
         self.preview_image_click.emit(action)
+
+    def _preview_text(self):
+        if self.current is None or self.current.kind not in ("find_text", "wait_text"):
+            return
+        try:
+            action = self._read_action()
+        except (ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Invalid OCR settings", str(exc))
+            return
+        self.preview_text.emit(action)
 
     def _test_launch(self):
         if self.current is None or self.current.kind != "launch":
