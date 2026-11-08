@@ -1467,7 +1467,9 @@ class MacroWindow(QMainWindow):
         """Preview the current inspector settings, without editing the macro."""
         if self._busy():
             return
-        dialog = RegionMonitorDialog(action)  # Independent window: stays visible if editor minimizes.
+        # Match playback: resolve client-relative coordinates inside the preview
+        # worker without activating or sending input to the target window.
+        dialog = RegionMonitorDialog(action, window_target=self.window_target)
         self.region_monitor = dialog
         self._monitor_restore_state = None
         dialog.finished.connect(self._monitor_closed)
