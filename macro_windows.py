@@ -469,8 +469,8 @@ class WindowBinding:
                     action.to_x, action.to_y, window)
             return replace(action, **changes)
         if action.kind in ("click_image", "wait_until", "if_start", "until_start",
-                           "watch_start"):
-            if action.kind != "watch_start" and action.condition_source == "pixel":
+                           "watch_start", "find_text", "wait_text"):
+            if action.kind not in ("watch_start", "find_text", "wait_text") and action.condition_source == "pixel":
                 x, y = self.point(action.pixel_x, action.pixel_y, window)
                 return replace(action, pixel_x=x, pixel_y=y)
             if action.region_x is None:
