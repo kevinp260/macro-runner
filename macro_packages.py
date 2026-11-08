@@ -3,8 +3,7 @@
 The package contains only a version-2 workflow, a manifest, and referenced
 image files. Import validates every entry before writing anything locally.
 """
-from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -59,6 +58,7 @@ def _image_sources(workflow):
     """Yield each active image reference, including bound variable defaults."""
     variables = {entry["name"]: entry for entry in
                  workflow["settings"].get("variables", [])}
+    seen_bindings = set()
     for action in workflow["actions"]:
         if action["kind"] not in IMAGE_ACTIONS:
             continue
@@ -69,7 +69,9 @@ def _image_sources(workflow):
         if binding:
             # The stored literal is not used when a binding is active.
             action["image_path"] = ""
-            yield variables[binding], "default"
+            if binding not in seen_bindings:
+                seen_bindings.add(binding)
+                yield variables[binding], "default"
         else:
             yield action, "image_path"
 
@@ -338,7 +340,9 @@ def import_package(source, assets_root):
                         writer.write(chunk)
                 if count != item["size"] or checksum.hexdigest() != item["sha256"]:
                     raise ValueError(f"Package asset checksum mismatch: {name}")
-                _identify_image(output)
+                detected = _identify_image(output)
+                if output.suffix != f".{detected}":
+                    raise ValueError(f"Package image extension does not match its contents: {name}")
                 replacements[name] = str(destination / output.name)
             for owner, field in _image_sources(workflow):
                 if owner[field] is not None:
