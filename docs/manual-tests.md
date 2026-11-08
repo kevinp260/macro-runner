@@ -116,6 +116,27 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Check theme contrast, low-resolution layouts, keyboard navigation,
       large result sets and disabled toolbar/menu access while running.
 
+## Watch region preview alignment and shutdown (Issue #82)
+
+- [ ] On an installed Ubuntu X11 app, draw a large then small region using
+      **Draw screen region…**; open **Test monitoring…** and check the baseline
+      is exactly the selected physical pixels, not offset or resized. Repeat
+      at 100% and non-100% desktop scaling where supported.
+- [ ] Repeat with a chosen target window and **Client-relative coordinates**
+      checked; move the window and verify successive captures track it
+      without activating or sending input. Test a window without relative mode.
+- [ ] Test **Stop testing**, **Start monitoring** again, **Recapture baseline**,
+      **Close**, the preview title-bar X and main toolbar **Stop**. Close while
+      the worker is actively sampling, including right after opening. Confirm
+      the tester ends, the main editor is unlocked and no worker remains.
+- [ ] With **Minimize when running**, verify the main window restores when
+      the preview closes, and that the preview does not cover the selected area.
+- [ ] Confirm real workflow playback uses the same selected region, emits
+      triggers on genuine changes and responds to main Stop; no preview
+      execution of nested actions or screenshot files.
+- [ ] Repeat on Windows and mixed-DPI/multi-monitor layouts. Document the
+      session type, scaling and unsupported Wayland behavior separately.
+
 ## Optional local OCR (Issue #61; desktop QA deferred to #64)
 
 - [ ] Install local Tesseract and English traineddata on Ubuntu X11 and
