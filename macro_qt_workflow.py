@@ -421,6 +421,61 @@ class WorkflowTree(QTreeWidget):
         super().dropEvent(event)
         self._commit(previous)
 
+    def selected_snippet_actions(self):
+        """Snapshot selected sibling nodes, including complete nested groups."""
+        chosen = self.selected_nodes()
+        chosen = [item for item in chosen if not any(
+            ancestor in chosen for ancestor in self._ancestors(item))]
+        if not chosen:
+            raise ValueError("Select one or more actions or a complete group to save.")
+        parent = chosen[0].parent()
+        if any(item.parent() is not parent for item in chosen):
+            raise ValueError("Select actions at the same level, or select their parent group.")
+        index = (self.indexOfTopLevelItem if parent is None else parent.indexOfChild)
+        ordered = sorted(chosen, key=index)
+        return to_actions([self._read_node(item) for item in ordered])
+
+    def proposed_snippet_insertion(self, snippet_actions):
+        """Construct the complete result without changing the visible tree."""
+        inserted = from_actions(snippet_actions)
+        roots = self._read_children(None)
+        current = self.currentItem()
+        if current is None:
+            roots.extend(inserted)
+            return to_actions(roots)
+
+        def position(item):
+            parent = item.parent()
+            return (self.indexOfTopLevelItem(item) if parent is None
+                    else parent.indexOfChild(item))
+
+        def siblings(item):
+            parent = item.parent()
+            if parent is None:
+                return roots
+            if parent.data(0, NODE_ROLE) == "else_branch":
+                owner = parent.parent()
+                group = siblings(owner)[position(owner)]
+                if group.otherwise is None:
+                    group.otherwise = []
+                return group.otherwise
+            group = siblings(parent)[position(parent)]
+            return group.children
+
+        if current.data(0, NODE_ROLE) == "else_branch":
+            owner = current.parent()
+            target = siblings(owner)[position(owner)]
+            if target.otherwise is None:
+                target.otherwise = []
+            target.otherwise.extend(inserted)
+        elif unpack_node(current).is_group:
+            siblings(current)[position(current)].children.extend(inserted)
+        else:
+            target = siblings(current)
+            index = position(current) + 1
+            target[index:index] = inserted
+        return to_actions(roots)
+
     def selected_nodes(self):
         return [item for item in self.selectedItems()
                 if item.data(0, NODE_ROLE) != "else_branch"]

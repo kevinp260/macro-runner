@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added local named workflow snippets: structural group/selected-action snapshots, searchable previews, copy-only insertion, variable dependency merging, image validation, safe library editing, and import/export (Issue #59). Text variable defaults are intentionally excluded from snippets.
+
 - Added typed workflow variables with validated per-field bindings, optional v2 document defaults, session-only run overrides, clipboard-read and image-center outputs, scoped repeat resets, and editor undo/recovery (Issue #58).
 
 - Added explicit-path File Exists, Wait for File, Copy File, Move File and Create Folder actions with no-shell operations, no-overwrite defaults, atomic staged overwrite, Stop cleanup, and local file pickers (Issue #52).

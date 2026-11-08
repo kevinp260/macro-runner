@@ -69,6 +69,23 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Reusable workflow snippets (Issue #59; desktop QA deferred to #64)
+
+- [ ] Save a leaf, multiple sibling actions, and complete nested If/Else,
+      Repeat, Repeat Until and Watch groups; search and preview each snippet.
+- [ ] Insert after a leaf, inside a group's main branch, inside Else and into an
+      empty workflow; check playback order, drag/drop, duplicate and Undo/Redo.
+- [ ] Insert variable bindings and result outputs; verify missing declarations
+      are imported, existing values win, and conflicting types block insertion.
+- [ ] Confirm text defaults/secrets are not silently stored in snippets.
+      Review clipboard literals before any export.
+- [ ] Rename, replace with confirmation, export, import and delete snippets;
+      existing inserted copies must never change with library edits.
+- [ ] Reject missing/corrupt images, foreign OS paths, malformed JSON, invalid
+      control markers and unsupported versions without altering a workflow.
+- [ ] On Windows and Ubuntu installed builds, restart and confirm the local
+      library persists. Try Unicode names and image paths with spaces.
+
 ## Typed workflow variables and action results (Issue #58)
 
 - [ ] Windows and Ubuntu: use toolbar Variables… editor; add and rename
