@@ -236,7 +236,7 @@ class RegionMonitorTests(unittest.TestCase):
         old = window.settings.value("minimize_on_run")
         window.minimize_on_run.setChecked(False)
         source = action()
-        window._replace_actions([source])
+        window._replace_actions([Action(kind="wait", seconds=0.1)])
         monitor = None
         try:
             def create_dialog(a, window_target=None):
