@@ -4,6 +4,7 @@ All content is bundled with the application. Search uses only local strings.
 Keep labels and action IDs aligned with the actual Qt toolbar and palette.
 """
 from dataclasses import dataclass
+import re
 
 
 @dataclass(frozen=True)
@@ -1029,6 +1030,15 @@ description of your problem.
 CATEGORIES = tuple(dict.fromkeys(topic.category for topic in TOPICS))
 BY_ID = {topic.id: topic for topic in TOPICS}
 
+# Let beginners search simple questions instead of requiring exact UI labels.
+QUESTION_WORDS = frozenset({
+    "a", "an", "the", "and", "or", "is", "are", "of", "for", "to",
+    "in", "on", "at", "with", "what", "when", "where", "why", "who",
+    "how", "do", "does", "did", "can", "could", "should", "i", "my",
+    "it", "this", "that", "please", "mean", "means", "don", "t",
+    "doesn", "isn",
+})
+
 
 def search_topics(query="", category=None):
     """Return local HelpTopics. All search words must occur somewhere in a topic.
@@ -1038,7 +1048,8 @@ def search_topics(query="", category=None):
     """
     if category not in (None, "All topics") and category not in CATEGORIES:
         raise ValueError("Unknown help category.")
-    words = str(query).casefold().strip().split()
+    tokens = re.findall(r"\w+", str(query).casefold(), flags=re.UNICODE)
+    words = [word for word in tokens if word not in QUESTION_WORDS]
     available = (topic for topic in TOPICS
                  if category in (None, "All topics", topic.category))
     if not words:
