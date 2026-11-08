@@ -143,6 +143,18 @@ class RegionMonitorWorker(QThread):
             self.detector = None
 
 
+def _qt_region(physical, screen):
+    """Map screenshot pixels to Qt window coordinates for preview placement."""
+    geometry = screen.geometry()
+    scale = screen.devicePixelRatio() or 1.0
+    return QRect(
+        geometry.x() + round((physical.x() - geometry.x()) / scale),
+        geometry.y() + round((physical.y() - geometry.y()) / scale),
+        max(1, round(physical.width() / scale)),
+        max(1, round(physical.height() / scale)),
+    )
+
+
 def _pixmap(image):
     image = image.convert("RGB")
     raw = image.tobytes()
@@ -244,13 +256,18 @@ class RegionMonitorDialog(QDialog):
             except Exception:
                 # The worker reports the target error explicitly on Start.
                 return
-        region = QRect(current.region_x, current.region_y,
-                       current.region_w, current.region_h)
-        screen = QApplication.screenAt(region.center())
-        if screen is None:
-            screen = QApplication.primaryScreen()
+        physical = QRect(current.region_x, current.region_y,
+                         current.region_w, current.region_h)
+        screen = next((
+            s for s in QApplication.screens()
+            if QRect(s.geometry().x(), s.geometry().y(),
+                     round(s.geometry().width() * s.devicePixelRatio()),
+                     round(s.geometry().height() * s.devicePixelRatio()))
+            .contains(physical.center())
+        ), QApplication.primaryScreen())
         if screen is None:
             return
+        region = _qt_region(physical, screen)
         available = screen.availableGeometry()
         width = min(self.width(), available.width())
         height = min(self.height(), available.height())
