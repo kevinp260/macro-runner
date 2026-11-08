@@ -65,14 +65,19 @@ class EditorLayoutTests(unittest.TestCase):
                                             (285, 500, 400)):
                     self.assertAlmostEqual(actual, expected, delta=15)
 
-                first.resize(1440, 760)
-                app.processEvents()
-                first.splitter.setSizes([345, 660, 390])
+                # Change the splitter without exceeding the default window
+                # width: Qt's offscreen platform has a small virtual screen.
+                first.splitter.setSizes([310, 480, 390])
                 app.processEvents()
                 saved_sizes = first.splitter.sizes()
             finally:
                 close_test_window(first)
 
+            self.assertTrue(settings.contains("splitter"))
+            # Test splitter persistence independently of desktop geometry.
+            # Qt restoreGeometry() clamps an oversized saved window to the
+            # 800px offscreen virtual screen, shrinking panels to minimums.
+            settings.remove("geometry")
             second = open_window()
             try:
                 for actual, expected in zip(second.splitter.sizes(),
