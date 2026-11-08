@@ -18,6 +18,7 @@ from macro_launch import LaunchError, validate_launch
 from macro_files import FILE_KINDS, validate_file_action
 from macro_variables import validate_references, unset_warnings
 from macro_windows import WindowBinding, WindowManager, WindowUnavailable
+from macro_ocr import check_engine as check_ocr_engine, OCRError
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,7 @@ def _geometry_issues(action, index, screen_size, findings):
                 "the current search area. Check offsets, other monitors "
                 "and display scaling; runtime will block unsafe clicks."))
 
-    if (action.kind == "watch_start" or
+    if (action.kind in ("watch_start", "find_text", "wait_text") or
             action.kind in ("click_image", "if_start", "until_start", "wait_until")
             and action.condition_source == "image"):
         if action.region_x is not None:
@@ -183,7 +184,8 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
 
     desktop_actions = {"click", "move", "drag", "scroll", "key", "key_down",
                        "key_up", "click_image", "watch_start", "wait_until",
-                       "if_start", "until_start", "clipboard_paste"}
+                       "if_start", "until_start", "clipboard_paste",
+                       "find_text", "wait_text"}
     active = normalized[start_index:]
     platform_name = platform_name if platform_name is not None else sys.platform
     if (platform_name.startswith("linux") and
@@ -238,6 +240,7 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
                 "click", "click_image", "move", "scroll", "drag",
                 "key", "key_down", "key_up", "clipboard_paste",
                 "wait_until", "if_start", "until_start", "watch_start",
+                "find_text", "wait_text",
             }
             first_bound = next((
                 index for index in range(start_index, len(normalized))
@@ -261,11 +264,22 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             findings.append(PreflightFinding("error", None, str(exc)))
             return findings
 
+    checked_ocr_languages = set()
     for index in range(start_index, len(normalized)):
         action = normalized[index]
         # Control markers are necessary for flow execution even though they
         # are not leaf actions. Disabled leaf actions never access the screen.
         required = action.enabled
+        if required and action.kind in ("find_text", "wait_text"):
+            if not action.text_target.strip():
+                findings.append(PreflightFinding(
+                    "error", index, "Enter a phrase for local OCR text recognition."))
+            if action.text_language not in checked_ocr_languages:
+                checked_ocr_languages.add(action.text_language)
+                try:
+                    check_ocr_engine(action.text_language)
+                except OCRError as exc:
+                    findings.append(PreflightFinding("error", index, str(exc)))
         if required and action.kind == "launch" and (
                 "launch_target" not in action.bindings):
             try:
@@ -325,8 +339,8 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
             try:
                 bound = binding.transform(action, target_info)
                 if (action.kind in ("click_image", "wait_until", "if_start",
-                                    "until_start", "watch_start") and
-                        (action.kind == "watch_start" or
+                                    "until_start", "watch_start", "find_text", "wait_text") and
+                        (action.kind in ("watch_start", "find_text", "wait_text") or
                          action.condition_source == "image") and
                         bound.region_x is not None and
                         (bound.region_x < 0 or bound.region_y < 0)):
