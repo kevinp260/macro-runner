@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from macro_vision import RegionChangeDetector
+from macro_windows import WindowBinding
 
 
 def capture_error_text(exc):
@@ -45,10 +46,11 @@ class RegionMonitorWorker(QThread):
     frame = Signal(object)
     capture_error = Signal(str)
 
-    def __init__(self, action, screenshot=None, parent=None):
+    def __init__(self, action, screenshot=None, parent=None, window_target=None):
         super().__init__(parent)
         self.action = action
         self.screenshot = screenshot
+        self.window_target = window_target
         self._stop_event = threading.Event()
         self._reset_event = threading.Event()
         self._wake = threading.Event()
@@ -68,17 +70,27 @@ class RegionMonitorWorker(QThread):
             if screenshot is None:
                 import pyautogui
                 screenshot = pyautogui.screenshot
-            region = (self.action.region_x, self.action.region_y,
-                      self.action.region_w, self.action.region_h)
+            binding = (WindowBinding(self.window_target)
+                       if self.window_target is not None else None)
 
             def capture():
+                current = self.action
+                if binding is not None:
+                    # Follow the same client-relative region as playback.
+                    # Live testing must not activate windows or send input.
+                    current = binding.transform(current, binding.resolve())
+                region = (current.region_x, current.region_y,
+                          current.region_w, current.region_h)
+                if region[0] < 0 or region[1] < 0:
+                    raise ValueError("Screenshot region starts at negative desktop "
+                                     "coordinates; move the window onto a supported display.")
                 result = screenshot(region=region).convert("RGB")
-                if result.size != (self.action.region_w, self.action.region_h):
+                if result.size != (region[2], region[3]):
                     raise ValueError("Screenshot dimensions do not match the selected "
                                      "region. Check monitor scaling and region bounds.")
-                return result
+                return result, region
 
-            baseline = capture()
+            baseline, baseline_region = capture()
             if self._stop_event.is_set():
                 return
             detector = RegionChangeDetector(self.action, baseline)
@@ -88,6 +100,7 @@ class RegionMonitorWorker(QThread):
                 "current": _preview(baseline),
                 "mask": Image.new("RGB", _preview(baseline).size, "black"),
                 "percent": 0.0, "confirmations": 0, "triggers": 0,
+                "region": baseline_region,
             })
 
             while not self._stop_event.is_set():
@@ -95,7 +108,7 @@ class RegionMonitorWorker(QThread):
                 self._wake.clear()
                 if self._stop_event.is_set():
                     break
-                latest = capture()
+                latest, latest_region = capture()
                 if self._stop_event.is_set():
                     break
                 if self._reset_event.is_set():
@@ -107,6 +120,7 @@ class RegionMonitorWorker(QThread):
                         "state": "reset", "baseline": small, "current": small,
                         "mask": Image.new("RGB", small.size, "black"),
                         "percent": 0.0, "confirmations": 0, "triggers": 0,
+                        "region": latest_region,
                     })
                     continue
 
@@ -119,7 +133,7 @@ class RegionMonitorWorker(QThread):
                     "current": _preview(latest),
                     "mask": _preview(mask_image),
                     "percent": percentage, "confirmations": confirmations,
-                    "triggers": detector.triggers,
+                    "triggers": detector.triggers, "region": latest_region,
                 })
         except Exception as exc:
             if not self._stop_event.is_set():
@@ -140,10 +154,11 @@ def _pixmap(image):
 class RegionMonitorDialog(QDialog):
     """Small independent window showing live captures and detection decisions."""
 
-    def __init__(self, action, screenshot=None, parent=None):
+    def __init__(self, action, screenshot=None, parent=None, window_target=None):
         super().__init__(parent)
         self.action = action
         self.screenshot = screenshot
+        self.window_target = window_target
         self.worker = None
         self._close_requested = False
         self.setWindowTitle("Test screen-region monitoring")
@@ -259,7 +274,9 @@ class RegionMonitorDialog(QDialog):
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.reset_button.setEnabled(True)
-        worker = RegionMonitorWorker(self.action, self.screenshot, parent=self)
+        worker = RegionMonitorWorker(
+            self.action, self.screenshot, parent=self,
+            window_target=self.window_target)
         self.worker = worker
         worker.frame.connect(self._frame_received)
         worker.capture_error.connect(self._capture_failed)
@@ -279,6 +296,10 @@ class RegionMonitorDialog(QDialog):
             self.worker.reset_baseline()
 
     def _frame_received(self, frame):
+        if "region" in frame:
+            x, y, width, height = frame["region"]
+            self.region_text.setText(
+                f"Captured region: ({x}, {y}) · {width} × {height} px")
         for key, label in self.previews.items():
             pixmap = _pixmap(frame[key])
             label.setPixmap(pixmap)
@@ -312,7 +333,12 @@ class RegionMonitorDialog(QDialog):
             self.status.setText("Monitoring stopped. Start again to recapture baseline.")
 
     def reject(self):
-        self.close()
+        # QDialog.closeEvent may call reject(); avoid recursion through close().
+        if self.worker is not None and self.worker.isRunning():
+            self._close_requested = True
+            self.stop_monitoring()
+            return
+        super().reject()
 
     def closeEvent(self, event):
         if self.worker is not None and self.worker.isRunning():
