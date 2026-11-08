@@ -90,7 +90,7 @@ class WorkflowReplacementTests(unittest.TestCase):
         self.assertEqual([x.x for x in plan.actions], [123, 123])
         with self.assertRaisesRegex(ValueError, "integer"):
             plan_replacements(actions, [0, 1], "x", "1.5")
-        with self.assertRaisesRegex(ValueError, "No eligible"):
+        with self.assertRaisesRegex(ValueError, "Substring replace"):
             plan_replacements(actions, [0, 1], "x", "10", mode="replace", find_text="1")
 
     def test_mixed_selection_skips_structural_markers_and_wrong_kinds(self):
