@@ -163,6 +163,9 @@ def export_package(destination, document, source_dir=None):
 
 def write_package(destination, plan):
     destination = Path(destination)
+    if any(destination.resolve() == source.resolve()
+           for _, source, _, _ in plan.assets):
+        raise ValueError("Package destination cannot overwrite a reference image.")
     manifest = {
         "format": FORMAT, "version": VERSION,
         "assets": [{"name": name, "size": size, "sha256": digest}
@@ -216,9 +219,11 @@ def _validated_archive(archive):
     for info in infos:
         name = info.filename
         mode = (info.external_attr >> 16) & 0o170000
-        if (name in entries or name not in ("manifest.json", "workflow.json") and
-                ASSET_NAME.fullmatch(name) is None or info.is_dir() or
-                mode not in (0, stat.S_IFREG) or info.flag_bits & 1):
+        if (name in entries or
+                (name not in ("manifest.json", "workflow.json") and
+                 ASSET_NAME.fullmatch(name) is None) or info.is_dir() or
+                mode not in (0, stat.S_IFREG) or info.flag_bits & 1 or
+                info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
             raise ValueError(f"Unsafe or unsupported archive entry: {name}")
         if info.file_size < 0 or info.file_size > (
                 MAX_IMAGE_BYTES if name.startswith("assets/") else MAX_DOCUMENT_BYTES):
@@ -243,6 +248,8 @@ def _validated_archive(archive):
             manifest["format"] != FORMAT or manifest["version"] != VERSION or
             not isinstance(manifest["assets"], list)):
         raise ValueError("Unsupported portable package format.")
+    if len(manifest["assets"]) > MAX_IMAGES:
+        raise ValueError("Package contains too many image assets.")
     expected = {}
     for item in manifest["assets"]:
         if (not isinstance(item, dict) or set(item) !=
@@ -262,10 +269,15 @@ def _validated_archive(archive):
             raise ValueError(f"Package asset size mismatch: {name}")
     normalized = _valid_workflow(workflow)
     # All image references must resolve only to files declared in this package.
+    referenced = set()
     for owner, field in _image_sources(normalized):
         value = owner[field]
-        if value is not None and value not in expected:
-            raise ValueError(f"Workflow image reference is not packaged: {value}")
+        if value is not None:
+            if value not in expected:
+                raise ValueError(f"Workflow image reference is not packaged: {value}")
+            referenced.add(value)
+    if referenced != set(expected):
+        raise ValueError("Package contains unreferenced image assets.")
     return normalized, expected
 
 
