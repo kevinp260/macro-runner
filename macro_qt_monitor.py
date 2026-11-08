@@ -340,14 +340,15 @@ class RegionMonitorDialog(QDialog):
 
     def reject(self):
         # QDialog.closeEvent may call reject(); avoid recursion through close().
-        if self.worker is not None and self.worker.isRunning():
+        # Keep the dialog alive until the worker's finished signal is handled.
+        if self.worker is not None:
             self._close_requested = True
             self.stop_monitoring()
             return
         super().reject()
 
     def closeEvent(self, event):
-        if self.worker is not None and self.worker.isRunning():
+        if self.worker is not None:
             self._close_requested = True
             self.stop_monitoring()
             event.ignore()
