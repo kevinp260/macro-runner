@@ -1329,10 +1329,10 @@ class MacroWindow(QMainWindow):
             self.executor.stop()
             self._set_status("Stopping…")
         elif self.region_monitor is not None:
-            # Stop is an exit request for the read-only tester, not merely
-            # a pause leaving the editor locked behind an open dialog.
-            self.region_monitor.close()
+            # Stop exits the read-only tester instead of leaving the editor
+            # busy behind an open dialog.
             self._set_status("Closing screen-region test…")
+            self.region_monitor.close()
         elif self.ocr_preview is not None:
             self.ocr_preview.close()
 
