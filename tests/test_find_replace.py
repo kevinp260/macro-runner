@@ -150,6 +150,15 @@ class WorkflowReplacementTests(unittest.TestCase):
             self.assertEqual([x.image_path for x in plan.actions],
                              [str(image), str(image)])
 
+    def test_relative_image_replacement_is_saved_as_absolute(self):
+        with tempfile.TemporaryDirectory() as temp:
+            image = Path(temp) / "relative.png"
+            Image.new("RGB", (5, 5), "red").save(image)
+            plan = plan_replacements(
+                [Action(kind="click_image", image_path="old.png")],
+                [0], "image_path", "relative.png", base_dir=temp)
+            self.assertEqual(plan.actions[0].image_path, str(image.resolve()))
+
     def test_does_not_change_values_that_are_already_identical(self):
         with self.assertRaisesRegex(ValueError, "No eligible"):
             plan_replacements(self.actions, [1, 4], "keys", "ctrl+s")
