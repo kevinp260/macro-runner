@@ -93,12 +93,17 @@ def normalize_snippet(value):
     if {item["name"] for item in definitions} != used:
         raise ValueError("Snippet variable declarations do not match its dependencies.")
     validate_references(actions, definitions)
-    return {
+    normalized = {
         "format": FORMAT, "version": SCHEMA, "mode": "copy",
         "name": _name(value["name"]),
         "actions": [asdict(action) for action in actions],
         "variables": definitions,
     }
+    try:
+        json.dumps(normalized, ensure_ascii=False).encode("utf-8")
+    except UnicodeError as exc:
+        raise ValueError("Snippet contains invalid Unicode text.") from exc
+    return normalized
 
 
 def make_snippet(name, actions, definitions, base_dir=None):
