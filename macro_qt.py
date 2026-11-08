@@ -32,6 +32,7 @@ from macro_snippets import SnippetStore, make_snippet, prepare_insertion
 from macro_packages import plan_package, write_package, inspect_package, import_package
 from macro_qt_snippets import SnippetLibraryDialog
 from macro_qt_find_replace import WorkflowFindReplaceDialog
+from macro_qt_help import HelpDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
@@ -242,6 +243,7 @@ class MacroWindow(QMainWindow):
         self._run_session = None
         self._pending_failure_capture = None
         self.run_history_dialog = None
+        self.help_dialog = None
         self.current_file = None
         self._recovery_source_file = None
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
@@ -542,6 +544,14 @@ class MacroWindow(QMainWindow):
             self.selection_mode_menu.addAction(action)
 
         help_menu = self.menuBar().addMenu("Help")
+        guide_action = QAction("User Guide…", self)
+        guide_action.setShortcut(QKeySequence("F1"))
+        guide_action.triggered.connect(self.show_help)
+        help_menu.addAction(guide_action)
+        selected_help = QAction("Help for selected action…", self)
+        selected_help.triggered.connect(self.help_selected_action)
+        help_menu.addAction(selected_help)
+        help_menu.addSeparator()
         about_action = QAction("About MacroRunner", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
@@ -581,6 +591,29 @@ class MacroWindow(QMainWindow):
     def _failure_capture_received(self, image):
         if self._run_session is not None:
             self._pending_failure_capture = image
+
+    def show_help(self):
+        """Open the offline guide without blocking workflow editing."""
+        self.show_help_topic("start")
+
+    def help_selected_action(self):
+        """Jump to the selected action's plain-language explanation."""
+        action = self.tree.selected_action()
+        topic_id = f"action-{action.kind}" if action is not None else "tour"
+        self.show_help_topic(topic_id)
+
+    def show_help_topic(self, topic_id):
+        if self.help_dialog is None:
+            dialog = HelpDialog(self)
+            self.help_dialog = dialog
+            dialog.finished.connect(self._help_closed)
+        self.help_dialog.open_topic(topic_id)
+
+    def _help_closed(self, _result):
+        dialog = self.help_dialog
+        self.help_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
 
     def show_about(self):
         QMessageBox.about(
