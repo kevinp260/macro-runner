@@ -69,6 +69,30 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Find and bulk replace workflow values (Issue #62; desktop QA deferred to #64)
+
+- [ ] On Windows and Ubuntu installed builds, open **Edit → Find / Replace…**
+      with Ctrl+F. Search by action type, name, enabled/disabled, keyboard
+      key/text, coordinates and image filename; verify results in collapsed
+      Repeat, If/Else, Repeat Until and Watch groups.
+- [ ] Click matches: expand parents, focus/scroll to the correct action,
+      highlight matching nodes and remove highlights on close.
+      Try hundreds of actions without noticeable UI freezes.
+- [ ] Preview Set value for compatible numeric fields (X, Y, Wait seconds,
+      Scroll steps, Timeout) and text fields (Name, keys, image paths, OCR).
+      Preview Replace substring for text only. Confirm count/old/new and
+      incompatible/variable-bound action skip explanations.
+- [ ] Apply a multi-action change and verify one Ctrl+Z restores the full
+      workflow, then Redo reinstates it. Preserve breakpoints, nesting,
+      action order and unrelated fields after Apply.
+- [ ] Attempt invalid values (negative duration, fractional coordinate,
+      invalid Hold key, unreadable image, empty key), structural markers,
+      mixed action types and bound coordinates. No partial edits.
+      Cancel or close without applying and verify saved JSON/dirty state
+      are unchanged.
+- [ ] Check theme contrast, low-resolution layouts, keyboard navigation,
+      large result sets and disabled toolbar/menu access while running.
+
 ## Optional local OCR (Issue #61; desktop QA deferred to #64)
 
 - [ ] Install local Tesseract and English traineddata on Ubuntu X11 and
