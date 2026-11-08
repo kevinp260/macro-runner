@@ -4,6 +4,7 @@ Qt owns all widgets. Existing action validation, JSON, keyboard, image, and
 playback logic live in independent modules and remain compatible.
 """
 import json
+import zipfile
 import os
 import queue
 import sys
@@ -28,6 +29,7 @@ from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_variables import VariablesDialog
 from macro_snippets import SnippetStore, make_snippet, prepare_insertion
+from macro_packages import plan_package, write_package, inspect_package, import_package
 from macro_qt_snippets import SnippetLibraryDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
@@ -242,6 +244,7 @@ class MacroWindow(QMainWindow):
         self._recovery_source_file = None
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
         self.snippet_store = SnippetStore(Path(data_dir) / "snippets")
+        self.package_assets_dir = Path(data_dir) / "workflow-assets"
         self._saved_state = None
         self._recovery_warning_shown = False
         self._recovery_locked = False
@@ -478,6 +481,17 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def _build_menus(self):
+        file_menu = self.menuBar().addMenu("File")
+        for key in ("new", "open", "save"):
+            file_menu.addAction(self.toolbar_actions[key])
+        file_menu.addSeparator()
+        self.import_package_action = QAction("Import portable package…", self)
+        self.import_package_action.triggered.connect(self.import_workflow_package)
+        file_menu.addAction(self.import_package_action)
+        self.export_package_action = QAction("Export portable package…", self)
+        self.export_package_action.triggered.connect(self.export_workflow_package)
+        file_menu.addAction(self.export_package_action)
+
         menu = self.menuBar().addMenu("Edit")
         for name in ("undo", "redo", "breakpoint"):
             menu.addAction(self.toolbar_actions[name])
@@ -790,6 +804,8 @@ class MacroWindow(QMainWindow):
         recording = self.recording or self.record_pending
         for key in ("new", "open", "save", "variables", "snippets", "undo", "redo"):
             self.toolbar_actions[key].setEnabled(not busy)
+        self.import_package_action.setEnabled(not busy)
+        self.export_package_action.setEnabled(not busy)
         self.toolbar_actions["undo"].setEnabled(not busy and self.history.can_undo)
         self.toolbar_actions["redo"].setEnabled(not busy and self.history.can_redo)
         self.toolbar_actions["run"].setEnabled(not busy and bool(self.actions))
@@ -1003,6 +1019,99 @@ class MacroWindow(QMainWindow):
         self._mark_clean()
         self._update_controls()
         self._set_status(f"Opened {os.path.basename(filename)}")
+
+    def export_workflow_package(self):
+        if self._busy():
+            return
+        try:
+            document = serialize_document(
+                self.tree.actions(), self.repeats.value(), self.delay.value(),
+                self.window_target, self.variables)
+            source = Path(self.current_file).parent if self.current_file else Path.cwd()
+            plan = plan_package(document, source)
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Cannot export package", str(exc))
+            return
+
+        size_mb = sum(asset[2] for asset in plan.assets) / (1024 * 1024)
+        message = (
+            f"Export workflow and {len(plan.assets)} reference image(s) "
+            f"({size_mb:.1f} MiB) as a ZIP package?\n\n"
+            "The workflow and images may contain passwords, personal data or "
+            "sensitive screenshots. Inspect before sharing.")
+        if plan.assets:
+            shown = [str(source) for _, source, _, _ in plan.assets[:8]]
+            if len(plan.assets) > 8:
+                shown.append(f"... and {len(plan.assets) - 8} more")
+            message += "\n\nIncluded images:\n" + "\n".join(shown)
+        if plan.warnings:
+            message += "\n\n" + "\n".join(plan.warnings)
+        choice = QMessageBox.question(
+            self, "Review portable package", message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if choice != QMessageBox.StandardButton.Yes:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export portable package", "", "Macro packages (*.mrpkg)")
+        if not filename:
+            return
+        if not filename.lower().endswith(".mrpkg"):
+            filename += ".mrpkg"
+        try:
+            write_package(filename, plan)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            QMessageBox.warning(self, "Cannot export package", str(exc))
+            return
+        self._set_status(f"Exported portable package: {os.path.basename(filename)}")
+
+    def import_workflow_package(self):
+        if self._busy():
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import portable package", "", "Macro packages (*.mrpkg)")
+        if not filename:
+            return
+        try:
+            details = inspect_package(filename)
+        except (OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+            QMessageBox.warning(self, "Cannot import package", str(exc))
+            return
+        choice = QMessageBox.question(
+            self, "Review portable package",
+            f"Import {details['image_count']} image(s) into MacroRunner's "
+            "managed assets folder?\n\n"
+            "Only import packages from sources you trust. Workflow actions "
+            "may contain sensitive text and can affect the computer when run. "
+            "Imported workflows will not execute automatically.\n\n"
+            "The imported workflow will open as an unsaved copy. "
+            "Choose Save to store its JSON after reviewing the actions.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if choice != QMessageBox.StandardButton.Yes or not self._confirm_unsaved():
+            return
+        try:
+            document = import_package(filename, self.package_assets_dir)
+            actions, settings = parse_document(document)
+        except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as exc:
+            QMessageBox.warning(self, "Cannot import package", str(exc))
+            return
+
+        self.variables = list(settings.get("variables", []))
+        self.variable_overrides = {}
+        self._replace_actions(actions, remember=False)
+        self.tree.clear_breakpoints()
+        self.history = ActionHistory(60)
+        self.repeats.setValue(settings["repeat_count"])
+        self.delay.setValue(settings["start_delay"])
+        self._set_window_target(settings.get("window_target"))
+        self.current_file = None
+        self._recovery_source_file = None
+        self._saved_state = None
+        self._after_edit()
+        self._update_controls()
+        self._set_status("Portable workflow imported as an unsaved copy. Use Save.")
 
     def save_workflow(self):
         if self._busy():

@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added portable workflow ZIP export/import with bundled image references, automatic managed-asset rebasing, atomic output, strict archive validation, checksum verification and review prompts (Issue #60).
+
 - Added local named workflow snippets: structural group/selected-action snapshots, searchable previews, copy-only insertion, variable dependency merging, image validation, safe library editing, and import/export (Issue #59). Text variable defaults are intentionally excluded from snippets.
 
 - Added typed workflow variables with validated per-field bindings, optional v2 document defaults, session-only run overrides, clipboard-read and image-center outputs, scoped repeat resets, and editor undo/recovery (Issue #58).

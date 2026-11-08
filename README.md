@@ -57,6 +57,39 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Portable workflow packages (Issue #60)
+
+Use **File → Export portable package…** to transfer a workflow to another
+computer. MacroRunner creates one **.mrpkg** ZIP file containing a version-2
+workflow and **only its referenced images** (Click Image, Wait Until,
+If/Else and Repeat Until image conditions, including image-path variable
+defaults). Identical images are stored once; images with the same filename
+but different content stay separate. Missing, unreadable or oversized images
+block export with an actionable message.
+
+Review the confirmation before exporting: **reference images may contain
+sensitive screenshots**, and workflow JSON may contain typed text, clipboard
+literals, variable defaults or local paths in plaintext. Do not share private
+workflows without inspecting them. Image-path variables with no default are
+not packaged and must be configured on the destination machine. Other local
+file paths, application launch paths and target-window identities are not
+portable and may need editing.
+
+On the receiving Windows or Ubuntu computer, choose **File → Import portable
+package…**. The importer checks the ZIP's filenames, manifest, entry types,
+size limits, image contents and SHA-256 checksums; it does not execute any
+actions. Accepted images are copied into MacroRunner's **managed local assets**
+directory and references are updated automatically. The imported workflow
+opens as an **unsaved copy**; review it, then use **Save** to write ordinary
+workflow JSON. Avoid deleting the managed assets directory while workflows
+still reference it.
+
+Only .mrpkg uses this ZIP format. The existing **Open/Save** commands continue
+to read/write ordinary .json workflows, including legacy action-list files.
+MacroRunner does not modify the original source images or the source JSON
+when exporting. On a rejected import, staged files are removed without
+replacing any existing managed assets.
+
 ## Reusable workflow snippets (Issue #59)
 
 Choose one or more sibling actions in the workflow tree, or select a complete
