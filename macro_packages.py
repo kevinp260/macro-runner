@@ -60,7 +60,10 @@ def _image_sources(workflow):
     variables = {entry["name"]: entry for entry in
                  workflow["settings"].get("variables", [])}
     for action in workflow["actions"]:
-        if action["kind"] not in IMAGE_ACTIONS or action["condition_source"] != "image":
+        if action["kind"] not in IMAGE_ACTIONS:
+            continue
+        if action["condition_source"] != "image":
+            action["image_path"] = ""  # Discard unused machine-specific paths.
             continue
         binding = action["bindings"].get("image_path")
         if binding:
@@ -149,8 +152,11 @@ def plan_package(document, source_dir=None):
         warnings.append("Images may include sensitive screen captures. Review the source files before sharing.")
     if len(_json_bytes(workflow)) > MAX_DOCUMENT_BYTES:
         raise ValueError("Workflow document exceeds the 8 MiB package limit.")
-    if sum(item[2] for item in assets.values()) + len(_json_bytes(workflow)) > MAX_TOTAL_BYTES:
+    total_bytes = sum(item[2] for item in assets.values()) + len(_json_bytes(workflow))
+    if total_bytes > MAX_TOTAL_BYTES:
         raise ValueError("Package contents exceed the 64 MiB limit.")
+    if total_bytes > 16 * 1024 * 1024:
+        warnings.append("This is a large package; confirm its size before sharing.")
     return PackagePlan(workflow, tuple(assets.values()), tuple(warnings))
 
 
