@@ -21,7 +21,10 @@ class PortablePackageQtTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.window = MacroWindow()
+        # Package UI tests do not exercise global hotkeys. Avoid starting
+        # a native X11 listener that may outlive Qt's offscreen test session.
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            self.window = MacroWindow()
         self.window.package_assets_dir = self.root / "imported"
         self.window.recovery_store.path = self.root / "recovery.json"
 
