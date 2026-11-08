@@ -121,7 +121,7 @@ def validate_action(item):
     if action.failure_policy == "retry":
         if action.kind not in ("click_image", "wait_until", "wait_text"):
             raise ValueError(
-                "Retry is supported only for Click Image and Wait Until. "
+                "Retry is supported only for Click Image, Wait Until and Wait for Text. "
                 "Other actions may have already sent mouse/keyboard input.")
         if action.retry_count < 1:
             raise ValueError("Retry needs at least one extra attempt.")
@@ -219,7 +219,7 @@ def validate_action(item):
                 any(ord(ch) < 32 for ch in action.text_target)):
             raise ValueError("OCR target must be a phrase of at most 200 printable characters.")
         if (not isinstance(action.text_language, str) or
-                re.fullmatch(r"[a-z]{3}(?:\\+[a-z]{3}){0,3}", action.text_language) is None):
+                re.fullmatch(r"[a-z]{3}(?:\+[a-z]{3}){0,3}", action.text_language) is None):
             raise ValueError("OCR language must use installed three-letter codes such as eng or eng+deu.")
         _finite_nonnegative(action.text_confidence, "OCR confidence")
         if not 0 < action.text_confidence <= 1:
