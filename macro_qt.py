@@ -4,6 +4,7 @@ Qt owns all widgets. Existing action validation, JSON, keyboard, image, and
 playback logic live in independent modules and remain compatible.
 """
 import json
+import zipfile
 import os
 import queue
 import sys
@@ -28,6 +29,7 @@ from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_variables import VariablesDialog
 from macro_snippets import SnippetStore, make_snippet, prepare_insertion
+from macro_packages import plan_package, write_package, inspect_package, import_package
 from macro_qt_snippets import SnippetLibraryDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
@@ -242,6 +244,7 @@ class MacroWindow(QMainWindow):
         self._recovery_source_file = None
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
         self.snippet_store = SnippetStore(Path(data_dir) / "snippets")
+        self.package_assets_dir = Path(data_dir) / "workflow-assets"
         self._saved_state = None
         self._recovery_warning_shown = False
         self._recovery_locked = False
@@ -478,6 +481,17 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def _build_menus(self):
+        file_menu = self.menuBar().addMenu("File")
+        for key in ("new", "open", "save"):
+            file_menu.addAction(self.toolbar_actions[key])
+        file_menu.addSeparator()
+        self.import_package_action = QAction("Import portable package…", self)
+        self.import_package_action.triggered.connect(self.import_workflow_package)
+        file_menu.addAction(self.import_package_action)
+        self.export_package_action = QAction("Export portable package…", self)
+        self.export_package_action.triggered.connect(self.export_workflow_package)
+        file_menu.addAction(self.export_package_action)
+
         menu = self.menuBar().addMenu("Edit")
         for name in ("undo", "redo", "breakpoint"):
             menu.addAction(self.toolbar_actions[name])
@@ -790,6 +804,8 @@ class MacroWindow(QMainWindow):
         recording = self.recording or self.record_pending
         for key in ("new", "open", "save", "variables", "snippets", "undo", "redo"):
             self.toolbar_actions[key].setEnabled(not busy)
+        self.import_package_action.setEnabled(not busy)
+        self.export_package_action.setEnabled(not busy)
         self.toolbar_actions["undo"].setEnabled(not busy and self.history.can_undo)
         self.toolbar_actions["redo"].setEnabled(not busy and self.history.can_redo)
         self.toolbar_actions["run"].setEnabled(not busy and bool(self.actions))
