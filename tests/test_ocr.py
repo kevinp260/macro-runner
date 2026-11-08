@@ -134,7 +134,7 @@ class FakeAutomation:
     def screenshot(self, region=None):
         return Image.new("RGB", (100, 50))
     def size(self):
-        return (800, 600)
+        return (100, 50)
     def click(self, *args, **kwargs):
         self.calls.append(("click", args, kwargs))
     def keyDown(self, key):
