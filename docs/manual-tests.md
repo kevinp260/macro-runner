@@ -6,6 +6,29 @@ A consolidated deferred test checklist for all planned PRs lives in
 [GitHub Issue #64](https://github.com/kevinp260/macro-runner/issues/64).
 
 
+## Searchable in-app Help (desktop acceptance — Issue #64)
+
+- [ ] Open **Help → User Guide…** and press **F1** on Ubuntu X11 and Windows.
+      Confirm it opens a resizable window beside the workflow editor, without
+      executing, modifying or saving workflow actions.
+- [ ] Search "Breakpoint", "Debug gap", "why won't my workflow start",
+      "click image" and "undo"; verify relevant explanations and examples,
+      case-insensitive results, chapter filters and no-results messaging.
+- [ ] Confirm the guide covers all action names currently visible in the
+      Actions palette, plus toolbar, Edit, File and View commands. Review
+      explanations for accuracy with the actual installed app.
+- [ ] Select a Click Image or Wait action and choose **Help → Help for selected
+      action…**. Confirm it jumps to that topic, and works with no selection.
+- [ ] Use Help while a workflow is selected or running; it should not block
+      ordinary editor navigation or access to emergency Stop. Close and reopen
+      without a stale or duplicate window.
+- [ ] Check readable article text, search results, keyboard operation,
+      scrollbars, dark/light themes and resizing near minimum screen size.
+- [ ] Verify the offline guide works without a network connection or extra
+      downloads and stores no query or sensitive workflow values.
+- [ ] Verify both packaged installers contain the Help modules and existing
+      Help → About/version behavior remains unchanged.
+
 ## Setup
 
 - [ ] Install/update from main with `make install` on Ubuntu Xorg/X11;
