@@ -851,23 +851,28 @@ class MacroWindow(QMainWindow):
         if self._busy():
             return
         dialog = VariablesDialog(self.variables, self.variable_overrides, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
         try:
-            validate_references(self.actions, dialog.definitions)
-        except ValueError as exc:
-            QMessageBox.warning(
-                self, "Variable still in use",
-                "Update the affected action bindings or results before "
-                f"changing this variable.\n\n{exc}")
-            return
-        if dialog.definitions != self.variables:
-            self.history.record(self.actions, self.variables)
-            self.variables = dialog.definitions
-        self.variable_overrides = dialog.overrides
-        self._selection_changed()
-        self._after_edit()
-        self._update_controls()
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            try:
+                validate_references(self.actions, dialog.definitions)
+            except ValueError as exc:
+                QMessageBox.warning(
+                    self, "Variable still in use",
+                    "Update the affected action bindings or results before "
+                    f"changing this variable.\n\n{exc}")
+                return
+            if dialog.definitions != self.variables:
+                self.history.record(self.actions, self.variables)
+                self.variables = dialog.definitions
+            self.variable_overrides = dialog.overrides
+            self._selection_changed()
+            self._after_edit()
+            self._update_controls()
+        finally:
+            # Repeated opens must not retain a modal dialog until the whole
+            # application is destroyed.
+            dialog.deleteLater()
 
     def toggle_breakpoint(self):
         if not self._busy():
