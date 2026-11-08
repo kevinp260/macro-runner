@@ -67,6 +67,11 @@ class ReplacementPlan:
 def _terms(action):
     coordinates = [f"{key}={getattr(action, key)}"
                    for key in COORDINATES if getattr(action, key) is not None]
+    for x, y in (("x", "y"), ("to_x", "to_y"), ("region_x", "region_y"),
+                 ("pixel_x", "pixel_y")):
+        first, second = getattr(action, x), getattr(action, y)
+        if first is not None and second is not None:
+            coordinates.extend((f"{first},{second}", f"({first}, {second})"))
     return {
         "kind": (action.kind.replace("_", " "), action.kind),
         "name": (action.name,),
