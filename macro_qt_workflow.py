@@ -52,6 +52,7 @@ PALETTE_MIME = "application/x-macrorunner-action-kind"
 KINDS = [
     ("Click", "click"), ("Click image", "click_image"),
     ("Wait", "wait"), ("Wait until", "wait_until"),
+    ("Find text (offline OCR)", "find_text"), ("Wait for text (offline OCR)", "wait_text"),
     ("Press / Type", "key"), ("Hold key", "key_down"),
     ("Release key", "key_up"), ("Move mouse", "move"),
     ("Scroll", "scroll"), ("Drag", "drag"),
@@ -70,6 +71,7 @@ KINDS = [
 TITLES = {
     "click": "Mouse click", "click_image": "Click image",
     "wait": "Wait", "wait_until": "Wait until",
+    "find_text": "Find text", "wait_text": "Wait for text",
     "key": "Keyboard", "key_down": "Hold key", "key_up": "Release key",
     "move": "Move", "scroll": "Scroll", "drag": "Drag",
     "clipboard_set": "Set clipboard text", "clipboard_paste": "Paste clipboard / text",
@@ -92,6 +94,11 @@ def description(action):
         detail = action.image_path or "Choose reference image"
         if action.result_variable:
             detail += f" → {action.result_variable}"
+    elif kind in ("find_text", "wait_text"):
+        # OCR search phrases can contain sensitive interface text; keep labels redacted.
+        detail = (f"OCR {action.text_language} · ≥{action.text_confidence:.0%}"
+                  + (" · click center" if action.text_click else "")
+                  + (f" · {action.timeout:g}s timeout" if kind == "wait_text" else ""))
     elif kind in ("wait",):
         detail = f"{action.seconds:g} seconds"
     elif kind in ("wait_until", "if_start", "until_start"):

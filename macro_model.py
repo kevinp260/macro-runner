@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check", "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read"]
+ActionType = Literal["click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check", "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read", "find_text", "wait_text"]
 
 @dataclass
 class Action:
@@ -32,6 +32,10 @@ class Action:
     condition_source: str = "image"
     match_mode: str = "matches"
     image_path: str = ""
+    text_target: str = ""  # Literal phrase recognized locally by Tesseract.
+    text_language: str = "eng"
+    text_confidence: float = 0.7
+    text_click: bool = False  # Find text may optionally click the matched center.
     confidence: float = 0.9
     # Click Image offsets are physical screen pixels from the matched center.
     image_offset_x: int = 0
@@ -98,7 +102,7 @@ def validate_action(item):
         raise ValueError(f"Invalid action fields: {exc}") from exc
 
     if action.kind not in ("click", "wait", "key", "move", "scroll", "drag", "loop_start", "loop_end", "click_image", "wait_until", "if_start", "else", "if_end", "until_start", "until_end", "key_down", "key_up", "watch_start", "watch_end", "clipboard_set", "clipboard_paste", "launch", "wait_window", "file_check",
-                            "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read"):
+                            "file_wait", "file_copy", "file_move", "folder_create", "clipboard_read", "find_text", "wait_text"):
         raise ValueError(f"Unknown action type: {action.kind!r}.")
     if not isinstance(action.name, str):
         raise ValueError("Action name must be text.")
@@ -115,9 +119,9 @@ def validate_action(item):
     if action.retry_delay > 60:
         raise ValueError("Retry delay must be 0–60 seconds.")
     if action.failure_policy == "retry":
-        if action.kind not in ("click_image", "wait_until"):
+        if action.kind not in ("click_image", "wait_until", "wait_text"):
             raise ValueError(
-                "Retry is supported only for Click Image and Wait Until. "
+                "Retry is supported only for Click Image, Wait Until and Wait for Text. "
                 "Other actions may have already sent mouse/keyboard input.")
         if action.retry_count < 1:
             raise ValueError("Retry needs at least one extra attempt.")
@@ -208,6 +212,36 @@ def validate_action(item):
             raise ValueError("Poll interval must be positive.")
         if action.kind in ("click_image", "wait_until"):
             _finite_nonnegative(action.timeout, "Timeout")
+    if action.kind in ("find_text", "wait_text"):
+        import re
+        if (not isinstance(action.text_target, str) or
+                len(action.text_target) > 200 or
+                any(ord(ch) < 32 for ch in action.text_target)):
+            raise ValueError("OCR target must be a phrase of at most 200 printable characters.")
+        if (not isinstance(action.text_language, str) or
+                re.fullmatch(r"[a-z]{3}(?:\+[a-z]{3}){0,3}", action.text_language) is None):
+            raise ValueError("OCR language must use installed three-letter codes such as eng or eng+deu.")
+        _finite_nonnegative(action.text_confidence, "OCR confidence")
+        if not 0 < action.text_confidence <= 1:
+            raise ValueError("OCR confidence must be greater than 0 and at most 1.")
+        if not isinstance(action.text_click, bool):
+            raise ValueError("Click text must be true or false.")
+        if action.kind == "wait_text" and action.text_click:
+            raise ValueError("Wait for text never clicks; use Find text to click.")
+        region = (action.region_x, action.region_y, action.region_w, action.region_h)
+        if any(v is not None for v in region):
+            if (any(type(v) is not int for v in region) or
+                    action.region_x < 0 or action.region_y < 0 or
+                    not 1 <= action.region_w <= 10000 or
+                    not 1 <= action.region_h <= 10000):
+                raise ValueError("OCR region needs nonnegative X/Y and width/height 1–10000.")
+        if action.kind == "wait_text":
+            _finite_nonnegative(action.timeout, "OCR wait timeout")
+            if action.timeout > 3600:
+                raise ValueError("OCR wait timeout must be 0–3600 seconds.")
+            _finite_nonnegative(action.poll_interval, "OCR polling interval")
+            if not 0.1 <= action.poll_interval <= 60:
+                raise ValueError("OCR polling interval must be 0.1–60 seconds.")
     if action.kind in ("file_check", "file_wait", "file_copy",
                        "file_move", "folder_create"):
         from macro_files import validate_file_action
