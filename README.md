@@ -57,6 +57,37 @@ failure, without changing its previous maximized/normal state. If the editor
 was already minimized or hidden, it stays that way. The preference is saved
 locally and is separate from **Minimize when running**.
 
+## Reusable workflow snippets (Issue #59)
+
+Choose one or more sibling actions in the workflow tree, or select a complete
+Repeat, If/Else, Repeat Until, or Watch Region Changes group. Click
+**Snippets… → Save selection…** and enter a name. Use the search box to find
+a saved snippet and preview its actions and variable dependencies.
+
+To insert, select the target workflow item **before** opening Snippets… and
+click **Insert copy**. Insertion takes place after a leaf, inside the selected
+group's main branch, or into a selected Else branch. With no current tree item
+it appends to the workflow. The new actions are editable, draggable and
+undoable with one Undo.
+
+Use **Rename…**, **Replace from selection…** (confirmation required), or
+**Delete…** to manage snippets. **Import…** reads an exported snippet JSON
+into the local library; **Export…** writes a copy for another computer.
+Snippets are **copies, not links**: edits to the library never affect an
+already inserted workflow, and edits to inserted actions never change the
+library. The library lives in MacroRunner's local application-data directory
+in a snippets subdirectory, separate from saved workflow JSON files.
+
+Insertion validates complete control groups, variable types and references,
+and local image assets. Missing variables are added to the destination workflow,
+while existing names keep their original values and must match the type.
+**Text variable defaults are omitted** from snippets to avoid copying stored
+secrets; configure them or supply run overrides/results as required. Clipboard
+action literals may still contain sensitive content, so review them before
+saving or exporting. Images are referenced by path, **not bundled**: adjust
+image paths after transferring between Ubuntu and Windows. Failed or malformed
+imports never modify an open workflow.
+
 ## Typed workflow variables and action results (Issue #58)
 
 Use **Variables…** on the toolbar to add up to 100 named workflow variables.
