@@ -638,10 +638,10 @@ class MacroWindow(QMainWindow):
         state = self.settings.value("splitter")
         if state is not None:
             self.splitter.restoreState(state)
-        else:
-            self.splitter.setSizes([285, 500, 400])
         # Saved splitter state can restore an outdated handle width.
         self.splitter.setHandleWidth(12)
+        if state is None:
+            self.splitter.setSizes([285, 500, 400])
 
     def set_theme(self, name):
         app = QApplication.instance()
