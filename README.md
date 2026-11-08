@@ -696,9 +696,15 @@ in Properties to open a live read-only diagnostic window. It previews the
 accepted baseline, the newest screenshot and the changed-pixel mask, along
 with the actual measured percentage, threshold, tolerance, confirmation count
 and accepted transition count. **Recapture baseline** discards the previous
-reference state. **Stop testing** ends screenshot sampling; no nested actions
-are executed and unsaved form values are not committed. To avoid detecting the
-MacroRunner window instead of the target, enable **Minimize when running**
+reference state. **Stop testing** ends screenshot sampling but keeps the
+tester open so it can be started again. **Close** stops any running capture,
+closes the tester and returns to the editor; the main toolbar **Stop** also
+closes an active tester. No nested actions are executed and unsaved form values
+are not committed. The tester displays the **actual captured desktop region**;
+client-relative target-window coordinates are translated just as in playback.
+The rectangle picker records physical desktop pixels used by the screenshot
+backend rather than Qt's potentially scaled window coordinates. To avoid
+detecting MacroRunner instead of the target, enable **Minimize when running**
 before opening the tester, and keep its separate preview outside the watched
 region. Capture errors include platform-specific guidance.
 

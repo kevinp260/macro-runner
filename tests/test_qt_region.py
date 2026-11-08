@@ -1,12 +1,13 @@
 """Region drawing and watch inspector tests (headless Qt)."""
 import unittest
+from unittest.mock import patch
 
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from macro_model import Action
 from macro_qt_properties import PropertiesPanel
-from macro_qt_region import RegionPicker, normalized_region
+from macro_qt_region import RegionOverlay, RegionPicker, normalized_region
 
 app = QApplication.instance() or QApplication([])
 
@@ -17,6 +18,30 @@ class RegionUITests(unittest.TestCase):
                          (20, 30, 100, 150))
         self.assertEqual(normalized_region(QPoint(20, 30), QPoint(120, 180)),
                          (20, 30, 100, 150))
+
+    def test_drag_records_native_pointer_pixels_not_qt_logical_position(self):
+        # Simulate Qt logical coordinates on a scaled desktop: a 20x20 Qt
+        # drag corresponds to a 60x40 rectangle in physical screenshot pixels.
+        class Mouse:
+            def __init__(self, x, y):
+                self.point = QPointF(x, y)
+            def button(self):
+                return Qt.MouseButton.LeftButton
+            def position(self):
+                return self.point
+
+        screen = QApplication.primaryScreen()
+        overlay = RegionOverlay(screen)
+        selected = []
+        overlay.selected.connect(lambda *rect: selected.append(rect))
+        try:
+            with patch.object(overlay, "_pointer_pixel",
+                              side_effect=[QPoint(400, 210), QPoint(460, 250)]):
+                overlay.mousePressEvent(Mouse(10, 12))
+                overlay.mouseReleaseEvent(Mouse(30, 32))
+            self.assertEqual(selected, [(400, 210, 60, 40)])
+        finally:
+            overlay.close()
 
     def test_inspector_draw_button_populates_fields_and_saves(self):
         panel = PropertiesPanel()

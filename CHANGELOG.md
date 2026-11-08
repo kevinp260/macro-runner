@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Fixed Watch Region Changes preview alignment on scaled desktops and with client-relative target windows, plus reliable Close/X/Stop shutdown of the read-only monitoring tester and editor unlock (Issue #82).
+
 - Added offline searchable Help → User Guide (F1) with everyday explanations, examples and troubleshooting across every workflow action and editor control, plus Help for selected action. No network access or search history.
 
 - Added Ctrl+F workflow find/replace dialog with type/name/state/key/coordinate/image searches across nested groups, temporary highlights and navigation, preview-validated compatible text/numeric replacements, and atomic single-step Undo (Issue #62).

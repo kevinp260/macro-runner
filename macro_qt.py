@@ -1329,8 +1329,10 @@ class MacroWindow(QMainWindow):
             self.executor.stop()
             self._set_status("Stopping…")
         elif self.region_monitor is not None:
-            self.region_monitor.stop_monitoring()
-            self._set_status("Stopping screen-region test…")
+            # Stop exits the read-only tester instead of leaving the editor
+            # busy behind an open dialog.
+            self._set_status("Closing screen-region test…")
+            self.region_monitor.close()
         elif self.ocr_preview is not None:
             self.ocr_preview.close()
 
@@ -1467,7 +1469,9 @@ class MacroWindow(QMainWindow):
         """Preview the current inspector settings, without editing the macro."""
         if self._busy():
             return
-        dialog = RegionMonitorDialog(action)  # Independent window: stays visible if editor minimizes.
+        # Match playback: resolve client-relative coordinates inside the preview
+        # worker without activating or sending input to the target window.
+        dialog = RegionMonitorDialog(action, window_target=self.window_target)
         self.region_monitor = dialog
         self._monitor_restore_state = None
         dialog.finished.connect(self._monitor_closed)
