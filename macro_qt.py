@@ -34,6 +34,7 @@ from macro_qt_snippets import SnippetLibraryDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
+from macro_qt_ocr import OCRPreviewDialog
 from macro_diagnostics import RunHistoryStore, RunSession
 from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
@@ -272,6 +273,7 @@ class MacroWindow(QMainWindow):
         self.hotkeys = None
         self.region_picker = None
         self.region_monitor = None
+        self.ocr_preview = None
         self._monitor_restore_state = None
         self._close_after_monitor = False
         self._screen_selection_active = False
@@ -399,6 +401,7 @@ class MacroWindow(QMainWindow):
         self.inspector.pick_region.connect(self._pick_region)
         self.inspector.test_monitoring.connect(self._test_monitoring)
         self.inspector.preview_image_click.connect(self._preview_image_click)
+        self.inspector.preview_text.connect(self._preview_text)
         self.inspector.test_launch.connect(self._test_launch)
         self.splitter.addWidget(self.inspector)
         self.splitter.setChildrenCollapsible(False)
@@ -796,7 +799,8 @@ class MacroWindow(QMainWindow):
     def _busy(self):
         # Wait for the queued completion signal before allowing edits.
         return (self.recording or self.record_pending or self.executor is not None
-                or self._screen_selection_active or self.region_monitor is not None)
+                or self._screen_selection_active or self.region_monitor is not None
+                or self.ocr_preview is not None)
 
     def _update_controls(self):
         busy = self._busy()
@@ -1266,6 +1270,8 @@ class MacroWindow(QMainWindow):
         elif self.region_monitor is not None:
             self.region_monitor.stop_monitoring()
             self._set_status("Stopping screen-region test…")
+        elif self.ocr_preview is not None:
+            self.ocr_preview.close()
 
     def _preview_image_click(self, action):
         """Read-only single screenshot and match, using unsaved inspector fields."""
@@ -1310,6 +1316,27 @@ class MacroWindow(QMainWindow):
             f"Similarity: {match[2]:.1%}\n\n"
             "No click was sent. If the target is obscured by MacroRunner "
             "or another window, adjust visibility before checking again.")
+
+    def _preview_text(self, action):
+        if self._busy():
+            QMessageBox.warning(
+                self, "OCR preview unavailable",
+                "Close the current run or screen preview before starting OCR.")
+            return
+        dialog = OCRPreviewDialog(action, self.window_target, parent=self)
+        self.ocr_preview = dialog
+        dialog.finished.connect(self._ocr_preview_closed)
+        self._set_status("Live local OCR preview (read-only).")
+        self._update_controls()
+        dialog.show()
+        dialog.raise_()
+        QTimer.singleShot(160, lambda: dialog.start_preview()
+                          if self.ocr_preview is dialog and dialog.isVisible()
+                          else None)
+
+    def _ocr_preview_closed(self, _result):
+        self.ocr_preview = None
+        self._update_controls()
 
     def _test_launch(self, action):
         if self._busy():
@@ -1724,6 +1751,11 @@ class MacroWindow(QMainWindow):
             self._close_after_monitor = True
             self.region_monitor.close()
             if self.region_monitor is not None:
+                event.ignore()
+                return
+        if self.ocr_preview is not None:
+            self.ocr_preview.close()
+            if self.ocr_preview is not None:
                 event.ignore()
                 return
         if self.region_picker is not None:
