@@ -1039,6 +1039,11 @@ class MacroWindow(QMainWindow):
             f"({size_mb:.1f} MiB) as a ZIP package?\n\n"
             "The workflow and images may contain passwords, personal data or "
             "sensitive screenshots. Inspect before sharing.")
+        if plan.assets:
+            shown = [str(source) for _, source, _, _ in plan.assets[:8]]
+            if len(plan.assets) > 8:
+                shown.append(f"... and {len(plan.assets) - 8} more")
+            message += "\n\nIncluded images:\n" + "\n".join(shown)
         if plan.warnings:
             message += "\n\n" + "\n".join(plan.warnings)
         choice = QMessageBox.question(
