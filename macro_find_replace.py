@@ -39,8 +39,6 @@ REPLACE_FIELDS = {
                 {"click_image", "wait_until", "file_wait", "wait_window", "wait_text"}),
 }
 
-COORDINATES = ("x", "y", "to_x", "to_y", "region_x", "region_y",
-               "pixel_x", "pixel_y")
 INTEGER = re.compile(r"[+-]?\d+\Z")
 
 
@@ -65,13 +63,26 @@ class ReplacementPlan:
 
 
 def _terms(action):
-    coordinates = [f"{key}={getattr(action, key)}"
-                   for key in COORDINATES if getattr(action, key) is not None]
-    for x, y in (("x", "y"), ("to_x", "to_y"), ("region_x", "region_y"),
-                 ("pixel_x", "pixel_y")):
+    """Include only coordinates actually used by this action kind."""
+    pairs = []
+    if action.kind in ("click", "move", "drag"):
+        pairs.append(("x", "y"))
+    if action.kind == "drag":
+        pairs.append(("to_x", "to_y"))
+    if action.kind in ("click_image", "wait_until", "if_start", "until_start",
+                       "watch_start", "find_text", "wait_text"):
+        if action.region_x is not None:
+            pairs.append(("region_x", "region_y"))
+    if (action.kind in ("wait_until", "if_start", "until_start")
+            and action.condition_source == "pixel"):
+        pairs.append(("pixel_x", "pixel_y"))
+    coordinates = []
+    for x, y in pairs:
         first, second = getattr(action, x), getattr(action, y)
-        if first is not None and second is not None:
-            coordinates.extend((f"{first},{second}", f"({first}, {second})"))
+        if first is None or second is None:
+            continue
+        coordinates.extend((f"{x}={first}", f"{y}={second}",
+                            f"{first},{second}", f"({first}, {second})"))
     return {
         "kind": (action.kind.replace("_", " "), action.kind),
         "name": (action.name,),
