@@ -30,7 +30,11 @@ def snippet_preview(snippet):
 
     def walk(nodes, depth=0):
         for node in nodes:
-            lines.append("  " * depth + description(node.action))
+            action = node.action
+            text = (f"{action.name.strip() or 'Keyboard'}  ·  typed text (hidden)"
+                    if action.kind == "key" and action.key_mode == "type"
+                    else description(action))
+            lines.append("  " * depth + text)
             if node.is_group:
                 walk(node.children, depth + 1)
                 if node.otherwise:
