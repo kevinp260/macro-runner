@@ -69,6 +69,29 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Portable workflow packages (Issue #60; desktop QA deferred to #64)
+
+- [ ] On Ubuntu and Windows, create a workflow using Click Image and
+      image-based Wait Until/If/Repeat Until; export a .mrpkg package.
+      Confirm only referenced images are included, and review warnings about
+      screenshot sensitivity and plaintext workflow/variable contents.
+- [ ] Transfer package to the other OS/account (different home folder);
+      import it, save the unsaved workflow to JSON and reopen/run against
+      harmless screenshots. Confirm source absolute image paths were replaced
+      with managed local image paths and original files were not overwritten.
+- [ ] Export images with identical names in different directories and repeated
+      references to identical bytes; verify distinct/deduplicated assets.
+- [ ] Test an image-path variable with a known default, and an unset variable
+      requiring a local override; verify appropriate rebasing or warning.
+- [ ] Test missing, corrupted, oversized and unsupported reference images.
+      Reject ZIP traversal, duplicate names, symlink entries, unknown members,
+      wrong checksum and oversized members without touching current workflow
+      or previously imported assets.
+- [ ] Confirm Cancel on import/export changes nothing; existing plain JSON
+      Open/Save and legacy JSON import still work without conversion.
+- [ ] Try saving a package containing typed text or a sensitive screenshot;
+      ensure the confirmation communicates what will be shared.
+
 ## Reusable workflow snippets (Issue #59; desktop QA deferred to #64)
 
 - [ ] Save a leaf, multiple sibling actions, and complete nested If/Else,
