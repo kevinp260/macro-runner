@@ -95,6 +95,14 @@ class BreakpointTreeTests(unittest.TestCase):
 
 
 class BreakpointWindowTests(unittest.TestCase):
+    def setUp(self):
+        # Offscreen Qt breakpoint tests must not start native X11 listeners.
+        # A pynput GlobalHotKeys thread can outlive its display connection
+        # and fail during teardown without exercising any test functionality.
+        patcher = patch.object(MacroWindow, "_start_hotkeys")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_run_snapshot_uses_active_breakpoints_and_gap(self):
         window = MacroWindow()
         old_gap = window.settings.value("debug_gap")
