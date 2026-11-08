@@ -572,10 +572,11 @@ class WorkflowTree(QTreeWidget):
         if not edits or any(type(i) is not int or i < 0 or i >= len(before)
                             for i in edits):
             raise ValueError("No valid actions selected for replacement.")
+        edited_indices = set(edits)
         for index in range(len(before)):
             if before[index].kind != updated[index].kind:
                 raise ValueError("Bulk replacement cannot change action types.")
-            if index not in edits and before[index] != updated[index]:
+            if index not in edited_indices and before[index] != updated[index]:
                 raise ValueError("Bulk replacement contains unexpected action changes.")
         self.clear_search_highlights()
         with QSignalBlocker(self):
