@@ -164,6 +164,17 @@ class SnippetTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "another operating system"):
                 prepare_insertion(snippet, [])
 
+    def test_foreign_posix_image_path_on_windows(self):
+        if os.name != "nt":
+            self.skipTest("Windows-only POSIX absolute-path validation")
+        snippet = make_snippet("POSIX image", [
+            Action(kind="click_image", image_path="/home/alice/reference.png")], [],
+            base_dir=self.root)
+        self.assertEqual(snippet["actions"][0]["image_path"],
+                         "/home/alice/reference.png")
+        with self.assertRaisesRegex(ValueError, "another operating system"):
+            prepare_insertion(snippet, [])
+
     def test_reject_malformed_and_nested_loop_snippets(self):
         original = make_snippet("Valid", [Action(kind="wait")], [])
         for change in (
