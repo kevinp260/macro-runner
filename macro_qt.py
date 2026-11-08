@@ -27,6 +27,8 @@ from macro_editing import ActionHistory
 from macro_qt_workflow import ActionPalette, WorkflowTree, KINDS
 from macro_qt_properties import PropertiesPanel, pad_spinbox_text
 from macro_qt_variables import VariablesDialog
+from macro_snippets import SnippetStore, make_snippet, prepare_insertion
+from macro_qt_snippets import SnippetLibraryDialog
 from macro_variables import validate_references
 from macro_qt_region import RegionPicker
 from macro_qt_monitor import RegionMonitorDialog
@@ -239,6 +241,7 @@ class MacroWindow(QMainWindow):
         self.current_file = None
         self._recovery_source_file = None
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
+        self.snippet_store = SnippetStore(Path(data_dir) / "snippets")
         self._saved_state = None
         self._recovery_warning_shown = False
         self._recovery_locked = False
@@ -298,6 +301,7 @@ class MacroWindow(QMainWindow):
             ("open", "Open", "Ctrl+O", self.open_workflow),
             ("save", "Save", "Ctrl+S", self.save_workflow),
             ("variables", "Variables…", "", self.edit_variables),
+            ("snippets", "Snippets…", "", self.show_snippets),
             ("run", "Run", "F5", self.run_workflow),
             ("pause", "Pause", "F6", self.pause_run),
             ("stop", "Stop", "Esc", self.stop_run),
@@ -478,6 +482,8 @@ class MacroWindow(QMainWindow):
         menu = self.menuBar().addMenu("Edit")
         for name in ("undo", "redo", "breakpoint"):
             menu.addAction(self.toolbar_actions[name])
+        menu.addSeparator()
+        menu.addAction(self.toolbar_actions["snippets"])
         menu.addSeparator()
         for title, slot, key in [
             ("Duplicate selection", self.duplicate, "Ctrl+D"),
@@ -781,7 +787,7 @@ class MacroWindow(QMainWindow):
         busy = self._busy()
         running = self.executor is not None
         recording = self.recording or self.record_pending
-        for key in ("new", "open", "save", "variables", "undo", "redo"):
+        for key in ("new", "open", "save", "variables", "snippets", "undo", "redo"):
             self.toolbar_actions[key].setEnabled(not busy)
         self.toolbar_actions["undo"].setEnabled(not busy and self.history.can_undo)
         self.toolbar_actions["redo"].setEnabled(not busy and self.history.can_redo)
@@ -873,6 +879,40 @@ class MacroWindow(QMainWindow):
             # Repeated opens must not retain a modal dialog until the whole
             # application is destroyed.
             dialog.deleteLater()
+
+    def show_snippets(self):
+        if self._busy():
+            return
+        dialog = SnippetLibraryDialog(
+            self.snippet_store, self._save_snippet_selection,
+            self._insert_snippet_copy, self)
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
+
+    def _save_snippet_selection(self, name, replace_id=None):
+        if self._busy():
+            raise ValueError("Stop the current run before editing snippets.")
+        selection = self.tree.selected_snippet_actions()
+        source = Path(self.current_file).parent if self.current_file else Path.cwd()
+        snippet = make_snippet(name, selection, self.variables, base_dir=source)
+        if replace_id is not None:
+            self.snippet_store.replace(replace_id, snippet)
+            return replace_id
+        return self.snippet_store.save(snippet)
+
+    def _insert_snippet_copy(self, snippet):
+        if self._busy():
+            raise ValueError("Stop the current run before inserting snippets.")
+        actions, variables = prepare_insertion(snippet, self.variables)
+        updated = self.tree.proposed_snippet_insertion(actions)
+        validate_references(updated, variables)
+        # Exactly one undo step for both the inserted actions and declarations.
+        self.history.record(self.actions, self.variables)
+        self.variables = variables
+        self._replace_actions(updated, remember=False)
+        self._set_status(f"Inserted independent copy of snippet: {snippet['name']}")
 
     def toggle_breakpoint(self):
         if not self._busy():
