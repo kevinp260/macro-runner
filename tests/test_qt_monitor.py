@@ -230,6 +230,45 @@ class RegionMonitorTests(unittest.TestCase):
         finally:
             panel.close()
 
+    def test_main_stop_closes_active_preview_and_releases_editor(self):
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        old = window.settings.value("minimize_on_run")
+        window.minimize_on_run.setChecked(False)
+        source = action()
+        window._replace_actions([source])
+        monitor = None
+        try:
+            def create_dialog(a, window_target=None):
+                return RegionMonitorDialog(
+                    a, screenshot=lambda region=None:
+                    Image.new("RGB", (region[2], region[3]), "black"),
+                    window_target=window_target)
+
+            with patch("macro_qt.RegionMonitorDialog", side_effect=create_dialog), \
+                    patch("macro_qt.QTimer.singleShot"):
+                window._test_monitoring(source)
+            monitor = window.region_monitor
+            self.assertIsNotNone(monitor)
+            monitor.start_monitoring()
+            self.assertTrue(pump_until(lambda: monitor.worker is not None
+                                       and monitor.worker.isRunning()))
+            self.assertTrue(window._busy())
+            window.stop_run()
+            self.assertTrue(pump_until(lambda: window.region_monitor is None))
+            self.assertFalse(window._busy())
+            self.assertFalse(monitor.isVisible())
+            self.assertTrue(window.toolbar_actions["run"].isEnabled())
+        finally:
+            if monitor is not None and monitor.worker is not None:
+                monitor.worker.stop()
+                monitor.worker.wait(2000)
+            if old is None:
+                window.settings.remove("minimize_on_run")
+            else:
+                window.settings.setValue("minimize_on_run", old)
+            close_test_window(window)
+
     def test_main_window_minimizes_and_restores_on_monitor_close(self):
         class FakeDialog(QDialog):
             def __init__(self, a, window_target=None):
