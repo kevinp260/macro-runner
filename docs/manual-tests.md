@@ -69,6 +69,32 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Verify Wayland limitation messaging and state test results separately
       from Windows/X11. Confirm both dark and light themes and small screens.
 
+## Optional local OCR (Issue #61; desktop QA deferred to #64)
+
+- [ ] Install local Tesseract and English traineddata on Ubuntu X11 and
+      Windows; verify `tesseract --list-langs`. Confirm normal workflows
+      and installer startup remain usable with Tesseract absent.
+- [ ] Add Find text / Wait for text; enter visible non-sensitive phrases
+      using high-contrast and poor-contrast fonts. Confirm exact-word,
+      case-insensitive matching, confidence threshold and timeout.
+- [ ] Use Draw screen region and selected target-window client-relative mode;
+      move/resize/cover the target. Verify no wrong-window click after moves
+      and no click when text is missing or confidence is too low.
+- [ ] Use Find text with Click center both off and on; verify coordinate
+      correctness on Windows, Ubuntu X11 and scaled/multiple monitors.
+      On Wayland record unsupported screenshot/input behavior explicitly.
+- [ ] Open Live OCR preview: confirm frames and bounds refresh, no clicks or
+      files/network calls, correct handling of unsaved inspector settings,
+      and Stop/Close cleanup during native OCR work.
+- [ ] Test missing engine, missing/unsupported language pack, bad screenshot,
+      negative/unavailable region, small fonts and poorly recognized text.
+      Error feedback must explain setup/capture limitations.
+- [ ] Confirm Run History contains no raw OCR text, screenshots or sensitive
+      target phrase; workflow JSON/recovery do contain the configured phrase.
+- [ ] Verify Pause/Resume/Stop/Step, skipped actions and retry-only-before-input.
+      Repeat and If/Else groups, Save/Open of legacy JSON, Undo/Redo, and
+      installed Windows/Ubuntu build behavior.
+
 ## Portable workflow packages (Issue #60; desktop QA deferred to #64)
 
 - [ ] On Ubuntu and Windows, create a workflow using Click Image and
