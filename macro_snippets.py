@@ -2,7 +2,8 @@
 from copy import deepcopy
 from dataclasses import asdict
 import json
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import os
 import re
 import uuid
 
@@ -42,6 +43,13 @@ def _references(actions):
     return names
 
 
+def _foreign_image_path(value):
+    """Recognize foreign absolute/drive-relative paths on either OS."""
+    if os.name == "nt":
+        return PurePosixPath(value).is_absolute() and not Path(value).is_absolute()
+    return bool(PureWindowsPath(value).drive)
+
+
 def _portable_image_paths(actions, base_dir):
     """Anchor relative images to their original folder, not the snippet library."""
     if base_dir is None:
@@ -51,8 +59,12 @@ def _portable_image_paths(actions, base_dir):
                 action.condition_source == "image" and
                 "image_path" not in action.bindings and action.image_path):
             path = action.image_path
-            if not Path(path).is_absolute() and not PureWindowsPath(path).is_absolute():
-                action.image_path = str((Path(base_dir) / path).resolve())
+            if not Path(path).is_absolute() and not _foreign_image_path(path):
+                # A Windows-style relative reference remains usable when
+                # importing a snippet on Linux, where backslash is not a separator.
+                relative = (Path(*PureWindowsPath(path).parts)
+                            if os.name != "nt" and "\\" in path else Path(path))
+                action.image_path = str((Path(base_dir) / relative).resolve())
     return actions
 
 
@@ -109,7 +121,7 @@ def _check_images(actions, definitions):
             continue  # A runtime producer or run override may supply the image path.
         if not isinstance(image_path, str) or not image_path.strip():
             raise ValueError("Snippet image reference is empty.")
-        if PureWindowsPath(image_path).is_absolute() and not Path(image_path).is_absolute():
+        if _foreign_image_path(image_path):
             raise ValueError(
                 f"Image path is from another operating system: {image_path}. "
                 "Choose a local reference image before inserting.")
