@@ -36,6 +36,8 @@ class WorkflowSearchTests(unittest.TestCase):
         self.assertEqual(self.matches("enabled", "enabled"), [0, 1, 2, 3, 5, 6])
         self.assertEqual(self.matches("ctrl+s", "keys"), [1, 6])
         self.assertEqual(self.matches("x=42", "coordinates"), [4])
+        self.assertEqual(self.matches("42,80", "coordinates"), [4])
+        self.assertEqual(self.matches("(42, 80)", "coordinates"), [4])
         self.assertEqual(self.matches("80", "coordinates"), [4])
         self.assertEqual(self.matches("approve.png", "image"), [2])
         self.assertEqual(self.matches("APPROVE.PNG", "all"), [2])
