@@ -7,7 +7,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout
 
 from macro_ocr import check_engine, find_text, OCRError
-from macro_windows import WindowBinding
+from macro_windows import WindowBinding, WindowUnavailable
 
 
 class OCRPreviewWorker(QThread):
@@ -66,7 +66,7 @@ class OCRPreviewWorker(QThread):
         except Exception as exc:
             if not self._stop.is_set():
                 # OCR errors exclude recognized text, screenshot pixels and paths.
-                self.error.emit(str(exc) if isinstance(exc, OCRError)
+                self.error.emit(str(exc) if isinstance(exc, (OCRError, WindowUnavailable))
                                 else "OCR preview failed. Check screen capture, "
                                      "target-window visibility and Tesseract setup.")
 
