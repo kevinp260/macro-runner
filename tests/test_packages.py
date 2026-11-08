@@ -147,6 +147,38 @@ class PortablePackageTests(unittest.TestCase):
         self.assertEqual(imported["actions"][0]["image_path"], "")
         self.assertNotIn(str(picture), json.dumps(imported))
 
+    def test_multiple_actions_using_same_image_variable_rebase_once(self):
+        picture = self.make_image()
+        definitions = [{"name": "reference", "type": "text",
+                        "default": str(picture)}]
+        original = document([
+            Action(kind="click_image", image_path="",
+                   bindings={"image_path": "reference"}),
+            Action(kind="wait_until", image_path="",
+                   bindings={"image_path": "reference"}),
+        ], definitions)
+        plan = export_package(self.package, original)
+        self.assertEqual(len(plan.assets), 1)
+        imported = import_package(self.package, self.assets_root)
+        self.assertTrue(Path(imported["settings"]["variables"][0]["default"]).is_file())
+
+    def test_unreferenced_image_is_not_imported(self):
+        picture = self.make_image()
+        export_package(self.package, document([image_action(picture)]))
+        extra = self.make_image("unreferenced.png", "orange")
+        data = extra.read_bytes()
+        checksum = hashlib.sha256(data).hexdigest()
+        name = f"assets/{checksum}.png"
+        with zipfile.ZipFile(self.package) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        manifest["assets"].append({"name": name, "size": len(data),
+                                   "sha256": checksum})
+        self.repack(changes={"manifest.json": json.dumps(manifest).encode()},
+                    additions=[(name, data)])
+        with self.assertRaisesRegex(ValueError, "unreferenced"):
+            import_package(self.package, self.assets_root)
+        self.assertFalse(self.assets_root.exists())
+
     def test_unset_dynamic_image_variable_does_not_invent_an_asset(self):
         original = document(
             [Action(kind="click_image", image_path="",
