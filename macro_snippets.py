@@ -8,6 +8,7 @@ import re
 import uuid
 
 from macro_model import parse_sequence
+from macro_flow import OPENERS, CLOSERS
 from macro_recovery import atomic_json_write
 from macro_variables import validate_references, validate_variables
 
@@ -20,7 +21,8 @@ _IMAGE_ACTIONS = frozenset(("click_image", "wait_until", "if_start", "until_star
 
 
 def _name(value):
-    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 80:
+    if (not isinstance(value, str) or not value.strip() or
+            len(value.strip()) > 80 or any(ord(ch) < 32 for ch in value)):
         raise ValueError("Snippet name must contain 1–80 characters.")
     return value.strip()
 
@@ -29,8 +31,17 @@ def _actions(value):
     if not isinstance(value, list) or not 1 <= len(value) <= MAX_ACTIONS:
         raise ValueError("Snippet must contain 1–2000 actions.")
     try:
-        return parse_sequence(value)
-    except (RecursionError, TypeError) as exc:
+        result = parse_sequence(value)
+        depth = 0
+        for action in result:
+            if action.kind in OPENERS:
+                depth += 1
+                if depth > 32:
+                    raise ValueError("Snippet nesting exceeds 32 control groups.")
+            elif action.kind in CLOSERS:
+                depth -= 1
+        return result
+    except (RecursionError, TypeError, OverflowError) as exc:
         raise ValueError("Snippet has invalid or excessively nested actions.") from exc
 
 
