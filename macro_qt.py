@@ -1020,6 +1020,94 @@ class MacroWindow(QMainWindow):
         self._update_controls()
         self._set_status(f"Opened {os.path.basename(filename)}")
 
+    def export_workflow_package(self):
+        if self._busy():
+            return
+        try:
+            document = serialize_document(
+                self.tree.actions(), self.repeats.value(), self.delay.value(),
+                self.window_target, self.variables)
+            source = Path(self.current_file).parent if self.current_file else Path.cwd()
+            plan = plan_package(document, source)
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Cannot export package", str(exc))
+            return
+
+        size_mb = sum(asset[2] for asset in plan.assets) / (1024 * 1024)
+        message = (
+            f"Export workflow and {len(plan.assets)} reference image(s) "
+            f"({size_mb:.1f} MiB) as a ZIP package?\n\n"
+            "The workflow and images may contain passwords, personal data or "
+            "sensitive screenshots. Inspect before sharing.")
+        if plan.warnings:
+            message += "\n\n" + "\n".join(plan.warnings)
+        choice = QMessageBox.question(
+            self, "Review portable package", message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if choice != QMessageBox.StandardButton.Yes:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export portable package", "", "Macro packages (*.mrpkg)")
+        if not filename:
+            return
+        if not filename.lower().endswith(".mrpkg"):
+            filename += ".mrpkg"
+        try:
+            write_package(filename, plan)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            QMessageBox.warning(self, "Cannot export package", str(exc))
+            return
+        self._set_status(f"Exported portable package: {os.path.basename(filename)}")
+
+    def import_workflow_package(self):
+        if self._busy():
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import portable package", "", "Macro packages (*.mrpkg)")
+        if not filename:
+            return
+        try:
+            details = inspect_package(filename)
+        except (OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+            QMessageBox.warning(self, "Cannot import package", str(exc))
+            return
+        choice = QMessageBox.question(
+            self, "Review portable package",
+            f"Import {details['image_count']} image(s) into MacroRunner's "
+            "managed assets folder?\n\n"
+            "Only import packages from sources you trust. Workflow actions "
+            "may contain sensitive text and can affect the computer when run. "
+            "Imported workflows will not execute automatically.\n\n"
+            "The imported workflow will open as an unsaved copy. "
+            "Choose Save to store its JSON after reviewing the actions.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if choice != QMessageBox.StandardButton.Yes or not self._confirm_unsaved():
+            return
+        try:
+            document = import_package(filename, self.package_assets_dir)
+            actions, settings = parse_document(document)
+        except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as exc:
+            QMessageBox.warning(self, "Cannot import package", str(exc))
+            return
+
+        self.variables = list(settings.get("variables", []))
+        self.variable_overrides = {}
+        self._replace_actions(actions, remember=False)
+        self.tree.clear_breakpoints()
+        self.history = ActionHistory(60)
+        self.repeats.setValue(settings["repeat_count"])
+        self.delay.setValue(settings["start_delay"])
+        self._set_window_target(settings.get("window_target"))
+        self.current_file = None
+        self._recovery_source_file = None
+        self._saved_state = None
+        self._after_edit()
+        self._update_controls()
+        self._set_status("Portable workflow imported as an unsaved copy. Use Save.")
+
     def save_workflow(self):
         if self._busy():
             return False
