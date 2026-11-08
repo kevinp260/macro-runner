@@ -328,7 +328,6 @@ class MacroWindow(QMainWindow):
         root.setSpacing(8)
         self.setCentralWidget(central)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.setHandleWidth(12)  # A real gutter, not a line across rounded borders.
 
         palette_panel = QFrame()
         palette_panel.setObjectName("panel")
@@ -586,6 +585,8 @@ class MacroWindow(QMainWindow):
             self.splitter.restoreState(state)
         else:
             self.splitter.setSizes([205, 600, 365])
+        # Saved splitter state can restore an outdated handle width.
+        self.splitter.setHandleWidth(12)
 
     def set_theme(self, name):
         app = QApplication.instance()
