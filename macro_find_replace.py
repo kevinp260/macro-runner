@@ -152,7 +152,7 @@ def _check_image_path(value, base_dir):
 
 
 def plan_replacements(actions, indices, field, text, *, mode="set",
-                      find_text="", variables=(), base_dir=None):
+                      find_text="", variables=None, base_dir=None):
     """Validate every candidate before exposing a plan for one Undoable edit.
 
     Invalid changes abort the entire operation. Nonmatching kinds and bound
@@ -198,5 +198,5 @@ def plan_replacements(actions, indices, field, text, *, mode="set",
     if not changes:
         raise ValueError("No eligible, unbound action values would change.")
     validate_flow(proposed)
-    validate_references(proposed, variables)
+    validate_references(proposed, list(variables or []))
     return ReplacementPlan(tuple(proposed), tuple(changes), skipped)
