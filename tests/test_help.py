@@ -53,7 +53,7 @@ class HelpCatalogTests(unittest.TestCase):
 
     def test_everyday_descriptions_can_find_relevant_topics(self):
         for phrase, expected in (
-            ("screen focus", "window-target"),
+            ("background window", "window-target"),
             ("clipboard", "action-clipboard_set"),
             ("save a workflow", "new-save-open"),
             ("slow down", "debug-gap"),
@@ -66,8 +66,8 @@ class HelpCatalogTests(unittest.TestCase):
     def test_offline_help_does_not_require_workflow_or_config(self):
         for topic in TOPICS:
             self.assertIsInstance(topic.body, str)
-        self.assertIn("Breakpoints", BY_ID["breakpoint"].body.replace(
-            "breakpoint", "Breakpoints").replace("Breakpoint", "Breakpoints"))
+        self.assertIn("pauses before", BY_ID["breakpoint"].body)
+        self.assertIn("between executable actions", BY_ID["debug-gap"].body)
         self.assertIn("1.0", BY_ID["debug-gap"].body)
 
 
