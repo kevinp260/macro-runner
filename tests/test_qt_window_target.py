@@ -39,7 +39,10 @@ class WindowUIRegressionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.window = MacroWindow()
+        # Window-target UI tests do not exercise global hotkeys. Avoid
+        # native X11 listeners whose shutdown can fail in offscreen Qt tests.
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            self.window = MacroWindow()
         self.window.recovery_store = RecoveryStore(self.root / "recovery.json")
 
     def tearDown(self):
