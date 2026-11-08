@@ -1,6 +1,5 @@
 """Portable workflow ZIP tests: cross-directory paths and hostile archives."""
 from copy import deepcopy
-from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
