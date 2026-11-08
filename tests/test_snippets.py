@@ -181,6 +181,13 @@ class SnippetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             make_snippet("bad", nested_loops, [])
 
+    def test_excessive_nested_control_groups_are_rejected(self):
+        starts = [Action(kind="if_start", condition_source="pixel")
+                  for _ in range(33)]
+        ends = [Action(kind="if_end") for _ in range(33)]
+        with self.assertRaisesRegex(ValueError, "nesting"):
+            make_snippet("Too deep", starts + [Action(kind="wait")] + ends, [])
+
     def test_invalid_json_and_unsafe_ids_never_change_library(self):
         (self.store.directory).mkdir()
         (self.store.directory / ("a" * 32 + ".json")).write_text(
