@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 from PIL import Image
 from dataclasses import replace
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRect
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QPushButton
 
 from macro_model import Action
 from macro_qt import MacroWindow
 from macro_qt_monitor import (RegionMonitorDialog, RegionMonitorWorker,
-                              capture_error_text)
+                              capture_error_text, _qt_region)
 from macro_qt_properties import PropertiesPanel
 
 app = QApplication.instance() or QApplication([])
@@ -36,6 +36,17 @@ def pump_until(condition, timeout=3.0):
 
 
 class RegionMonitorTests(unittest.TestCase):
+    def test_preview_placement_maps_physical_pixels_to_qt_scaling(self):
+        class Screen:
+            def geometry(self):
+                return QRect(0, 0, 800, 600)
+            def devicePixelRatio(self):
+                return 1.5
+        logical = _qt_region(QRect(300, 150, 150, 90), Screen())
+        self.assertEqual((logical.x(), logical.y(),
+                          logical.width(), logical.height()),
+                         (200, 100, 100, 60))
+
     def test_worker_reports_two_changes_and_no_duplicate_trigger(self):
         frames = [0, 255, 255, 255, 0, 0]
         captures = []
