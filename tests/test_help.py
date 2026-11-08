@@ -39,6 +39,15 @@ class HelpCatalogTests(unittest.TestCase):
             for topic in first))
         self.assertEqual(search_topics("impossiblezozzoterm"), [])
 
+    def test_everyday_questions_ignore_punctuation_and_filler(self):
+        self.assertEqual(search_topics("What does breakpoint mean?")[0].id,
+                         "breakpoint")
+        self.assertEqual(search_topics("Where is the debug gap?")[0].id,
+                         "debug-gap")
+        self.assertIn("action-click_image",
+                      {topic.id for topic in search_topics("CLICK IMAGE!")})
+        self.assertEqual(search_topics("!!!"), list(TOPICS))
+
     def test_category_filter_and_empty_search(self):
         categories = [topic for topic in TOPICS
                       if topic.category == "Action reference"]
