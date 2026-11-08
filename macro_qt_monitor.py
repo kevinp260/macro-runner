@@ -235,17 +235,23 @@ class RegionMonitorDialog(QDialog):
         self.reset_button.setEnabled(False)
 
     def position_away_from_region(self):
-        """Prefer a screen corner not overlapping the captured desktop area."""
-        screen = QApplication.screenAt(QPoint(
-            self.action.region_x + self.action.region_w // 2,
-            self.action.region_y + self.action.region_h // 2))
+        """Prefer a corner outside the actual target-relative capture area."""
+        current = self.action
+        if self.window_target is not None:
+            try:
+                binding = WindowBinding(self.window_target)
+                current = binding.transform(current, binding.resolve())
+            except Exception:
+                # The worker reports the target error explicitly on Start.
+                return
+        region = QRect(current.region_x, current.region_y,
+                       current.region_w, current.region_h)
+        screen = QApplication.screenAt(region.center())
         if screen is None:
             screen = QApplication.primaryScreen()
         if screen is None:
             return
         available = screen.availableGeometry()
-        region = QRect(self.action.region_x, self.action.region_y,
-                       self.action.region_w, self.action.region_h)
         width = min(self.width(), available.width())
         height = min(self.height(), available.height())
         positions = [
