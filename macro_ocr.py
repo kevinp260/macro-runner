@@ -82,6 +82,8 @@ def _run(args, *, image_bytes=None, timeout=OCR_TIMEOUT):
         raise OCRError(
             "Local Tesseract failed. Verify the installed language packs "
             "and that the selected screen region can be read.")
+    if len(result.stdout) > 4 * 1024 * 1024:
+        raise OCRError("Tesseract returned too much text; select a smaller region.")
     return result.stdout
 
 
@@ -171,7 +173,7 @@ def find_text(action, screenshot, *, executable=None):
                 "Check DPI scaling and screenshot permissions.")
         buffer = io.BytesIO()
         image.convert("RGB").save(buffer, format="PNG")
-    except (OSError, ValueError) as exc:
+    except Exception as exc:
         if isinstance(exc, OCRError):
             raise
         raise OCRError("Cannot capture the selected screen region for OCR.") from exc
