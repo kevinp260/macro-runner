@@ -578,14 +578,17 @@ class WorkflowTree(QTreeWidget):
                 raise ValueError("Bulk replacement cannot change action types.")
             if index not in edited_indices and before[index] != updated[index]:
                 raise ValueError("Bulk replacement contains unexpected action changes.")
+        # Validate all targets before mutating any Qt node.
+        for index in edits:
+            node = unpack_node(mapping[index])
+            if node is None or node.is_group or before[index].kind in OPENERS or (
+                    before[index].kind.endswith("_end")):
+                raise ValueError("Structural workflow markers cannot be replaced.")
         self.clear_search_highlights()
         with QSignalBlocker(self):
             for index in edits:
                 item = mapping[index]
                 node = unpack_node(item)
-                if node is None or node.is_group or before[index].kind in OPENERS or (
-                        before[index].kind.endswith("_end")):
-                    raise ValueError("Structural workflow markers cannot be replaced.")
                 node.action = deepcopy(updated[index])
                 item.setData(0, NODE_ROLE, pack_node(node))
                 self._set_action_label(item, node.action)
