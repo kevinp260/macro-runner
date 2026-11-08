@@ -165,6 +165,7 @@ def _check_image_path(value, base_dir):
             image.verify()
     except (OSError, ValueError) as exc:
         raise ValueError("Reference image is not readable: " + str(path)) from exc
+    return str(path.resolve())
 
 
 def plan_replacements(actions, indices, field, text, *, mode="set",
@@ -201,12 +202,12 @@ def plan_replacements(actions, indices, field, text, *, mode="set",
             continue
         old = getattr(action, field)
         new = old.replace(find_text, text) if mode == "replace" else value
-        if old == new:
-            continue
         try:
+            if field == "image_path" and old != new:
+                new = _check_image_path(new, base_dir)
+            if old == new:
+                continue
             edited = validate_action(asdict(replace(action, **{field: new})))
-            if field == "image_path":
-                _check_image_path(new, base_dir)
         except (ValueError, TypeError) as exc:
             raise ValueError(f"Action {index + 1}: {exc}") from exc
         proposed[index] = edited
