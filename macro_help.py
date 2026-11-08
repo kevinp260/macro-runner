@@ -31,6 +31,33 @@ a short message. Avoid real purchases, passwords, and destructive file
 operations while learning.
 """, "automation macro beginner overview"),
 
+    T("using-help", "Getting started", "How to use this Help guide", """
+Open **Help → User Guide…** or press **F1** from MacroRunner.
+Keep the window open next to the workflow editor while you work.
+
+- Type a word or a short question into **Search the Help guide…**.
+  Results update immediately, without using the internet.
+- Use the chapter dropdown to look through **Getting started**,
+  **Editing workflows**, **Running and debugging**, **Common settings**,
+  **Action reference** and **Troubleshooting**.
+- Click a topic on the left to read the explanation on the right.
+- Clear the search box to see all topics again.
+
+To understand an action you already added, select it in the workflow and
+choose **Help → Help for selected action…**.
+""", "help search guide index chapters find buttons"),
+
+    T("about", "Getting started", "About MacroRunner and app version", """
+Choose **Help → About MacroRunner** to see the **installed app version**
+and a link to the project's repository.
+
+The **User Guide (F1)** explains how to use the app; **About** identifies
+the build you have installed. The version is useful when reporting an
+issue or checking whether an update was installed successfully.
+
+About does not run a workflow, change settings or check for updates.
+""", "about version update installed build repository support"),
+
     T("first-workflow", "Getting started", "Make your first workflow", """
 1. Open a harmless app such as a text editor.
 2. In MacroRunner's **Actions** panel on the left, double-click
