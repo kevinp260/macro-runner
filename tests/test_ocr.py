@@ -137,7 +137,8 @@ class OCRRuntimeTests(unittest.TestCase):
         runner = MacroExecutor(
             [action], 1, 0, lambda *a: None,
             lambda *a: results.append(a),
-            automation=automation, on_diagnostic=(diagnostics or []).append)
+            automation=automation, on_diagnostic=(
+                diagnostics if diagnostics is not None else []).append)
         return runner, results
 
     def test_find_text_readonly_does_not_click(self):
