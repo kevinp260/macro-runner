@@ -690,6 +690,8 @@ class PropertiesPanel(QFrame):
             return
         try:
             action = self._read_action()
+            if not action.text_target.strip():
+                raise ValueError("Enter the phrase to recognize before previewing.")
         except (ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Invalid OCR settings", str(exc))
             return
