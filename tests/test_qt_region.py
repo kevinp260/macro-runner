@@ -163,7 +163,7 @@ class RegionUITests(unittest.TestCase):
             self.assertTrue(first.is_file())
             with Image.open(first) as saved:
                 self.assertEqual(saved.size, (24, 12))
-            self.assertEqual(first.read_bytes()[:8], b"\\x89PNG\\r\\n\\x1a\\n")
+            self.assertEqual(first.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
             class BrokenImage:
                 def save(self, target, format):
@@ -186,7 +186,7 @@ class RegionUITests(unittest.TestCase):
                 pending = []
                 screenshot = Image.new("RGB", (20, 15), "blue")
                 with patch("macro_qt.QTimer.singleShot",
-                           side_effect=lambda _, callback: pending.append(callback)), \\
+                           side_effect=lambda _, callback: pending.append(callback)), \
                         patch("pyautogui.screenshot", return_value=screenshot) as grab:
                     window.inspector.capture_button.click()
                     self.assertTrue(window._screen_selection_active)
@@ -223,7 +223,7 @@ class RegionUITests(unittest.TestCase):
                 window.inspector.capture_button.click()
                 pending.pop(0)()
                 window.region_picker._finish(10, 20, 20, 15)
-                with patch("pyautogui.screenshot", side_effect=PermissionError("denied")), \\
+                with patch("pyautogui.screenshot", side_effect=PermissionError("denied")), \
                         patch("macro_qt.QMessageBox.warning") as warn:
                     pending.pop(0)()
                 self.assertTrue(warn.called)
