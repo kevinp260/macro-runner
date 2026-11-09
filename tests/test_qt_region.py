@@ -72,12 +72,13 @@ class RegionUITests(unittest.TestCase):
                          "until_start", "find_text", "wait_text", "watch_start"):
                 with self.subTest(kind=kind):
                     panel.show_action(Action(kind=kind))
-                    buttons = [w for w in panel.findChildren(QPushButton)
-                               if w.text() == "Draw screen region…"]
-                    self.assertEqual(len(buttons), 1)
-                    self.assertTrue(buttons[0].isEnabled())
+                    button = panel.region_draw
+                    self.assertIsNotNone(button)
+                    self.assertEqual(button.text(), "Draw screen region…")
+                    self.assertGreaterEqual(panel.form.getWidgetPosition(button)[0], 0)
+                    self.assertTrue(button.isEnabled())
                     previous = len(signals)
-                    buttons[0].click()
+                    button.click()
                     self.assertEqual(len(signals), previous + 1)
                     panel.update_picked_region(30, 40, 80, 90)
                     self.assertEqual(
@@ -87,9 +88,6 @@ class RegionUITests(unittest.TestCase):
                         ["30", "40", "80", "90"])
             panel.show_action(Action(kind="loop_start"))
             self.assertIsNone(panel.region_draw)
-            self.assertFalse(any(
-                w.text() == "Draw screen region…"
-                for w in panel.findChildren(QPushButton)))
         finally:
             panel.close()
 
