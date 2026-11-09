@@ -35,7 +35,8 @@ Windows installers. Versioned releases are documented in [CHANGELOG.md](CHANGELO
 
 
 - **Action palette (left):** Search actions, double-click to add, or drag into
-  the workflow. Click Image opens a reference-image picker.
+  the workflow. For Click Image, select the new action and choose **Browse…**
+  or **Capture…** in Properties to set its reference image.
 - **Workflow editor (center):** Sequential action cards and collapsible Repeat,
   If/Else and Repeat Until groups. Drag to reorder actions or complete groups,
   including moving between compatible groups. Invalid moves revert immediately.
@@ -351,6 +352,30 @@ the contents of copied or observed files**. Configured filesystem paths
 remain in local macro JSON and recovery snapshots (no secret-store feature
 is introduced). Later workflow variables (Issue #58) can extend paths
 without changing these actions.
+
+## Reference image capture (Issue #87)
+
+For **Click Image**, **Wait Until**, **If / Else**, and **Repeat Until** in
+image mode, the **Reference image** field offers two options:
+
+- **Browse…** selects an existing image file, as before.
+- **Capture…** opens the same desktop rectangle selector used for screen
+  regions. Drag around a visible visual target; Escape cancels.
+
+The selected pixels are saved as a **new PNG** in MacroRunner's local app-data
+`captures` directory, and the path is filled into the Reference image field.
+Click **Apply changes** to persist the updated action. If capture fails or you
+cancel, the existing reference stays unchanged. Captures do not overwrite
+existing files. The selected screenshot is the **reference pattern**, not the
+region where MacroRunner searches for a match: use **Draw screen region…**
+separately to restrict search coordinates. For pixel-based conditions, use
+**Sample pixel** instead.
+
+Captured images are local files and may contain sensitive information.
+A saved workflow JSON references their absolute paths; use **Export portable
+package…** to include referenced images when moving the workflow to another
+computer. Capture requires desktop screenshot permission and the existing
+supported desktop/session configuration.
 
 ## Click Image offsets and point preview (Issue #49)
 
