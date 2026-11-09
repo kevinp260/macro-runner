@@ -660,9 +660,14 @@ center when it finds a strong enough match.
 **Example:** click a small Save button screenshot rather than guessing
 its X/Y position.
 
-Choose a reference image, adjust **Confidence** and optional region,
-then use **Preview click point…** before running. X/Y offsets shift
-the click away from the match center. A timeout allows time to find it.
+Add the action, then select **Browse…** to use an existing reference
+image or **Capture…** to draw a rectangle and save a new screenshot. Click
+**Apply changes** to keep the chosen image. **Draw screen region…** controls
+where to search for the reference; it does not capture the reference itself.
+
+Adjust **Confidence** and optional search region, then use **Preview click
+point…** before running. X/Y offsets shift the click away from the match
+center. A timeout allows time to find it.
 
 A visible match is required; a covered or redesigned button may not match.
 """, "find screenshot locate click photo match center offset"),
