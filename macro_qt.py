@@ -13,7 +13,7 @@ from dataclasses import asdict
 from copy import deepcopy
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint, QStandardPaths
+from PySide6.QtCore import Qt, QSettings, QTimer, QObject, Signal, QPoint, QStandardPaths, QEventLoop
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -374,6 +374,7 @@ class MacroWindow(QMainWindow):
         title_row.addWidget(self.counter)
         editor_layout.addLayout(title_row)
         self.tree = WorkflowTree()
+        self.tree.reference_image_picker = self._choose_reference_image
         self.tree.actions_changed.connect(self._changed)
         self.tree.invalid_change.connect(
             lambda text: QMessageBox.warning(self, "Invalid workflow structure", text))
@@ -1590,7 +1591,7 @@ class MacroWindow(QMainWindow):
 
         self._show_region_picker(selected, cancelled)
 
-    def _show_region_picker(self, selected, cancelled):
+    def _show_region_picker(self, selected, cancelled, failed=None):
         def launch():
             if not self._screen_selection_active:
                 return
@@ -1603,9 +1604,41 @@ class MacroWindow(QMainWindow):
                     self.region_picker = None
                 self._end_screen_selection()
                 QMessageBox.warning(self, "Region selection unavailable", str(exc))
+                if failed is not None:
+                    failed()
 
         # Allow the editor to finish hiding before displaying the overlay.
         QTimer.singleShot(150, launch)
+
+    def _choose_reference_image(self):
+        """Choose a reference before adding a Click Image action."""
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Click Image reference")
+        dialog.setText("Choose an existing image or capture one from the desktop.")
+        browse = dialog.addButton("Browse…", QMessageBox.ButtonRole.AcceptRole)
+        capture = dialog.addButton("Capture…", QMessageBox.ButtonRole.ActionRole)
+        dialog.addButton(QMessageBox.StandardButton.Cancel)
+        dialog.exec()
+        if dialog.clickedButton() is browse:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Choose reference image for Click Image", "",
+                "Images (*.png *.jpg *.jpeg *.bmp);;All files (*)")
+            return path or None
+        if dialog.clickedButton() is capture:
+            # Wait for the same asynchronous region picker to finish before
+            # inserting the action (which requires a valid reference path).
+            loop = QEventLoop(self)
+            result = [None]
+
+            def finished(path):
+                result[0] = path
+                loop.quit()
+
+            if not self._start_reference_capture(finished):
+                return None
+            loop.exec()
+            return result[0]
+        return None
 
     def _capture_reference_image(self):
         source = self.inspector.current
@@ -1615,8 +1648,17 @@ class MacroWindow(QMainWindow):
         if (source.kind != "click_image" and
                 self.inspector.controls["condition_source"].currentText() != "image"):
             return
+
+        def assigned(path):
+            if path:
+                self.inspector.update_captured_image(path)
+                self._set_status("Reference image captured. Choose Apply changes to save.")
+
+        self._start_reference_capture(assigned)
+
+    def _start_reference_capture(self, finished):
         if not self._begin_screen_selection():
-            return
+            return False
         self._set_status("Drag to capture a reference image · Esc to cancel.")
 
         def selected(x, y, width, height):
@@ -1636,21 +1678,22 @@ class MacroWindow(QMainWindow):
                 except Exception as exc:
                     self._end_screen_selection()
                     QMessageBox.warning(self, "Cannot capture reference image", str(exc))
+                    finished(None)
                     return
                 self._end_screen_selection()
-                self.inspector.update_captured_image(path)
-                self._set_status("Reference image captured. Choose Apply changes to save.")
+                finished(path)
 
-            # The overlay is closed when selection completes. Wait for the
-            # compositor to remove it before taking the actual screenshot.
+            # Overlay has closed; wait for the compositor before capture.
             QTimer.singleShot(180, capture)
 
         def cancelled():
             self.region_picker = None
             self._end_screen_selection()
             self._set_status("Reference image capture cancelled.")
+            finished(None)
 
-        self._show_region_picker(selected, cancelled)
+        self._show_region_picker(selected, cancelled, failed=lambda: finished(None))
+        return True
 
     def _pick_coordinates(self, mode):
         if not self._begin_screen_selection():
