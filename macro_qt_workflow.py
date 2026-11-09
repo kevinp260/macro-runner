@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QByteArray, QMimeData, QSignalBlocker, Signal
 from PySide6.QtGui import QBrush, QColor, QDrag
 from PySide6.QtWidgets import (
     QAbstractItemView, QListWidget, QTreeWidget, QTreeWidgetItem,
-    QMessageBox, QFileDialog
+    QMessageBox
 )
 
 from macro_model import Action
@@ -330,16 +330,8 @@ class WorkflowTree(QTreeWidget):
         return True
 
     def _prepare_node(self, kind):
-        node = default_node(kind)
-        if kind == "click_image":
-            filename, _ = QFileDialog.getOpenFileName(
-                self, "Choose reference image for Click Image", "",
-                "Images (*.png *.jpg *.jpeg *.bmp);;All files (*)"
-            )
-            if not filename:
-                return None
-            node.action.image_path = filename
-        return node
+        # Image actions are configured in Inspector: Browse or Capture.
+        return default_node(kind)
 
     def insert_kind(self, kind):
         try:
