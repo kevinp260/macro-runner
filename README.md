@@ -35,8 +35,8 @@ Windows installers. Versioned releases are documented in [CHANGELOG.md](CHANGELO
 
 
 - **Action palette (left):** Search actions, double-click to add, or drag into
-  the workflow. For Click Image, select the new action and choose **Browse…**
-  or **Capture…** in Properties to set its reference image.
+  the workflow. Click Image offers **Browse…**, **Capture…** or Cancel before
+  inserting; its reference can later be changed in Properties.
 - **Workflow editor (center):** Sequential action cards and collapsible Repeat,
   If/Else and Repeat Until groups. Drag to reorder actions or complete groups,
   including moving between compatible groups. Invalid moves revert immediately.
@@ -355,8 +355,10 @@ without changing these actions.
 
 ## Reference image capture (Issue #87)
 
-For **Click Image**, **Wait Until**, **If / Else**, and **Repeat Until** in
-image mode, the **Reference image** field offers two options:
+When inserting **Click Image**, choose **Browse…** or **Capture…** (Cancel
+leaves the workflow unchanged). Once selected, **Click Image**, **Wait Until**,
+**If / Else**, and **Repeat Until** in image mode all offer two options beside
+the **Reference image** field in Inspector:
 
 - **Browse…** selects an existing image file, as before.
 - **Capture…** opens the same desktop rectangle selector used for screen
