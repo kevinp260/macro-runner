@@ -158,6 +158,36 @@ class RegionUITests(unittest.TestCase):
         finally:
             tree.close()
 
+    def test_new_click_image_offers_browse_capture_or_cancel(self):
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        try:
+            with patch("macro_qt.QMessageBox") as box, \
+                    patch("macro_qt.QFileDialog.getOpenFileName",
+                          return_value=("/tmp/existing.png", "")) as browse:
+                dialog = box.return_value
+                browse_button, capture_button, cancel_button = object(), object(), object()
+                dialog.addButton.side_effect = [
+                    browse_button, capture_button, cancel_button]
+
+                dialog.clickedButton.return_value = browse_button
+                self.assertEqual(window._choose_reference_image(), "/tmp/existing.png")
+                browse.assert_called_once()
+
+                dialog.clickedButton.return_value = capture_button
+                with patch("macro_qt.QEventLoop") as loop, \
+                        patch.object(window, "_start_reference_capture",
+                                     side_effect=lambda finish:
+                                     (finish("/tmp/new.png"), True)[1]):
+                    self.assertEqual(window._choose_reference_image(),
+                                     "/tmp/new.png")
+                    loop.return_value.quit.assert_called_once()
+
+                dialog.clickedButton.return_value = cancel_button
+                self.assertIsNone(window._choose_reference_image())
+        finally:
+            close_test_window(window)
+
     def test_captured_png_is_unique_and_failed_save_is_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             image = Image.new("RGB", (24, 12), "red")
