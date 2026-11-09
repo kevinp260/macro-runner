@@ -6,6 +6,25 @@ A consolidated deferred test checklist for all planned PRs lives in
 [GitHub Issue #64](https://github.com/kevinp260/macro-runner/issues/64).
 
 
+## Capture reference image (desktop acceptance — Issue #64)
+
+- [ ] Add Click Image without a reference, then select it in Workflow and
+      confirm both **Browse…** and **Capture…** are offered in Inspector.
+- [ ] Browse to an existing image, Apply changes, reopen and verify its path.
+- [ ] For Click Image, Wait Until, If / Else and Repeat Until in image mode,
+      choose **Capture…**, drag a small rectangle, and verify a new PNG file
+      is created, the path is populated and Apply changes persists it.
+- [ ] Confirm the image contains only the selected pixels, not the selection
+      overlay or the MacroRunner editor; verify screenshot capture on
+      Ubuntu X11 and Windows including scaled displays.
+- [ ] Ensure capture does not overwrite earlier screenshots or change
+      existing search-region X/Y/width/height.
+- [ ] Press Escape and simulate screenshot permission failure: the old
+      reference field remains unchanged and editor control is restored.
+- [ ] In pixel mode, Capture is disabled; check the existing Sample pixel.
+- [ ] Export a package with a captured image, import on another computer and
+      verify the reference image remains usable. Review PNGs for sensitive data.
+
 ## Region picker in image conditions (desktop acceptance — Issue #64)
 
 - [ ] Confirm **Draw screen region…** is available for Click Image, Watch
@@ -77,7 +96,7 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Add every action type by double-clicking the palette.
 - [ ] Drag actions from palette into empty workflow, above/below an action,
       and into compatible groups; confirm expected insertion.
-- [ ] Add Click Image and choose a cropped PNG from the picker.
+- [ ] Add Click Image and configure it in Inspector using Browse or Capture.
 - [ ] Add Repeat, If/Else and Repeat Until groups, then collapse and expand.
 - [ ] Drag an entire Repeat group above another action; nested actions must
       remain intact and playback order must change accordingly.
