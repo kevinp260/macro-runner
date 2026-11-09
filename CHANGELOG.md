@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Reused the Draw screen region picker in Click Image and image-mode Wait Until, If / Else, and Repeat Until; existing Watch and OCR region pickers remain available. Pixel mode uses Sample pixel instead. No changes to repeat execution or saved workflow format.
+
 - Updated Actions/Workflow/Inspector panel minimum widths to 285/450/350 px, fresh-session defaults to 285/500/400 px, and the main window width to accommodate these constraints while preserving saved layouts.
 
 - Fixed Watch Region Changes preview alignment on scaled desktops and with client-relative target windows, plus reliable Close/X/Stop shutdown of the read-only monitoring tester and editor unlock (Issue #82).

@@ -179,6 +179,7 @@ class PropertiesPanel(QFrame):
         self._reset_form()
         self.variable_controls = {}
         self.result_picker = None
+        self.region_draw = None
         self._wait_identity = (
             (action.window_wait_handle, action.window_wait_pid)
             if action is not None and action.kind == "wait_window"
@@ -461,10 +462,16 @@ class PropertiesPanel(QFrame):
                                    "Set window visibility in View → During screen selection.")
                 destination.clicked.connect(lambda: self.pick_coordinates.emit("destination"))
                 self.form.addRow(destination)
+        if "region_x" in self.controls:
+            # All actions with a screenshot region use the same desktop
+            # rectangle picker; image conditions only use it in image mode.
+            self.region_draw = QPushButton("Draw screen region…")
+            self.region_draw.setToolTip(
+                "Drag a rectangle on your desktop; Esc cancels. "
+                "Set window visibility in View → During screen selection.")
+            self.region_draw.clicked.connect(self.pick_region.emit)
+            self.form.addRow(self.region_draw)
         if action.kind in ("find_text", "wait_text"):
-            draw = QPushButton("Draw screen region…")
-            draw.clicked.connect(self.pick_region.emit)
-            self.form.addRow(draw)
             preview = QPushButton("Live OCR preview…")
             preview.setToolTip(
                 "Read-only local OCR of the visible screen or configured region. "
@@ -481,11 +488,6 @@ class PropertiesPanel(QFrame):
             hint.setObjectName("panelHint")
             self.form.addRow(hint)
         if action.kind == "watch_start":
-            draw = QPushButton("Draw screen region…")
-            draw.setToolTip("Drag a rectangle on your desktop; Esc cancels. "
-                            "Set window visibility in View → During screen selection.")
-            draw.clicked.connect(self.pick_region.emit)
-            self.form.addRow(draw)
             tester = QPushButton("Test monitoring…")
             tester.setToolTip(
                 "Preview the live screenshots and change detection without "
@@ -585,6 +587,8 @@ class PropertiesPanel(QFrame):
         for field in PIXEL_FIELDS:
             if field in self.controls:
                 self.controls[field].setEnabled(not image)
+        if self.region_draw is not None:
+            self.region_draw.setEnabled(image)
 
     def update_picked_coordinates(self, kind, x, y, color=None):
         fields = {

@@ -47,9 +47,12 @@ Windows installers. Versioned releases are documented in [CHANGELOG.md](CHANGELO
   disabled directly. Ctrl/Shift-click selects multiple items; Delete and
   Duplicate apply to selected nodes. Undo/Redo restores up to 60 snapshots.
 - **Properties (right):** Scrollable inspector with relevant fields for the
-  selected action. Click **Apply changes** after editing. Watch Region Changes
-  includes **Draw screen region…**: drag a rectangle on the desktop to fill
-  X/Y/width/height automatically; press Escape to cancel.
+  selected action. Click **Apply changes** after editing. Use **Draw screen
+  region…** in Watch Region Changes, Click Image, image-based Wait Until,
+  If / Else, Repeat Until, Find text or Wait for text to fill X/Y/width/height
+  by dragging on the desktop; press Escape to cancel. For pixel conditions,
+  use **Sample pixel** instead. A plain Repeat block has no screen region;
+  place a region-aware action inside it.
 - **Toolbar:** New, Open, Save, Run, Pause/Resume, Stop, Step,
   Run from Selected, Record, Undo and Redo.
 - **Footer:** Whole-workflow repeat count, start delay, optional **Minimize when running**
