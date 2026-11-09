@@ -122,6 +122,7 @@ class PropertiesPanel(QFrame):
     pick_coordinates = Signal(str)
     test_move = Signal(int, int)
     pick_region = Signal()
+    capture_reference_image = Signal()
     test_monitoring = Signal(object)
     preview_image_click = Signal(object)
     preview_text = Signal(object)
@@ -180,6 +181,7 @@ class PropertiesPanel(QFrame):
         self.variable_controls = {}
         self.result_picker = None
         self.region_draw = None
+        self.capture_button = None
         self._wait_identity = (
             (action.window_wait_handle, action.window_wait_pid)
             if action is not None and action.kind == "wait_window"
@@ -314,6 +316,11 @@ class PropertiesPanel(QFrame):
                     browse = QPushButton("Browse…")
                     browse.clicked.connect(lambda _, target=widget: self.browse_image(target))
                     layout.addWidget(browse)
+                    capture = QPushButton("Capture…")
+                    capture.setToolTip("Draw a desktop rectangle and save it as a new reference PNG.")
+                    capture.clicked.connect(self.capture_reference_image.emit)
+                    layout.addWidget(capture)
+                    self.capture_button = capture
                     self.form.addRow("Reference image", row)
                     self.controls[field] = widget
                     continue
@@ -589,6 +596,8 @@ class PropertiesPanel(QFrame):
                 self.controls[field].setEnabled(not image)
         if self.region_draw is not None:
             self.region_draw.setEnabled(image)
+        if self.capture_button is not None:
+            self.capture_button.setEnabled(image)
 
     def update_picked_coordinates(self, kind, x, y, color=None):
         fields = {
@@ -607,6 +616,13 @@ class PropertiesPanel(QFrame):
                                 (x, y, width, height)):
             if field in self.controls:
                 self.controls[field].setText(str(value))
+
+    def update_captured_image(self, path):
+        # An explicit capture should not be silently overridden by a variable.
+        binding = self.variable_controls.get("image_path")
+        if binding is not None:
+            binding.setCurrentIndex(0)
+        self.controls["image_path"].setText(path)
 
     def _test_coordinates(self):
         try:
