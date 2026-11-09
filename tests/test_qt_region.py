@@ -167,8 +167,9 @@ class RegionUITests(unittest.TestCase):
                           return_value=("/tmp/existing.png", "")) as browse:
                 dialog = box.return_value
                 browse_button, capture_button, cancel_button = object(), object(), object()
+                # The picker creates three buttons on every invocation.
                 dialog.addButton.side_effect = [
-                    browse_button, capture_button, cancel_button]
+                    browse_button, capture_button, cancel_button] * 3
 
                 dialog.clickedButton.return_value = browse_button
                 self.assertEqual(window._choose_reference_image(), "/tmp/existing.png")
