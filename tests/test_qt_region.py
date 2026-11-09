@@ -123,7 +123,7 @@ class RegionUITests(unittest.TestCase):
             for kind in ("click_image", "wait_until", "if_start", "until_start"):
                 with self.subTest(kind=kind):
                     panel.show_action(Action(kind=kind, image_path="old.png"))
-                    self.assertEqual(panel.capture_button.text(), "Capture…")
+                    self.assertEqual(panel.capture_button.text(), "Capture reference image…")
                     self.assertTrue(panel.capture_button.isEnabled())
                     panel.capture_button.click()
                     self.assertEqual(len(captured), 1 + (
