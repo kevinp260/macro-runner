@@ -5,6 +5,8 @@ Notable MacroRunner changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+- Added **Capture…** beside **Browse…** for image-based actions: draw a rectangle to save a unique local PNG and assign it as the reference image, without changing the search region. Click Image can be inserted before configuring a reference (Issue #87).
+
 - Reused the Draw screen region picker in Click Image and image-mode Wait Until, If / Else, and Repeat Until; existing Watch and OCR region pickers remain available. Pixel mode uses Sample pixel instead. No changes to repeat execution or saved workflow format.
 
 - Updated Actions/Workflow/Inspector panel minimum widths to 285/450/350 px, fresh-session defaults to 285/500/400 px, and the main window width to accommodate these constraints while preserving saved layouts.
