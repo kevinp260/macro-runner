@@ -143,14 +143,18 @@ class RegionUITests(unittest.TestCase):
         finally:
             panel.close()
 
-    def test_click_image_can_be_added_before_choosing_reference(self):
+    def test_click_image_requires_browsed_or_captured_reference_on_insertion(self):
         tree = WorkflowTree()
         try:
+            tree.reference_image_picker = lambda: None
+            tree.insert_kind("click_image")
+            self.assertEqual(tree.actions(), [])
+            tree.reference_image_picker = lambda: "/tmp/reference.png"
             tree.insert_kind("click_image")
             actions = tree.actions()
             self.assertEqual(len(actions), 1)
             self.assertEqual(actions[0].kind, "click_image")
-            self.assertEqual(actions[0].image_path, "")
+            self.assertEqual(actions[0].image_path, "/tmp/reference.png")
         finally:
             tree.close()
 
