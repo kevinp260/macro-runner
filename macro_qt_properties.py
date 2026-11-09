@@ -316,12 +316,13 @@ class PropertiesPanel(QFrame):
                     browse = QPushButton("Browse…")
                     browse.clicked.connect(lambda _, target=widget: self.browse_image(target))
                     layout.addWidget(browse)
-                    capture = QPushButton("Capture…")
-                    capture.setToolTip("Draw a desktop rectangle and save it as a new reference PNG.")
-                    capture.clicked.connect(self.capture_reference_image.emit)
-                    layout.addWidget(capture)
-                    self.capture_button = capture
                     self.form.addRow("Reference image", row)
+                    capture = QPushButton("Capture reference image…")
+                    capture.setToolTip(
+                        "Draw a desktop rectangle and save it as a new reference PNG.")
+                    capture.clicked.connect(self.capture_reference_image.emit)
+                    self.form.addRow(capture)
+                    self.capture_button = capture
                     self.controls[field] = widget
                     continue
             self.controls[field] = widget
