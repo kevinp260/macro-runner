@@ -8,8 +8,9 @@ A consolidated deferred test checklist for all planned PRs lives in
 
 ## Capture reference image (desktop acceptance — Issue #64)
 
-- [ ] Add Click Image without a reference, then select it in Workflow and
-      confirm both **Browse…** and **Capture…** are offered in Inspector.
+- [ ] Add Click Image: verify the insertion dialog offers Browse, Capture and
+      Cancel; Cancel must not insert an invalid action. Afterwards confirm
+      both Browse and Capture can replace the image in Inspector.
 - [ ] Browse to an existing image, Apply changes, reopen and verify its path.
 - [ ] For Click Image, Wait Until, If / Else and Repeat Until in image mode,
       choose **Capture…**, drag a small rectangle, and verify a new PNG file
@@ -96,7 +97,7 @@ A consolidated deferred test checklist for all planned PRs lives in
 - [ ] Add every action type by double-clicking the palette.
 - [ ] Drag actions from palette into empty workflow, above/below an action,
       and into compatible groups; confirm expected insertion.
-- [ ] Add Click Image and configure it in Inspector using Browse or Capture.
+- [ ] Add Click Image and choose Browse or Capture during insertion.
 - [ ] Add Repeat, If/Else and Repeat Until groups, then collapse and expand.
 - [ ] Drag an entire Repeat group above another action; nested actions must
       remain intact and playback order must change accordingly.
