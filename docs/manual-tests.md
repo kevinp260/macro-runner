@@ -6,6 +6,21 @@ A consolidated deferred test checklist for all planned PRs lives in
 [GitHub Issue #64](https://github.com/kevinp260/macro-runner/issues/64).
 
 
+## Region picker in image conditions (desktop acceptance — Issue #64)
+
+- [ ] Confirm **Draw screen region…** is available for Click Image, Watch
+      Region Changes, Find text, Wait for text and the image modes of Wait
+      Until, If / Else, and Repeat Until.
+- [ ] Select a rectangle for each, then Apply changes and reopen the action:
+      X/Y/width/height should match the selected area.
+- [ ] Switch Wait Until, If / Else and Repeat Until to pixel conditions:
+      **Draw screen region…** should be disabled; **Sample pixel** remains usable.
+- [ ] Confirm a plain Repeat block has no standalone region setting; placing
+      a region-aware action inside the block works normally.
+- [ ] On a target window with client-relative coordinates enabled, draw and
+      use the search region at the target's location; Escape cancels without
+      modifying the fields.
+
 ## Searchable in-app Help (desktop acceptance — Issue #64)
 
 - [ ] Open **Help → User Guide…** and press **F1** on Ubuntu X11 and Windows.
