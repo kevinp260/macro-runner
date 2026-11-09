@@ -357,8 +357,7 @@ without changing these actions.
 
 When inserting **Click Image**, choose **Browse…** or **Capture…** (Cancel
 leaves the workflow unchanged). Once selected, **Click Image**, **Wait Until**,
-**If / Else**, and **Repeat Until** in image mode all offer two options beside
-the **Reference image** field in Inspector:
+**If / Else**, and **Repeat Until** in image mode all offer two options in Inspector for the **Reference image**:
 
 - **Browse…** selects an existing image file, as before.
 - **Capture…** opens the same desktop rectangle selector used for screen
