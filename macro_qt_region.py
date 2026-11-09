@@ -1,7 +1,8 @@
 """Drag-to-select desktop region overlay for the Qt workflow inspector.
 
-A translucent window is placed on each available screen. No screenshots are
-saved, and Escape cancels without changing the selected action.
+A translucent window is placed on each available screen. The picker
+only reports coordinates; reference capture can separately save the selected
+pixels. Escape cancels without changing the selected action.
 """
 from pathlib import Path
 from uuid import uuid4
