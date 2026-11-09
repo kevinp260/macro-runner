@@ -34,7 +34,7 @@ from macro_qt_snippets import SnippetLibraryDialog
 from macro_qt_find_replace import WorkflowFindReplaceDialog
 from macro_qt_help import HelpDialog
 from macro_variables import validate_references
-from macro_qt_region import RegionPicker
+from macro_qt_region import RegionPicker, save_reference_capture
 from macro_qt_monitor import RegionMonitorDialog
 from macro_qt_ocr import OCRPreviewDialog
 from macro_diagnostics import RunHistoryStore, RunSession
@@ -249,6 +249,7 @@ class MacroWindow(QMainWindow):
         self.recovery_store = RecoveryStore(Path(data_dir) / "workflow-recovery.json")
         self.snippet_store = SnippetStore(Path(data_dir) / "snippets")
         self.package_assets_dir = Path(data_dir) / "workflow-assets"
+        self.capture_assets_dir = Path(data_dir) / "captures"
         self._saved_state = None
         self._recovery_warning_shown = False
         self._recovery_locked = False
@@ -402,6 +403,7 @@ class MacroWindow(QMainWindow):
         self.inspector.pick_coordinates.connect(self._pick_coordinates)
         self.inspector.test_move.connect(self._test_move)
         self.inspector.pick_region.connect(self._pick_region)
+        self.inspector.capture_reference_image.connect(self._capture_reference_image)
         self.inspector.test_monitoring.connect(self._test_monitoring)
         self.inspector.preview_image_click.connect(self._preview_image_click)
         self.inspector.preview_text.connect(self._preview_text)
@@ -1586,6 +1588,9 @@ class MacroWindow(QMainWindow):
             self._end_screen_selection()
             self._set_status("Region selection cancelled.")
 
+        self._show_region_picker(selected, cancelled)
+
+    def _show_region_picker(self, selected, cancelled):
         def launch():
             if not self._screen_selection_active:
                 return
@@ -1599,9 +1604,53 @@ class MacroWindow(QMainWindow):
                 self._end_screen_selection()
                 QMessageBox.warning(self, "Region selection unavailable", str(exc))
 
-        # Let the window manager finish hiding/minimizing the editor before
-        # displaying the overlay (important on Windows and composited desktops).
+        # Allow the editor to finish hiding before displaying the overlay.
         QTimer.singleShot(150, launch)
+
+    def _capture_reference_image(self):
+        source = self.inspector.current
+        if source is None or source.kind not in (
+                "click_image", "wait_until", "if_start", "until_start"):
+            return
+        if (source.kind != "click_image" and
+                self.inspector.controls["condition_source"].currentText() != "image"):
+            return
+        if not self._begin_screen_selection():
+            return
+        self._set_status("Drag to capture a reference image · Esc to cancel.")
+
+        def selected(x, y, width, height):
+            self.region_picker = None
+
+            def capture():
+                if not self._screen_selection_active:
+                    return
+                try:
+                    if x < 0 or y < 0:
+                        raise ValueError(
+                            "This screenshot backend cannot capture a region "
+                            "with negative desktop coordinates.")
+                    import pyautogui
+                    image = pyautogui.screenshot(region=(x, y, width, height))
+                    path = save_reference_capture(image, self.capture_assets_dir)
+                except Exception as exc:
+                    self._end_screen_selection()
+                    QMessageBox.warning(self, "Cannot capture reference image", str(exc))
+                    return
+                self._end_screen_selection()
+                self.inspector.update_captured_image(path)
+                self._set_status("Reference image captured. Choose Apply changes to save.")
+
+            # The overlay is closed when selection completes. Wait for the
+            # compositor to remove it before taking the actual screenshot.
+            QTimer.singleShot(180, capture)
+
+        def cancelled():
+            self.region_picker = None
+            self._end_screen_selection()
+            self._set_status("Reference image capture cancelled.")
+
+        self._show_region_picker(selected, cancelled)
 
     def _pick_coordinates(self, mode):
         if not self._begin_screen_selection():
