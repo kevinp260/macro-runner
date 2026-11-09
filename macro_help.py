@@ -660,9 +660,15 @@ center when it finds a strong enough match.
 **Example:** click a small Save button screenshot rather than guessing
 its X/Y position.
 
-Choose a reference image, adjust **Confidence** and optional region,
-then use **Preview click point…** before running. X/Y offsets shift
-the click away from the match center. A timeout allows time to find it.
+When adding Click Image, choose **Browse…** to use an existing reference
+image or **Capture…** to draw a rectangle and save a new screenshot.
+You can change the reference later in Inspector; click **Apply changes**
+to keep subsequent edits. **Draw screen region…** controls
+where to search for the reference; it does not capture the reference itself.
+
+Adjust **Confidence** and optional search region, then use **Preview click
+point…** before running. X/Y offsets shift the click away from the match
+center. A timeout allows time to find it.
 
 A visible match is required; a covered or redesigned button may not match.
 """, "find screenshot locate click photo match center offset"),
@@ -685,8 +691,10 @@ Keeps checking the screen until an **image** or **pixel color** matches
 **Example:** wait until a loading spinner disappears before clicking.
 
 Choose **Condition source** (image or pixel), **Match mode** (matches or
-not_matches), and **Timeout / Poll interval**. A timed-out action follows
-its **On failure** policy. It does not send a click by itself.
+not_matches), and **Timeout / Poll interval**. For image conditions,
+**Browse…** selects a file or **Capture reference image…** takes a screenshot.
+A timed-out action follows its **On failure** policy. It does not send a
+click by itself.
 """, "condition wait image pixel disappear timeout polling"),
 
     T("action-find_text", "Action reference", "Find text (offline OCR)", """
@@ -897,7 +905,8 @@ Makes a decision using what is visible on screen.
 **Example:** If a warning icon appears, press Cancel; otherwise press
 Continue.
 
-Choose an image or pixel condition in the group's Properties.
+Choose an image or pixel condition in the group's Properties. For an
+image condition, browse for a reference file or capture one from the desktop.
 Put the actions for a successful condition inside the main branch.
 Put the alternative steps under **Else**. Only the selected branch runs.
 """, "conditional branch if then otherwise else"),
@@ -911,6 +920,7 @@ maximum number of cycles is reached.
 has changed; repeat a limited number of times.
 
 Use a reasonable maximum to avoid an endlessly repeating workflow.
+For image conditions, browse for an existing reference or capture one.
 Unlike Wait until, Repeat until executes child actions each cycle.
 """, "until loop condition repeated action maximum"),
 

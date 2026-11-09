@@ -1,13 +1,21 @@
 """Region drawing and watch inspector tests (headless Qt)."""
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+
+from PIL import Image
 
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from macro_model import Action
 from macro_qt_properties import PropertiesPanel
-from macro_qt_region import RegionOverlay, RegionPicker, normalized_region
+from macro_qt_region import (RegionOverlay, RegionPicker, normalized_region,
+                             save_reference_capture)
+from macro_qt_workflow import WorkflowTree
+from macro_qt import MacroWindow
+from qt_test_helpers import close_test_window
 
 app = QApplication.instance() or QApplication([])
 
@@ -106,6 +114,158 @@ class RegionUITests(unittest.TestCase):
                     self.assertFalse(panel.region_draw.isEnabled())
         finally:
             panel.close()
+
+    def test_capture_and_browse_buttons_on_image_matching_actions(self):
+        panel = PropertiesPanel()
+        captured = []
+        panel.capture_reference_image.connect(lambda: captured.append(True))
+        try:
+            for kind in ("click_image", "wait_until", "if_start", "until_start"):
+                with self.subTest(kind=kind):
+                    panel.show_action(Action(kind=kind, image_path="old.png"))
+                    self.assertEqual(panel.capture_button.text(), "Capture reference image…")
+                    self.assertTrue(panel.capture_button.isEnabled())
+                    panel.capture_button.click()
+                    self.assertEqual(len(captured), 1 + (
+                        ("click_image", "wait_until", "if_start", "until_start").index(kind)))
+                    self.assertEqual(panel.controls["image_path"].text(), "old.png")
+                    panel.update_captured_image("/tmp/new-ref.png")
+                    self.assertEqual(panel.controls["image_path"].text(),
+                                     "/tmp/new-ref.png")
+                    self.assertEqual(panel.controls["region_x"].text(), "")
+            for kind in ("wait_until", "if_start", "until_start"):
+                panel.show_action(Action(kind=kind, condition_source="pixel"))
+                self.assertFalse(panel.capture_button.isEnabled())
+                panel.controls["condition_source"].setCurrentText("image")
+                self.assertTrue(panel.capture_button.isEnabled())
+            panel.show_action(Action(kind="watch_start"))
+            self.assertIsNone(panel.capture_button)
+        finally:
+            panel.close()
+
+    def test_click_image_requires_browsed_or_captured_reference_on_insertion(self):
+        tree = WorkflowTree()
+        try:
+            tree.reference_image_picker = lambda: None
+            tree.insert_kind("click_image")
+            self.assertEqual(tree.actions(), [])
+            tree.reference_image_picker = lambda: "/tmp/reference.png"
+            tree.insert_kind("click_image")
+            actions = tree.actions()
+            self.assertEqual(len(actions), 1)
+            self.assertEqual(actions[0].kind, "click_image")
+            self.assertEqual(actions[0].image_path, "/tmp/reference.png")
+        finally:
+            tree.close()
+
+    def test_new_click_image_offers_browse_capture_or_cancel(self):
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        try:
+            with patch("macro_qt.QMessageBox") as box, \
+                    patch("macro_qt.QFileDialog.getOpenFileName",
+                          return_value=("/tmp/existing.png", "")) as browse:
+                dialog = box.return_value
+                browse_button, capture_button, cancel_button = object(), object(), object()
+                # The picker creates three buttons on every invocation.
+                dialog.addButton.side_effect = [
+                    browse_button, capture_button, cancel_button] * 3
+
+                dialog.clickedButton.return_value = browse_button
+                self.assertEqual(window._choose_reference_image(), "/tmp/existing.png")
+                browse.assert_called_once()
+
+                dialog.clickedButton.return_value = capture_button
+                with patch("macro_qt.QEventLoop") as loop, \
+                        patch.object(window, "_start_reference_capture",
+                                     side_effect=lambda finish:
+                                     (finish("/tmp/new.png"), True)[1]):
+                    self.assertEqual(window._choose_reference_image(),
+                                     "/tmp/new.png")
+                    loop.return_value.quit.assert_called_once()
+
+                dialog.clickedButton.return_value = cancel_button
+                self.assertIsNone(window._choose_reference_image())
+        finally:
+            close_test_window(window)
+
+    def test_captured_png_is_unique_and_failed_save_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image = Image.new("RGB", (24, 12), "red")
+            first = Path(save_reference_capture(image, directory))
+            second = Path(save_reference_capture(image, directory))
+            self.assertNotEqual(first, second)
+            self.assertTrue(first.is_file())
+            with Image.open(first) as saved:
+                self.assertEqual(saved.size, (24, 12))
+            self.assertEqual(first.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+
+            class BrokenImage:
+                def save(self, target, format):
+                    Path(target).write_bytes(b"incomplete")
+                    raise OSError("save failed")
+
+            with self.assertRaisesRegex(OSError, "save failed"):
+                save_reference_capture(BrokenImage(), directory)
+            self.assertEqual(sorted(Path(directory).iterdir()), sorted([first, second]))
+
+    def test_desktop_capture_assigns_reference_without_changing_search_region(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(MacroWindow, "_start_hotkeys"):
+                window = MacroWindow()
+            window.capture_assets_dir = Path(directory)
+            try:
+                window.inspector.show_action(
+                    Action(kind="click_image", image_path="existing.png",
+                           region_x=5, region_y=6, region_w=100, region_h=80))
+                pending = []
+                screenshot = Image.new("RGB", (20, 15), "blue")
+                with patch("macro_qt.QTimer.singleShot",
+                           side_effect=lambda _, callback: pending.append(callback)), \
+                        patch("pyautogui.screenshot", return_value=screenshot) as grab:
+                    window.inspector.capture_button.click()
+                    self.assertTrue(window._screen_selection_active)
+                    pending.pop(0)()  # Show the picker after hiding editor.
+                    self.assertIsNotNone(window.region_picker)
+                    window.region_picker._finish(20, 30, 20, 15)
+                    self.assertIsNone(window.region_picker)
+                    pending.pop(0)()  # Screenshot only after overlay closes.
+                    grab.assert_called_once_with(region=(20, 30, 20, 15))
+                path = Path(window.inspector.controls["image_path"].text())
+                self.assertTrue(path.is_file())
+                self.assertEqual(path.parent, Path(directory))
+                self.assertEqual(window.inspector.controls["region_x"].text(), "5")
+                self.assertEqual(window.inspector.controls["region_y"].text(), "6")
+                self.assertFalse(window._screen_selection_active)
+            finally:
+                close_test_window(window)
+
+    def test_cancelled_or_failed_capture_preserves_existing_reference(self):
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        try:
+            window.inspector.show_action(
+                Action(kind="wait_until", image_path="keep.png"))
+            pending = []
+            with patch("macro_qt.QTimer.singleShot",
+                       side_effect=lambda _, callback: pending.append(callback)):
+                window.inspector.capture_button.click()
+                pending.pop(0)()
+                window.region_picker.cancel()
+                self.assertFalse(window._screen_selection_active)
+                self.assertEqual(window.inspector.controls["image_path"].text(), "keep.png")
+
+                window.inspector.capture_button.click()
+                pending.pop(0)()
+                window.region_picker._finish(10, 20, 20, 15)
+                with patch("pyautogui.screenshot", side_effect=PermissionError("denied")), \
+                        patch("macro_qt.QMessageBox.warning") as warn:
+                    pending.pop(0)()
+                self.assertTrue(warn.called)
+                self.assertFalse(window._screen_selection_active)
+                self.assertEqual(window.inspector.controls["image_path"].text(), "keep.png")
+        finally:
+            close_test_window(window)
 
     def test_picker_completion_and_cancellation(self):
         selected = []

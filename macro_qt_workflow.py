@@ -332,13 +332,17 @@ class WorkflowTree(QTreeWidget):
     def _prepare_node(self, kind):
         node = default_node(kind)
         if kind == "click_image":
-            filename, _ = QFileDialog.getOpenFileName(
-                self, "Choose reference image for Click Image", "",
-                "Images (*.png *.jpg *.jpeg *.bmp);;All files (*)"
-            )
-            if not filename:
+            picker = getattr(self, "reference_image_picker", None)
+            if picker is None:
+                # Standalone workflow trees keep their original file picker.
+                path, _ = QFileDialog.getOpenFileName(
+                    self, "Choose reference image for Click Image", "",
+                    "Images (*.png *.jpg *.jpeg *.bmp);;All files (*)")
+            else:
+                path = picker()
+            if not path:
                 return None
-            node.action.image_path = filename
+            node.action.image_path = path
         return node
 
     def insert_kind(self, kind):
