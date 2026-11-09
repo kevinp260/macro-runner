@@ -660,9 +660,10 @@ center when it finds a strong enough match.
 **Example:** click a small Save button screenshot rather than guessing
 its X/Y position.
 
-Add the action, then select **Browse…** to use an existing reference
-image or **Capture…** to draw a rectangle and save a new screenshot. Click
-**Apply changes** to keep the chosen image. **Draw screen region…** controls
+When adding Click Image, choose **Browse…** to use an existing reference
+image or **Capture…** to draw a rectangle and save a new screenshot.
+You can change the reference later in Inspector; click **Apply changes**
+to keep subsequent edits. **Draw screen region…** controls
 where to search for the reference; it does not capture the reference itself.
 
 Adjust **Confidence** and optional search region, then use **Preview click
