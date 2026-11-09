@@ -3,6 +3,9 @@
 A translucent window is placed on each available screen. No screenshots are
 saved, and Escape cancels without changing the selected action.
 """
+from pathlib import Path
+from uuid import uuid4
+
 from PySide6.QtCore import Qt, QRect, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QCursor
 from PySide6.QtWidgets import QWidget, QApplication
@@ -13,6 +16,19 @@ def normalized_region(start, end):
     left, right = sorted((start.x(), end.x()))
     top, bottom = sorted((start.y(), end.y()))
     return left, top, right - left, bottom - top
+
+
+def save_reference_capture(image, assets_dir):
+    """Save a new reference PNG without replacing an existing image."""
+    folder = Path(assets_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"reference-{uuid4().hex}.png"
+    try:
+        image.save(target, format="PNG")
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    return str(target)
 
 
 class RegionOverlay(QWidget):
