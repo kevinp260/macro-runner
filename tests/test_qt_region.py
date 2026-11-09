@@ -63,6 +63,52 @@ class RegionUITests(unittest.TestCase):
              saved[0].region_w, saved[0].region_h),
             (30, 40, 80, 90))
 
+    def test_region_picker_is_available_for_image_conditions_and_ocr(self):
+        panel = PropertiesPanel()
+        signals = []
+        panel.pick_region.connect(lambda: signals.append(True))
+        try:
+            for kind in ("click_image", "wait_until", "if_start",
+                         "until_start", "find_text", "wait_text", "watch_start"):
+                with self.subTest(kind=kind):
+                    panel.show_action(Action(kind=kind))
+                    buttons = [w for w in panel.findChildren(QPushButton)
+                               if w.text() == "Draw screen region…"]
+                    self.assertEqual(len(buttons), 1)
+                    self.assertTrue(buttons[0].isEnabled())
+                    previous = len(signals)
+                    buttons[0].click()
+                    self.assertEqual(len(signals), previous + 1)
+                    panel.update_picked_region(30, 40, 80, 90)
+                    self.assertEqual(
+                        [panel.controls[name].text()
+                         for name in ("region_x", "region_y",
+                                      "region_w", "region_h")],
+                        ["30", "40", "80", "90"])
+            panel.show_action(Action(kind="loop_start"))
+            self.assertIsNone(panel.region_draw)
+            self.assertFalse(any(
+                w.text() == "Draw screen region…"
+                for w in panel.findChildren(QPushButton)))
+        finally:
+            panel.close()
+
+    def test_pixel_conditions_disable_region_picker(self):
+        panel = PropertiesPanel()
+        try:
+            for kind in ("wait_until", "if_start", "until_start"):
+                with self.subTest(kind=kind):
+                    panel.show_action(Action(kind=kind,
+                                             condition_source="pixel"))
+                    self.assertIsNotNone(panel.region_draw)
+                    self.assertFalse(panel.region_draw.isEnabled())
+                    panel.controls["condition_source"].setCurrentText("image")
+                    self.assertTrue(panel.region_draw.isEnabled())
+                    panel.controls["condition_source"].setCurrentText("pixel")
+                    self.assertFalse(panel.region_draw.isEnabled())
+        finally:
+            panel.close()
+
     def test_picker_completion_and_cancellation(self):
         selected = []
         cancelled = []
