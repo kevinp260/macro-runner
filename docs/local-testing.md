@@ -49,9 +49,10 @@ done
 
 if [ "$failed" -eq 0 ]; then
     echo "All test modules passed individually."
+else
+    echo "Full regression failed. Review the module named above."
 fi
-
-exit "$failed"
+test "$failed" -eq 0
 ```
 
 Use separate invocations **instead of** one all-in-one `unittest discover` process on this Ubuntu Qt-offscreen setup: multiple Qt modules in one process have previously caused unreliable X11/Qt teardown. **Do not mark tests green based only on elapsed time or warning counts.** Look for each module's `OK` and a final zero exit code; any `FAILED`, `ERROR`, abort, or nonzero exit code must be investigated. A test report should name the tested branch/commit, OS and modules, including failures or warnings.
