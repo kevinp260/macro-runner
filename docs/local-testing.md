@@ -1,0 +1,105 @@
+# Local test procedure and release gates
+
+**Temporary policy — 2026-11-10.** This is the agreed way to test MacroRunner while GitHub Actions are suspended for billing reasons. It is a *temporary replacement for hosted automated checks*, **not** a replacement for real Windows/Ubuntu desktop and installer QA.
+
+## GitHub Actions status and safety
+
+- GitHub-hosted Actions minutes are exhausted until the **2026-12-01** billing reset. **Do not trigger, re-run, or re-enable Actions without explicit user approval, even after that date.** The date is not an automatic restart.
+- The unchanged workflow files remain in Git: `.github/workflows/python-checks.yml` (Python checks, Ubuntu/Windows) and `.github/workflows/installers.yml` (Ubuntu/Windows installer builds and smoke checks). Their `push`, `pull_request`, tag, and manual triggers would consume minutes if enabled.
+- Workflows are intended to be **disabled through GitHub Actions settings**, not deleted or stripped of triggers. A GitHub code-only PR cannot confirm their current enabled/disabled state; verify under **Repository → Actions** before work that could otherwise trigger CI.
+- Use focused branches and PRs. The user reviews/merges; do not auto-merge. Do not remove required branch-protection checks without discussing it with the user.
+
+## Automated tests run manually on the user's machine
+
+Running `unittest` locally is still **automated unit/regression testing**; only its **invocation and reporting** are manual. This process is separate from the later human-performed desktop acceptance checks.
+
+The user currently runs tests on **Ubuntu** in an existing repository checkout with `.venv-tests` and test dependencies installed. Run commands from the repository root. Update to the exact feature branch before testing.
+
+```bash
+git fetch origin
+git switch <feature-branch>
+git pull --ff-only
+
+source .venv-tests/bin/activate
+export QT_QPA_PLATFORM=offscreen
+export PYTHONPATH="$PWD/tests:$PWD"
+```
+
+Run changed-area modules first (replace with relevant module names, as specified in the PR):
+
+```bash
+python -u -X faulthandler -m unittest test_qt_region -v
+python -u -X faulthandler -m unittest test_qt_properties -v
+```
+
+Then run the **full regression suite with one fresh Python process per test module**:
+
+```bash
+failed=0
+
+for file in tests/test_*.py; do
+    module=$(basename "$file" .py)
+    echo "========== $module =========="
+    if ! python -u -X faulthandler -m unittest "$module" -q; then
+        echo "FAILED: $module"
+        failed=1
+        break
+    fi
+done
+
+if [ "$failed" -eq 0 ]; then
+    echo "All test modules passed individually."
+else
+    echo "Full regression failed. Review the module named above."
+fi
+test "$failed" -eq 0
+```
+
+Use separate invocations **instead of** one all-in-one `unittest discover` process on this Ubuntu Qt-offscreen setup: multiple Qt modules in one process have previously caused unreliable X11/Qt teardown. **Do not mark tests green based only on elapsed time or warning counts.** Look for each module's `OK` and a final zero exit code; any `FAILED`, `ERROR`, abort, or nonzero exit code must be investigated. A test report should name the tested branch/commit, OS and modules, including failures or warnings.
+
+### Known local offscreen warnings
+
+While `test_qt_region` passes, Qt can print `This plugin does not support raise()`; `pyscreeze` can report unclosed `which scrot` subprocess pipes; and Xlib sockets can emit `ResourceWarning` at interpreter shutdown. These are **nonfatal only when the module finishes with `OK` and exit code 0**. Do not hide all warnings or interpret them as proof that screenshots work on a real desktop. Investigate if they become test failures or affect real app usage.
+
+### Windows
+
+When a Windows Python test environment is available, run the same modules individually (PowerShell, from repository root):
+
+```powershell
+$env:QT_QPA_PLATFORM = 'offscreen'
+$env:PYTHONPATH = "$PWD\tests;$PWD"
+
+Get-ChildItem tests -Filter 'test_*.py' | ForEach-Object {
+    Write-Host "========== $($_.BaseName) =========="
+    python -u -X faulthandler -m unittest $_.BaseName -q
+    if ($LASTEXITCODE -ne 0) {
+        throw "FAILED: $($_.BaseName)"
+    }
+}
+Write-Host 'All test modules passed individually.'
+```
+
+Use a Windows virtual environment with project/test dependencies installed. **This document does not claim that Windows tests have been run yet.**
+
+## For each new issue / PR
+
+1. Assistant makes only scoped changes and adds relevant tests, without invoking GitHub Actions.
+2. Assistant provides the exact focused test modules for the PR; the user runs them locally and reports results.
+3. User runs the per-module full regression command above before the PR is declared ready. Note the exception explicitly if a checkpoint intentionally defers that full run.
+4. Record the evidence on the PR (platform, focused results, full regression result, known warnings). Only then mark PR **Ready for review**; user performs the merge.
+5. Real screenshot/input hooks, targeting, global shortcuts, DPI/multi-monitor, and installed app behavior **cannot be signed off by offscreen tests**. Track and perform them through [Issue #64](https://github.com/kevinp260/macro-runner/issues/64) and [docs/manual-tests.md](manual-tests.md).
+
+## Remaining checks before closing version roadmaps / releasing
+
+Implementation checklists for [v2.2 #27](https://github.com/kevinp260/macro-runner/issues/27), [v2.3 #28](https://github.com/kevinp260/macro-runner/issues/28), and [v2.4 #29](https://github.com/kevinp260/macro-runner/issues/29) are complete. Their **release/roadmap sign-off is not complete**.
+
+- Finish actual **Ubuntu X11 and Windows** desktop acceptance on source builds and installed applications; record limitations of Wayland and unsupported background-window input. Include the newer image-region and screenshot-capture UX (PRs #83/#84/#86/#88).
+- Confirm baseline workflows, legacy JSON compatibility, image matching, clipboard, variables, snippets, import/export, Stop/Pause, window targeting, and cross-platform file handling; use the detailed Issue #64 checklist rather than inventing extra release scope.
+- Confirm installer build, installation and upgrade behavior on Ubuntu and Windows, including persisted settings/assets.
+- When the user explicitly authorizes restoring CI, verify both existing GitHub workflows are enabled, run **Ubuntu/Windows Python checks and installer jobs**, fix any failures, and record results. Do not assume old or local runs prove CI currently passes.
+- Current package version in `pyproject.toml` is **2.1.0** despite completed v2.2–v2.4 features. Decide release version/tag/release notes with the user and update version metadata consistently **only in a separate release step**, after QA. Do not silently label these features as shipped v2.4.
+- Once Issue #64's final sign-off is complete (or exceptions explicitly accepted), review and close #27/#28/#29, then #64 as appropriate. Closing implementation issues does not substitute for this validation.
+
+### Next-chat handoff
+
+Read **this file**, [Issue #64](https://github.com/kevinp260/macro-runner/issues/64), and roadmap issues [#27](https://github.com/kevinp260/macro-runner/issues/27), [#28](https://github.com/kevinp260/macro-runner/issues/28), [#29](https://github.com/kevinp260/macro-runner/issues/29). Inspect `main` and current PR status before taking action. **Do not enable CI, start release/tag work, or close the roadmap/QA issues until the user explicitly decides to proceed.**
