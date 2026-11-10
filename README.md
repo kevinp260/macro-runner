@@ -808,7 +808,9 @@ System-wide hotkeys may be unavailable in restrictive environments.
 
 ## Installation on Ubuntu and Windows
 
-**Ready-to-install packages are built for both operating systems.**
+**Installer builds are currently paused:** GitHub Actions workflows are temporarily disabled while hosted minutes are exhausted. Existing installer artifacts may be available, but do not assume they include the latest merged features. See [temporary local testing](docs/local-testing.md) and [release/desktop QA](docs/manual-tests.md).
+
+**Ready-to-install packages can be built for both operating systems once installer workflows resume.**
 
 - **Ubuntu 24.04 amd64:** Download the `.deb` installer from GitHub Actions
   **Build desktop installers** and install it with `sudo apt install ./filename.deb`.
@@ -834,6 +836,24 @@ full setup, upgrading, uninstalling, building, and platform limitations.
   `macro_vision.py`, `macro_keys.py`, `macro_editing.py` — existing
   automation, validation, vision, keyboard and history services.
 
-CI compiles and packages all runtime modules and runs model and offscreen Qt
-tests on Ubuntu and Windows. Manual QA is documented in
+## Current testing and release status
+
+**Temporary procedure (November 2026):** GitHub Actions testing and installer
+workflows are paused due to exhausted hosted minutes. They remain in the repo,
+but must not be re-enabled or triggered until explicitly authorized by the
+user, including after the December 1 billing reset. The user runs automated
+tests **locally**, first on focused modules and then with **one fresh Python
+process per `tests/test_*.py` module**, to avoid headless Qt teardown issues.
+The exact commands, warning interpretation, review process, and release gates
+are in [docs/local-testing.md](docs/local-testing.md).
+
+Implementation of the v2.2, v2.3, and v2.4 roadmap features is complete, but
+**desktop/installer acceptance and versioned release sign-off are still pending**
+in [QA issue #64](https://github.com/kevinp260/macro-runner/issues/64).
+The package currently reports version 2.1.0; do not infer that a v2.4 release
+has been published. The detailed manual desktop checklist is in
 [docs/manual-tests.md](docs/manual-tests.md).
+
+When GitHub Actions are explicitly re-enabled, their normal purpose is to
+compile/package the runtime and run Ubuntu/Windows tests and installer builds;
+these checks have **not** been substituted by local Ubuntu test passes.
