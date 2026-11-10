@@ -1,5 +1,10 @@
 # MacroRunner 2 — Desktop QA checklist
 
+**Testing policy:** See [local-testing.md](local-testing.md) for the temporarily
+disabled GitHub Actions workflows, isolated-module Ubuntu test command, expected
+offscreen warnings, and release sign-off gates. Automated tests are invoked
+manually **locally** for now; they do not replace native desktop QA.
+
 Complete this checklist on **real desktop installations** before release.
 Automated CI does not exercise native OS input hooks or screenshot capture.
 A consolidated deferred test checklist for all planned PRs lives in
