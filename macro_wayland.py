@@ -4,6 +4,7 @@ One session, one worker thread, one selected monitor. This module deliberately
 does not enable workflow playback; capture and runtime lifecycle follow.
 """
 import math
+import os
 import threading
 import time
 import uuid
@@ -75,6 +76,19 @@ class GioPortal:
             return result.unpack()
         except self.glib.Error as exc:
             raise DesktopUnavailable(f"Wayland portal {method} failed.") from exc
+
+    def open_pipewire_remote(self, handle):
+        """Return a caller-owned duplicate of the authorized remote socket."""
+        self.assert_owner()
+        try:
+            result, fd_list = self.connection.call_with_unix_fd_list_sync(
+                SERVICE, ROOT, SCREEN, "OpenPipeWireRemote",
+                self.variant("(oa{sv})", (handle, {})), None,
+                self.gio.DBusCallFlags.NONE, 5000, None, None)
+            index, = result.unpack()
+            return fd_list.get(index)
+        except (self.glib.Error, TypeError, ValueError, AttributeError) as exc:
+            raise DesktopUnavailable("Cannot open the authorized PipeWire remote.") from exc
 
     def subscribe(self, interface, signal, path, callback):
         self.assert_owner()
@@ -190,6 +204,7 @@ class WaylandSession:
         self.broken = False
         self.active = False
         self.used = False
+        self.capture_opened = False
         self.held = []
 
     def __enter__(self):
@@ -242,9 +257,11 @@ class WaylandSession:
             raise DesktopUnavailable("Select exactly one monitor for Wayland automation.")
         node, metadata = streams[0]
         size = metadata.get("size", ())
+        logical = metadata.get("logical_size", size)
         if (metadata.get("source_type") != 1 or
                 tuple(metadata.get("position", ())) != (0, 0) or
                 len(size) != 2 or any(type(n) is not int or n <= 0 for n in size) or
+                tuple(logical) != tuple(size) or
                 type(node) is not int or not 0 < node <= 0xffffffff):
             raise DesktopUnavailable("Wayland requires a monitor at desktop origin with valid geometry.")
         self.node, self.logical_size = node, tuple(size)
@@ -259,6 +276,24 @@ class WaylandSession:
             raise RuntimeError("Stopped")
         if self.revoked:
             raise DesktopUnavailable("Wayland desktop permission was revoked.")
+
+    def open_pipewire_remote(self):
+        """Transfer one authorized FD to a capture owner on this worker."""
+        self.check()
+        if self.capture_opened:
+            raise DesktopUnavailable("The Wayland capture remote was already opened.")
+        self.capture_opened = True
+        try:
+            fd = self.portal.open_pipewire_remote(self.handle)
+            try:
+                self.check()
+            except BaseException:
+                os.close(fd)
+                raise
+            return fd
+        except BaseException:
+            self.broken = True
+            raise
 
     def _send(self, method, signature, args):
         self.check()

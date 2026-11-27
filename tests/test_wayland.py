@@ -1,7 +1,7 @@
 """Fake-portal tests; no actual display, input, or GI dependency."""
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from macro_platform import DesktopUnavailable
 from macro_wayland import (WaylandSession, GioPortal, PortalRequestError, REMOTE,
@@ -166,6 +166,31 @@ class SessionTests(unittest.TestCase):
                 session.button("left", True)
         self.assertEqual(self.inputs(), [("NotifyKeyboardKeysym", (97, 1)),
                                          ("NotifyKeyboardKeysym", (97, 0))])
+
+    def test_pipewire_remote_can_open_only_once(self):
+        self.portal.open_pipewire_remote = Mock(return_value=123)
+        with self.session as session:
+            self.assertEqual(session.open_pipewire_remote(), 123)
+            self.portal.open_pipewire_remote.assert_called_once_with(session.handle)
+            with self.assertRaisesRegex(DesktopUnavailable, "already opened"):
+                session.open_pipewire_remote()
+
+    def test_revocation_during_remote_open_closes_received_fd(self):
+        def open_remote(handle):
+            self.portal.revoke = True
+            return 123
+        self.portal.open_pipewire_remote = Mock(side_effect=open_remote)
+        with self.session as session, patch("macro_wayland.os.close") as close_fd:
+            with self.assertRaisesRegex(DesktopUnavailable, "revoked"):
+                session.open_pipewire_remote()
+            close_fd.assert_called_once_with(123)
+        self.assertTrue(self.session.broken)
+
+    def test_conflicting_logical_dimensions_rejected(self):
+        self.portal.grant["streams"][0][1]["logical_size"] = (960, 540)
+        with self.assertRaisesRegex(DesktopUnavailable, "geometry"):
+            with self.session:
+                self.fail("inconsistent dimensions")
 
     def test_cancelled_before_open_does_not_connect(self):
         self.stop.set()
