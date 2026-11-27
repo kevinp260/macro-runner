@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QRect, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QCursor
 from PySide6.QtWidgets import QWidget, QApplication
 
-from macro_platform import get_automation
+from macro_platform import DesktopUnavailable, get_automation
 
 
 def normalized_region(start, end):
@@ -72,10 +72,13 @@ class RegionOverlay(QWidget):
         x, y = get_automation().position()
         return QPoint(int(x), int(y))
 
+    def _event_pixel(self, event):
+        return self._pointer_pixel()
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             try:
-                self.start_native = self._pointer_pixel()
+                self.start_native = self._event_pixel(event)
             except Exception:
                 self.cancelled.emit()
                 return
@@ -93,7 +96,7 @@ class RegionOverlay(QWidget):
             return
         self.end = event.position().toPoint()
         try:
-            end_native = self._pointer_pixel()
+            end_native = self._event_pixel(event)
         except Exception:
             self.cancelled.emit()
             return
@@ -151,3 +154,62 @@ class RegionPicker:
         self._close()
         if notify and self._cancelled:
             self._cancelled()
+
+
+class WaylandRegionOverlay(RegionOverlay):
+    """Live fullscreen overlay on the validated single 1:1 Wayland output."""
+
+    def __init__(self, screen, size):
+        super().__init__(screen)
+        self.expected_size = size
+        self.closing = False
+        # A normal fullscreen surface, not an arbitrarily positioned tool
+        # window. Qt Wayland/compositor negotiate the actual fullscreen size.
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _event_pixel(self, event):
+        if (not self.isFullScreen() or self.devicePixelRatioF() != 1 or
+                (self.width(), self.height()) != self.expected_size or
+                self.windowHandle() is None or
+                self.windowHandle().screen() != self.screen):
+            raise DesktopUnavailable("Fullscreen selection geometry does not match the Wayland monitor.")
+        point = event.position().toPoint()
+        if not self.rect().contains(point):
+            raise DesktopUnavailable("Selection is outside the authorized monitor.")
+        return point
+
+    def closeEvent(self, event):
+        event.accept()
+        if not self.closing:
+            self.closing = True
+            self.cancelled.emit()
+
+
+class WaylandRegionPicker(RegionPicker):
+    """Select a live desktop region using only events delivered to our overlay."""
+
+    def __init__(self, screen, size, selected, cancelled):
+        self._selected = selected
+        self._cancelled = cancelled
+        overlay = WaylandRegionOverlay(screen, size)
+        overlay.selected.connect(self._finish)
+        overlay.cancelled.connect(self.cancel)
+        self.overlays = [overlay]
+
+    def show(self):
+        for overlay in self.overlays:
+            overlay.showFullScreen()
+            overlay.activateWindow()
+            overlay.setFocus()
+
+    def _close(self):
+        for overlay in self.overlays:
+            overlay.closing = True
+            overlay.hide()
+        super()._close()
+
+    def reject(self):
+        self.cancel()

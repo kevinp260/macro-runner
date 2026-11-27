@@ -45,7 +45,8 @@ from macro_platform import (DesktopUnavailable, desktop_platform, get_automation
                             require_legacy_desktop, create_hotkeys,
                             create_mouse_listener, create_keyboard_listener,
                             DESKTOP_ACTIONS, wayland_trial_enabled)
-from macro_qt_wayland import WaylandRunGuard, single_screen, EditorWorker, SnapshotPicker
+from macro_qt_wayland import WaylandRunGuard, single_screen, EditorWorker
+from macro_qt_region import WaylandRegionPicker
 from macro_preflight import inspect_workflow
 from macro_recovery import RecoveryStore, atomic_json_write
 from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
@@ -1667,9 +1668,8 @@ class MacroWindow(QMainWindow):
     def _pick_region(self):
         if wayland_trial_enabled():
             try:
-                result = self._wayland_select(point_mode=False)
-                if result is not None:
-                    _, region = result
+                region = self._wayland_select_region()
+                if region is not None:
                     self.inspector.update_picked_region(*region)
                     self._set_status("Region selected. Choose Apply changes to save.")
             except Exception as exc:
@@ -1770,11 +1770,9 @@ class MacroWindow(QMainWindow):
         if wayland_trial_enabled():
             path = None
             try:
-                result = self._wayland_select(point_mode=False)
-                if result is not None:
-                    image, (x, y, width, height) = result
-                    path = save_reference_capture(
-                        image.crop((x, y, x + width, y + height)), self.capture_assets_dir)
+                image = self._wayland_select_region(capture=True)
+                if image is not None:
+                    path = save_reference_capture(image, self.capture_assets_dir)
             except Exception as exc:
                 QMessageBox.warning(self, "Cannot capture reference image", str(exc))
             finished(path)
@@ -1924,40 +1922,70 @@ class MacroWindow(QMainWindow):
             return match, (image_click_point(action, match, screen_size=guard.size)
                            if match is not None else None)
 
-    def _wayland_select(self, *, point_mode):
+    def _wayland_select_region(self, *, capture=False):
         if not self._begin_screen_selection(native=True):
             return None
-        guard = None
+        guard = picker = None
         try:
             guard = WaylandRunGuard(self)
+            loop = QEventLoop(self)
+            region = []
+            errors = []
+            completed = False
 
-            def snapshot(stopped):
-                with guard.capture_factory(stopped) as screenshot:
-                    return screenshot()
+            def finish(*rect):
+                nonlocal completed
+                if not completed:
+                    completed = True
+                    region.extend(rect)
+                    loop.quit()
 
-            image = self._wayland_worker_result(snapshot)
-            if image is None:
-                return None
-            guard.check()
-            # The desktop is already captured. Remap the editor BEFORE opening
-            # its modal child so Wayland has a visible transient parent to
-            # return focus to. Keep the editor busy until the picker closes.
-            self._restore_selection_window(activate=False)
-            picker = SnapshotPicker(image, point_mode, self)
+            picker = WaylandRegionPicker(guard.screen, guard.size, finish, finish)
             self._wayland_picker = picker
-            try:
-                if picker.exec() != QDialog.DialogCode.Accepted:
-                    return None
-                guard.check()
-                return image, picker.selection
-            finally:
-                picker.hide()
-                self._wayland_picker = None
-                picker.deleteLater()
-                if self.isVisible() and not self.isMinimized():
-                    # Activation is a request; the compositor decides.
-                    self.activateWindow()
+            guard.geometry_invalidated.connect(picker.reject)
+            self._set_status("Drag to select a region · Esc to cancel.")
+
+            def show_picker():
+                if completed:
+                    return
+                try:
+                    guard.check()
+                    picker.show()
+                except Exception as exc:
+                    errors.append(exc)
+                    finish()
+
+            QTimer.singleShot(150, show_picker)
+            loop.exec()
+            if errors:
+                raise errors[0]
+            guard.check()
+            if not region:
+                self._set_status("Region selection cancelled.")
+                return None
+            selected = tuple(region)
+            if not capture:
+                return selected
+
+            # No overlay or editor restoration before sampling the selected
+            # desktop area. The read-only permission prompt is now shown.
+            picker.cancel(notify=False)
+            self._wayland_picker = None
+
+            def grab(stopped):
+                with guard.capture_factory(stopped) as screenshot:
+                    # Allow the permission dialog and overlay to disappear.
+                    if stopped.wait(.18):
+                        raise RuntimeError("Stopped")
+                    return screenshot(region=selected)
+
+            return self._wayland_worker_result(grab)
         finally:
+            if picker is not None:
+                if guard is not None:
+                    guard.geometry_invalidated.disconnect(picker.reject)
+                picker.cancel(notify=False)
+            self._wayland_picker = None
             if guard is not None:
                 guard.close()
             self._end_screen_selection()

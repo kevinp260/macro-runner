@@ -4,12 +4,11 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QRect, QTimer
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtCore import QRect
+from PySide6.QtWidgets import QApplication
 
 from macro_platform import DesktopUnavailable
-from macro_qt_wayland import (WaylandRunGuard, single_screen, image_point,
-                              selection_region, EditorWorker, SnapshotPicker)
+from macro_qt_wayland import WaylandRunGuard, single_screen, EditorWorker
 from PIL import Image
 
 app = QApplication.instance() or QApplication([])
@@ -64,29 +63,6 @@ class WaylandGeometryTests(unittest.TestCase):
 
 
 class EditorTests(unittest.TestCase):
-    def test_scaled_snapshot_point_mapping(self):
-        rect = QRect(10, 20, 960, 540)
-        self.assertEqual(image_point(rect, (1920, 1080), 10, 20), (0, 0))
-        self.assertEqual(image_point(rect, (1920, 1080), 490, 290), (960, 540))
-        self.assertEqual(image_point(rect, (1920, 1080), 969, 559), (1918, 1078))
-        self.assertIsNone(image_point(rect, (1920, 1080), 970, 560))
-        self.assertIsNone(image_point(rect, (1920, 1080), 9, 20))
-        self.assertIsNone(image_point(QRect(), (1920, 1080), 0, 0))
-
-    def test_region_reverse_drag_includes_endpoint(self):
-        self.assertEqual(selection_region((9, 6), (4, 2)), (4, 2, 6, 5))
-        self.assertEqual(selection_region((0, 0), (0, 0)), (0, 0, 1, 1))
-
-    def test_snapshot_cancel_and_accept(self):
-        dialog = SnapshotPicker(Image.new("RGB", (20, 10)), point_mode=True)
-        try:
-            dialog.reject()
-            self.assertIsNone(dialog.selection)
-            dialog._selected((2, 3))
-            self.assertEqual(dialog.selection, (2, 3))
-        finally:
-            dialog.deleteLater()
-
     def test_worker_passes_stop_event_and_records_error(self):
         operation = Mock(side_effect=DesktopUnavailable("denied"))
         worker = EditorWorker(operation)
@@ -97,7 +73,7 @@ class EditorTests(unittest.TestCase):
         self.assertIsInstance(worker.error, DesktopUnavailable)
         self.assertIsNone(worker.result)
 
-    def test_timed_pointer_pick_does_not_open_snapshot_dialog(self):
+    def test_timed_pointer_pick_does_not_open_region_overlay(self):
         from macro_qt import MacroWindow
         from macro_model import Action
         from qt_test_helpers import close_test_window
@@ -115,7 +91,7 @@ class EditorTests(unittest.TestCase):
                 self.assertFalse(window.isMinimized())
                 return fn(guard, threading.Event(), Mock())
             with patch("macro_qt.wayland_trial_enabled", return_value=True), patch(
-                    "macro_qt.SnapshotPicker") as picker, patch.object(
+                    "macro_qt.WaylandRegionPicker") as picker, patch.object(
                     window, "_wayland_editor_operation", side_effect=operation):
                 window._pick_coordinates("start")
             picker.assert_not_called()
@@ -154,52 +130,69 @@ class EditorTests(unittest.TestCase):
             self.assertEqual(capture_cm.__exit__.call_count, 2)
 
 
-class SnapshotLifecycleTests(unittest.TestCase):
-    def test_editor_restored_before_picker_and_after_accept_or_cancel(self):
+class RegionLifecycleTests(unittest.TestCase):
+    def test_live_region_selection_restores_editor_and_only_captures_on_request(self):
         from macro_qt import MacroWindow
         from qt_test_helpers import close_test_window
 
         with patch.object(MacroWindow, "_start_hotkeys"):
             window = MacroWindow()
         original_mode = window.settings.value("selection_window_mode")
-        image = Image.new("RGB", (20, 10))
+        image = Image.new("RGB", (8, 6))
+        rect = (2, 3, 8, 6)
         try:
             for mode in ("hide", "minimize", "show"):
-                for accept in (True, False):
-                    with self.subTest(mode=mode, accept=accept):
+                for choice in ("select", "cancel", "capture"):
+                    with self.subTest(mode=mode, choice=choice):
                         window.showNormal()
                         app.processEvents()
                         window.settings.setValue("selection_window_mode", mode)
                         observations = []
+                        guard = Mock()
+                        guard.size = (20, 20)
+
+                        class Picker:
+                            def __init__(self, screen, size, selected, cancelled):
+                                self.selected, self.cancelled = selected, cancelled
+                                self.closed = False
+
+                            def show(self):
+                                observations.append(("overlay", window.isVisible(),
+                                                     window.isMinimized(), window._busy()))
+                                self.closed = True
+                                if choice == "cancel":
+                                    self.cancelled()
+                                else:
+                                    self.selected(*rect)
+
+                            def cancel(self, notify=True):
+                                self.closed = True
+                                if notify:
+                                    self.cancelled()
+
+                            def reject(self):
+                                self.cancel()
 
                         def capture(operation):
-                            observations.append(
-                                ("capture", window.isVisible(), window.isMinimized()))
+                            observations.append(("capture", window._wayland_picker,
+                                                 window._busy()))
                             return image
 
-                        class Picker(SnapshotPicker):
-                            def exec(self):
-                                observations.append(
-                                    ("picker", window.isVisible(), window.isMinimized(),
-                                     window._busy()))
-                                QTimer.singleShot(
-                                    0, lambda: self._selected((2, 3)) if accept
-                                    else self.reject())
-                                result = super().exec()
-                                observations.append(("closed", self.isVisible()))
-                                return result
-
                         with patch.object(window, "_require_wayland_editor"), patch(
-                                "macro_qt.WaylandRunGuard"), patch.object(
-                                window, "_wayland_worker_result", side_effect=capture), patch(
-                                "macro_qt.SnapshotPicker", Picker):
-                            result = window._wayland_select(point_mode=True)
+                                "macro_qt.WaylandRunGuard", return_value=guard), patch.object(
+                                window, "_wayland_worker_result", side_effect=capture) as grab, patch(
+                                "macro_qt.WaylandRegionPicker", Picker):
+                            result = window._wayland_select_region(capture=choice == "capture")
 
                         self.assertEqual(observations[0],
-                                         ("capture", mode != "hide", mode == "minimize"))
-                        self.assertEqual(observations[1], ("picker", True, False, True))
-                        self.assertEqual(observations[2], ("closed", False))
-                        self.assertEqual(result, (image, (2, 3)) if accept else None)
+                                         ("overlay", mode != "hide", mode == "minimize", True))
+                        if choice == "capture":
+                            self.assertEqual(observations[1], ("capture", None, True))
+                            grab.assert_called_once()
+                            self.assertIs(result, image)
+                        else:
+                            grab.assert_not_called()
+                            self.assertEqual(result, rect if choice == "select" else None)
                         self.assertIsNone(window._wayland_picker)
                         self.assertTrue(window.isVisible())
                         self.assertFalse(window.isMinimized())
