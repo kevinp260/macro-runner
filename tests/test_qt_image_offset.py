@@ -62,7 +62,7 @@ class ImageOffsetQtTests(unittest.TestCase):
         mouse = SimpleNamespace(size=lambda: (400, 300),
                                 screenshot=lambda region=None: object(),
                                 click=lambda *a, **k: self.fail("Preview clicked"))
-        with patch.dict("sys.modules", {"pyautogui":mouse}), patch(
+        with patch("macro_qt.get_automation", return_value=mouse), patch(
                 "macro_qt.locate_image", return_value=(100, 80, .982)) as matching, patch(
                 "macro_qt.QMessageBox.information") as info:
             panel._preview_image_click()
@@ -78,14 +78,14 @@ class ImageOffsetQtTests(unittest.TestCase):
         panel = self.select()
         mouse = SimpleNamespace(size=lambda: (200, 150),
                                 screenshot=lambda region=None: object())
-        with patch.dict("sys.modules", {"pyautogui":mouse}), patch(
+        with patch("macro_qt.get_automation", return_value=mouse), patch(
                 "macro_qt.locate_image", return_value=None), patch(
                 "macro_qt.QMessageBox.warning") as warning:
             panel._preview_image_click()
         self.assertIn("No image match", warning.call_args.args[1])
 
         panel.controls["image_offset_x"].setText("300")
-        with patch.dict("sys.modules", {"pyautogui":mouse}), patch(
+        with patch("macro_qt.get_automation", return_value=mouse), patch(
                 "macro_qt.locate_image", return_value=(100, 80, .99)), patch(
                 "macro_qt.QMessageBox.warning") as warning:
             panel._preview_image_click()

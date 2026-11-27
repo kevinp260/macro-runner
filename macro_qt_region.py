@@ -11,6 +11,8 @@ from PySide6.QtCore import Qt, QRect, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QCursor
 from PySide6.QtWidgets import QWidget, QApplication
 
+from macro_platform import get_automation
+
 
 def normalized_region(start, end):
     """Return X/Y/width/height for a drag in any direction."""
@@ -67,8 +69,7 @@ class RegionOverlay(QWidget):
     def _pointer_pixel():
         # Qt events report logical widget coordinates. PyAutoGUI screenshot
         # regions use physical desktop pixels, which can differ with DPI.
-        import pyautogui
-        x, y = pyautogui.position()
+        x, y = get_automation().position()
         return QPoint(int(x), int(y))
 
     def mousePressEvent(self, event):

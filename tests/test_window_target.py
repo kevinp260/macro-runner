@@ -196,7 +196,7 @@ class TargetIdentityTests(unittest.TestCase):
             binding.prepare(FastGate())
 
     def test_wayland_is_explicitly_unsupported(self):
-        with patch("macro_windows.sys.platform", "linux"), patch.dict(
+        with patch("macro_platform.sys.platform", "linux"), patch.dict(
                 os.environ, {"XDG_SESSION_TYPE":"wayland","DISPLAY":":0"}):
             with self.assertRaisesRegex(WindowUnavailable, "Wayland"):
                 WindowManager()

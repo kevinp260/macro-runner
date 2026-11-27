@@ -82,11 +82,12 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(all(f.severity == "warning" for f in issues))
         self.assertEqual([f.index for f in issues], [0, 1, 2, 5])
 
-    def test_wayland_restrictions_are_warned_once_not_blocked(self):
+    def test_wayland_desktop_actions_are_blocked(self):
         actions = [Action(kind="click", x=1, y=1), Action(kind="key", keys="enter")]
         issues = inspect_workflow(actions, platform_name="linux", session_type="wayland")
         self.assertEqual(len(issues), 1)
         self.assertIn("Wayland", issues[0].message)
+        self.assertEqual(issues[0].severity, "error")
         self.assertEqual(issues[0].index, None)
         self.assertEqual(inspect_workflow(
             [Action(kind="wait")], platform_name="linux", session_type="wayland"), [])

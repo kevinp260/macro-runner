@@ -21,6 +21,11 @@ app = QApplication.instance() or QApplication([])
 
 
 class RegionUITests(unittest.TestCase):
+    def setUp(self):
+        guard = patch("macro_qt.require_legacy_desktop")
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def test_drag_coordinates_normalize_in_both_directions(self):
         self.assertEqual(normalized_region(QPoint(120, 180), QPoint(20, 30)),
                          (20, 30, 100, 150))
@@ -222,7 +227,9 @@ class RegionUITests(unittest.TestCase):
                 screenshot = Image.new("RGB", (20, 15), "blue")
                 with patch("macro_qt.QTimer.singleShot",
                            side_effect=lambda _, callback: pending.append(callback)), \
-                        patch("pyautogui.screenshot", return_value=screenshot) as grab:
+                        patch("macro_qt.get_automation") as backend:
+                    grab = backend.return_value.screenshot
+                    grab.return_value = screenshot
                     window.inspector.capture_button.click()
                     self.assertTrue(window._screen_selection_active)
                     pending.pop(0)()  # Show the picker after hiding editor.
@@ -258,8 +265,9 @@ class RegionUITests(unittest.TestCase):
                 window.inspector.capture_button.click()
                 pending.pop(0)()
                 window.region_picker._finish(10, 20, 20, 15)
-                with patch("pyautogui.screenshot", side_effect=PermissionError("denied")), \
+                with patch("macro_qt.get_automation") as backend, \
                         patch("macro_qt.QMessageBox.warning") as warn:
+                    backend.return_value.screenshot.side_effect = PermissionError("denied")
                     pending.pop(0)()
                 self.assertTrue(warn.called)
                 self.assertFalse(window._screen_selection_active)

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from macro_vision import RegionChangeDetector
 from macro_windows import WindowBinding
+from macro_platform import get_automation
 
 
 def capture_error_text(exc):
@@ -68,8 +69,7 @@ class RegionMonitorWorker(QThread):
         try:
             screenshot = self.screenshot
             if screenshot is None:
-                import pyautogui
-                screenshot = pyautogui.screenshot
+                screenshot = get_automation().screenshot
             binding = (WindowBinding(self.window_target)
                        if self.window_target is not None else None)
 

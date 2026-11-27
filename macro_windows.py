@@ -7,9 +7,9 @@ import ctypes
 from ctypes import wintypes
 from ctypes.util import find_library
 from dataclasses import dataclass, replace
-import os
-import sys
 import time
+
+from macro_platform import desktop_platform
 
 
 class WindowUnavailable(RuntimeError):
@@ -91,15 +91,14 @@ def identify_target(saved, windows):
 
 
 def _platform():
-    if sys.platform == "win32":
-        return "windows"
-    if sys.platform.startswith("linux"):
-        if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
-            raise WindowUnavailable(
-                "Window targeting is unavailable on Wayland. Use an X11/Xorg session.")
-        if not os.environ.get("DISPLAY"):
-            raise WindowUnavailable("X11 display is unavailable; window targeting cannot run.")
-        return "x11"
+    platform = desktop_platform()
+    if platform in ("windows", "x11"):
+        return platform
+    if platform == "wayland":
+        raise WindowUnavailable(
+            "Window targeting is unavailable on Wayland. Use an X11/Xorg session.")
+    if platform == "unavailable":
+        raise WindowUnavailable("X11 display is unavailable; window targeting cannot run.")
     raise WindowUnavailable("Window targeting supports Windows and Ubuntu X11 only.")
 
 

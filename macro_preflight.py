@@ -19,6 +19,7 @@ from macro_files import FILE_KINDS, validate_file_action
 from macro_variables import validate_references, unset_warnings
 from macro_windows import WindowBinding, WindowManager, WindowUnavailable
 from macro_ocr import check_engine as check_ocr_engine, OCRError
+from macro_platform import desktop_platform
 
 
 @dataclass(frozen=True)
@@ -188,13 +189,15 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
                        "find_text", "wait_text"}
     active = normalized[start_index:]
     platform_name = platform_name if platform_name is not None else sys.platform
-    if (platform_name.startswith("linux") and
-            (session_type or "").lower() == "wayland" and
+    # The caller supplies session context; keep inspection deterministic in
+    # headless tests and other callers that omit it.
+    if (desktop_platform(platform_name, {"XDG_SESSION_TYPE": session_type or ""})
+            == "wayland" and
             any(a.enabled and a.kind in desktop_actions for a in active)):
         findings.append(PreflightFinding(
-            "warning", None,
-            "Wayland may restrict global input and screen capture. "
-            "Use an X11 session where required; verify desktop permissions."))
+            "error", None,
+            "Desktop input and screen capture are not yet supported on Wayland. "
+            "Use an X11 session for this workflow."))
 
     # Window waits are read-only checks; they do not require their window
     # to exist when a workflow starts. Verify the backend is available
