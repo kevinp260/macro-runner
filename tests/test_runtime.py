@@ -1,5 +1,6 @@
 import threading
 import unittest
+from unittest.mock import patch
 
 from macro_model import Action
 from macro_runtime import MacroExecutor
@@ -19,6 +20,25 @@ class FakeAutomation:
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_wayland_rejects_desktop_work_without_loading_legacy_adapter(self):
+        outcomes = []
+        runner = MacroExecutor([Action(kind="key", keys="a", failure_policy="skip")],
+                               1, 0, lambda *args: self.fail("Unexpected progress"),
+                               lambda *args: outcomes.append(args))
+        with patch("macro_platform.desktop_platform", return_value="wayland"):
+            runner.run()
+        self.assertFalse(outcomes[0][0])
+        self.assertIn("Wayland", outcomes[0][1])
+
+    def test_non_desktop_work_does_not_load_automation(self):
+        outcomes = []
+        runner = MacroExecutor([Action(kind="wait", seconds=0)], 1, 0,
+                               lambda *args: None, lambda *args: outcomes.append(args))
+        with patch("macro_runtime.get_automation",
+                   side_effect=AssertionError("Unexpected desktop access")):
+            runner.run()
+        self.assertTrue(outcomes[0][0])
+
     def test_keyboard_hold_cleanup_and_progress(self):
         fake = FakeAutomation()
         events = []

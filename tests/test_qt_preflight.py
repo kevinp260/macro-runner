@@ -1,6 +1,5 @@
 from qt_test_helpers import close_test_window
 """Offscreen Qt pre-run confirmation and navigation tests."""
-import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -62,7 +61,8 @@ class PreflightUITests(unittest.TestCase):
                 exec=lambda: QDialog.DialogCode.Rejected,
                 has_errors=True, navigation_index=1)
             fake_pag = SimpleNamespace(size=lambda: (100, 100))
-            with patch.dict(sys.modules, {"pyautogui": fake_pag}), patch(
+            with patch("macro_qt.get_automation", return_value=fake_pag), patch(
+                    "macro_qt.desktop_platform", return_value="x11"), patch(
                 "macro_qt.inspect_workflow",
                 return_value=[PreflightFinding("error", 1, "Invalid location")]), patch(
                 "macro_qt.PreflightDialog", return_value=fake_dialog):
@@ -96,7 +96,8 @@ class PreflightUITests(unittest.TestCase):
             dialog = SimpleNamespace(
                 exec=lambda: QDialog.DialogCode.Accepted,
                 has_errors=False, navigation_index=None)
-            with patch.dict(sys.modules, {"pyautogui": fake_pag}), patch(
+            with patch("macro_qt.get_automation", return_value=fake_pag), patch(
+                    "macro_qt.desktop_platform", return_value="x11"), patch(
                 "macro_qt.PreflightDialog", return_value=dialog) as shown:
                 self.assertTrue(window._validate_before_run(0))
                 self.assertEqual(shown.call_args.args[0][0].severity, "warning")

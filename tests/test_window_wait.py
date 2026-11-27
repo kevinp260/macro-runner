@@ -145,7 +145,7 @@ class WindowWaitModelTests(unittest.TestCase):
         self.assertEqual(inspect_workflow(only_enabled, window_manager=manager), [])
 
     def test_wayland_unsupported_even_without_workflow_binding(self):
-        with patch("macro_windows.sys.platform", "linux"), patch.dict(
+        with patch("macro_platform.sys.platform", "linux"), patch.dict(
                 os.environ, {"XDG_SESSION_TYPE":"wayland", "DISPLAY":":0"}):
             findings = inspect_workflow([wait_action()])
         self.assertTrue([f for f in findings if f.severity == "error"], findings)

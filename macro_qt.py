@@ -41,6 +41,9 @@ from macro_diagnostics import RunHistoryStore, RunSession
 from macro_qt_history import RunHistoryDialog
 from macro_version import app_version
 from macro_runtime import MacroExecutor
+from macro_platform import (DesktopUnavailable, desktop_platform, get_automation,
+                            require_legacy_desktop, create_hotkeys,
+                            create_mouse_listener, create_keyboard_listener)
 from macro_preflight import inspect_workflow
 from macro_recovery import RecoveryStore, atomic_json_write
 from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
@@ -1215,8 +1218,7 @@ class MacroWindow(QMainWindow):
         # DPI-scaled logical screen geometry. Checking size sends no input.
         screen_size = None
         try:
-            import pyautogui
-            dimensions = pyautogui.size()
+            dimensions = get_automation().size()
             screen_size = (int(dimensions[0]), int(dimensions[1]))
         except Exception:
             # Restricted desktops may prevent geometry lookup; no unsupported
@@ -1224,7 +1226,7 @@ class MacroWindow(QMainWindow):
             pass
         findings = inspect_workflow(
             self.actions, start_index=start_index, screen_size=screen_size,
-            session_type=os.environ.get("XDG_SESSION_TYPE"),
+            session_type=desktop_platform(),
             window_target=self.window_target, variables=self.variables,
             variable_overrides=self.variable_overrides)
         if not findings:
@@ -1347,7 +1349,7 @@ class MacroWindow(QMainWindow):
                 "Stop the current workflow or recording before previewing.")
             return
         try:
-            import pyautogui
+            automation = get_automation()
             client_rect = None
             current = action
             if self.window_target is not None:
@@ -1361,7 +1363,7 @@ class MacroWindow(QMainWindow):
                 raise ValueError(
                     "The screenshot region has a negative screen origin, "
                     "which this screenshot backend does not support.")
-            match = locate_image(current, pyautogui.screenshot)
+            match = locate_image(current, automation.screenshot)
             if match is None:
                 QMessageBox.warning(
                     self, "No image match",
@@ -1369,7 +1371,7 @@ class MacroWindow(QMainWindow):
                     "confidence. Check the visible desktop, scaling and region.")
                 return
             x, y = image_click_point(
-                action, match, screen_size=pyautogui.size(),
+                action, match, screen_size=automation.size(),
                 client_rect=client_rect)
         except Exception as exc:
             QMessageBox.warning(self, "Image click preview unavailable", str(exc))
@@ -1523,12 +1525,12 @@ class MacroWindow(QMainWindow):
         if self._busy():
             return
         try:
-            import pyautogui
+            automation = get_automation()
             if self.window_target and self.window_target["relative"]:
                 binding = WindowBinding(self.window_target)
                 info = binding.resolve()
                 x, y = binding.point(x, y, info)
-            pyautogui.moveTo(x, y, duration=.15)
+            automation.moveTo(x, y, duration=.15)
             self._set_status(f"Moved pointer to ({x}, {y}).")
         except Exception as exc:
             QMessageBox.warning(self, "Mouse movement unavailable", str(exc))
@@ -1536,6 +1538,11 @@ class MacroWindow(QMainWindow):
     def _begin_screen_selection(self):
         """Temporarily change editor visibility for a point or region pick."""
         if self._busy():
+            return False
+        try:
+            require_legacy_desktop("Screen selection")
+        except DesktopUnavailable as exc:
+            QMessageBox.warning(self, "Screen selection unavailable", str(exc))
             return False
         self._screen_selection_active = True
         self._screen_selection_restore = None
@@ -1672,8 +1679,7 @@ class MacroWindow(QMainWindow):
                         raise ValueError(
                             "This screenshot backend cannot capture a region "
                             "with negative desktop coordinates.")
-                    import pyautogui
-                    image = pyautogui.screenshot(region=(x, y, width, height))
+                    image = get_automation().screenshot(region=(x, y, width, height))
                     path = save_reference_capture(image, self.capture_assets_dir)
                 except Exception as exc:
                     self._end_screen_selection()
@@ -1705,11 +1711,11 @@ class MacroWindow(QMainWindow):
                 return
             error = None
             try:
-                import pyautogui
-                x, y = pyautogui.position()
+                automation = get_automation()
+                x, y = automation.position()
                 color = None
                 if mode == "pixel":
-                    rgb = pyautogui.screenshot(region=(x, y, 1, 1)).convert("RGB").getpixel((0, 0))
+                    rgb = automation.screenshot(region=(x, y, 1, 1)).convert("RGB").getpixel((0, 0))
                     color = "#{:02X}{:02X}{:02X}".format(*rgb)
                 x, y = self._client_coordinates(x, y)
                 self.inspector.update_picked_coordinates(mode, x, y, color)
@@ -1725,12 +1731,14 @@ class MacroWindow(QMainWindow):
 
     def _start_hotkeys(self):
         try:
-            from pynput import keyboard
-            self.hotkeys = keyboard.GlobalHotKeys({
+            self.hotkeys = create_hotkeys({
                 "<ctrl>+<alt>+<shift>+<f6>": self.global_pause.emit,
                 "<ctrl>+<alt>+<shift>+<f8>": self.global_stop.emit,
             })
             self.hotkeys.start()
+        except DesktopUnavailable as exc:
+            self.hotkeys = None
+            self._set_status(str(exc))
         except Exception:
             self.hotkeys = None
             self._set_status("Global hotkeys unavailable in this desktop session.")
@@ -1771,6 +1779,11 @@ class MacroWindow(QMainWindow):
     def start_recording(self):
         if self._busy():
             return
+        try:
+            require_legacy_desktop("Global recording")
+        except DesktopUnavailable as exc:
+            QMessageBox.warning(self, "Recording unavailable", str(exc))
+            return
         settings = self._capture_settings()
         if settings is None:
             return
@@ -1798,14 +1811,12 @@ class MacroWindow(QMainWindow):
         self.recording = True
         self.keyboard_recorder = KeyboardRecorder() if self.capture_keyboard else None
         try:
-            from pynput import mouse, keyboard
-
             def on_click(x, y, button, pressed):
                 if pressed:
                     self.events.put((time.monotonic(), token, "click", int(x), int(y),
                                      str(button).rsplit(".", 1)[-1].lower()))
 
-            self.mouse_listener = mouse.Listener(on_click=on_click)
+            self.mouse_listener = create_mouse_listener(on_click=on_click)
             self.mouse_listener.start()
 
             if self.capture_keyboard:
@@ -1817,7 +1828,7 @@ class MacroWindow(QMainWindow):
                     name = normalize_event_key(key)
                     if name:
                         self.events.put((time.monotonic(), token, "key", name, False))
-                self.keyboard_listener = keyboard.Listener(
+                self.keyboard_listener = create_keyboard_listener(
                     on_press=on_press, on_release=on_release)
                 self.keyboard_listener.start()
             self._set_status("Recording… click Stop recording when finished.")

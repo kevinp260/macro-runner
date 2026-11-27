@@ -19,6 +19,7 @@ from macro_launch import launch_target
 from macro_files import FILE_KINDS, run_file_action
 from macro_variables import VariableContext, validate_references
 from macro_window_wait import wait_for_window
+from macro_platform import DesktopUnavailable, get_automation
 from macro_ocr import find_text as ocr_find_text, check_engine as check_ocr_engine
 
 
@@ -128,8 +129,7 @@ class MacroExecutor:
 
     def _pag(self):
         if self.automation is None:
-            import pyautogui
-            self.automation = pyautogui
+            self.automation = get_automation()
         return self.automation
 
     def _bound_action(self, action):
@@ -222,7 +222,7 @@ class MacroExecutor:
             # Never suppress Stop, emergency mouse-corner fail-safe, or
             # unexpected cancellation, even when Skip was selected.
             if (self.gate.stopped.is_set() or str(exc) == "Stopped" or
-                    isinstance(exc, WindowUnavailable) or
+                    isinstance(exc, (WindowUnavailable, DesktopUnavailable)) or
                     type(exc).__name__ == "FailSafeException"):
                 raise
             if action.failure_policy == "skip":

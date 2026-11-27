@@ -1,5 +1,4 @@
 from qt_test_helpers import close_test_window
-import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -88,6 +87,9 @@ class WindowTests(unittest.TestCase):
 
 class ScreenSelectionVisibilityTests(unittest.TestCase):
     def setUp(self):
+        guard = patch("macro_qt.require_legacy_desktop")
+        guard.start()
+        self.addCleanup(guard.stop)
         self.w = MacroWindow()
         self.original_mode = self.w.settings.value("selection_window_mode")
         self.w.show()
@@ -190,7 +192,7 @@ class ScreenSelectionVisibilityTests(unittest.TestCase):
             screenshot=lambda region: Image.new("RGB", (1, 1), (16, 32, 48)),
         )
         self.w.settings.setValue("selection_window_mode", "hide")
-        with patch("macro_qt.QTimer", timer), patch.dict(sys.modules, {"pyautogui": fake}):
+        with patch("macro_qt.QTimer", timer), patch("macro_qt.get_automation", return_value=fake):
             self.w.inspector.show_action(Action(kind="click", x=1, y=2))
             self.w._pick_coordinates("start")
             self.assertFalse(self.w.isVisible())
@@ -208,7 +210,7 @@ class ScreenSelectionVisibilityTests(unittest.TestCase):
 
         errors = []
         fake.position = lambda: (_ for _ in ()).throw(OSError("Capture denied"))
-        with patch("macro_qt.QTimer", timer), patch.dict(sys.modules, {"pyautogui": fake}):
+        with patch("macro_qt.QTimer", timer), patch("macro_qt.get_automation", return_value=fake):
             with patch("macro_qt.QMessageBox.warning", side_effect=lambda *args: errors.append(args)):
                 self.w._pick_coordinates("pixel")
                 self.assertFalse(self.w.isVisible())
