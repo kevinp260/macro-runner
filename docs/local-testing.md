@@ -89,17 +89,8 @@ Use a Windows virtual environment with project/test dependencies installed. **Th
 4. Record the evidence on the PR (platform, focused results, full regression result, known warnings). Only then mark PR **Ready for review**; user performs the merge.
 5. Real screenshot/input hooks, targeting, global shortcuts, DPI/multi-monitor, and installed app behavior **cannot be signed off by offscreen tests**. Track and perform them through [Issue #64](https://github.com/kevinp260/macro-runner/issues/64) and [docs/manual-tests.md](manual-tests.md).
 
-## Remaining checks before closing version roadmaps / releasing
+## Roadmap closure and release handoff (2026-11-27)
 
-Implementation checklists for [v2.2 #27](https://github.com/kevinp260/macro-runner/issues/27), [v2.3 #28](https://github.com/kevinp260/macro-runner/issues/28), and [v2.4 #29](https://github.com/kevinp260/macro-runner/issues/29) are complete. Their **release/roadmap sign-off is not complete**.
+The maintainer approved closing the completed v2.2–v2.4 roadmap and QA backlog and requested a consolidated v2.4.0 release after successful complex workflow use. Previously reported Ubuntu X11 checks included region selection, image capture, window targeting, Pause/Stop, global shortcuts and monitoring preview. Earlier local isolated-module regressions were reported passing. These reports do not certify every unchecked case in #64, the latest native Windows installer, multi-monitor/mixed-DPI scenarios, upgrades, or hosted CI. The remaining checks are deferred, not marked passed.
 
-- Finish actual **Ubuntu X11 and Windows** desktop acceptance on source builds and installed applications; record limitations of Wayland and unsupported background-window input. Include the newer image-region and screenshot-capture UX (PRs #83/#84/#86/#88).
-- Confirm baseline workflows, legacy JSON compatibility, image matching, clipboard, variables, snippets, import/export, Stop/Pause, window targeting, and cross-platform file handling; use the detailed Issue #64 checklist rather than inventing extra release scope.
-- Confirm installer build, installation and upgrade behavior on Ubuntu and Windows, including persisted settings/assets.
-- When the user explicitly authorizes restoring CI, verify both existing GitHub workflows are enabled, run **Ubuntu/Windows Python checks and installer jobs**, fix any failures, and record results. Do not assume old or local runs prove CI currently passes.
-- Current package version in `pyproject.toml` is **2.1.0** despite completed v2.2–v2.4 features. Decide release version/tag/release notes with the user and update version metadata consistently **only in a separate release step**, after QA. Do not silently label these features as shipped v2.4.
-- Once Issue #64's final sign-off is complete (or exceptions explicitly accepted), review and close #27/#28/#29, then #64 as appropriate. Closing implementation issues does not substitute for this validation.
-
-### Next-chat handoff
-
-Read **this file**, [Issue #64](https://github.com/kevinp260/macro-runner/issues/64), and roadmap issues [#27](https://github.com/kevinp260/macro-runner/issues/27), [#28](https://github.com/kevinp260/macro-runner/issues/28), [#29](https://github.com/kevinp260/macro-runner/issues/29). Inspect `main` and current PR status before taking action. **Do not enable CI, start release/tag work, or close the roadmap/QA issues until the user explicitly decides to proceed.**
+Before publishing, build the Windows and Ubuntu packages from the same release commit, verify install/startup, version metadata and upgrade/persistence, and smoke-test actual desktop automation. Wayland desktop automation remains unsupported; Ubuntu package target is 24.04 amd64/X11. See [release process](releasing.md) for manual publication without Actions. Do not re-enable Actions without explicit maintainer approval, even after billing reset.

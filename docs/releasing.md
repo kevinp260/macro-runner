@@ -36,12 +36,12 @@ From an up-to-date `main` checkout, create and push an annotated tag:
 ```bash
 git checkout main
 git pull --ff-only origin main
-python -m macro_version --check-tag v2.1.0
-git tag -a v2.1.0 -m "MacroRunner v2.1.0"
-git push origin v2.1.0
+python -m macro_version --check-tag v2.4.0
+git tag -a v2.4.0 -m "MacroRunner v2.4.0"
+git push origin v2.4.0
 ```
 
-Replace `2.1.0` in future releases. Never reuse or move a published version
+Replace `2.4.0` in future releases. Never reuse or move a published version
 tag; make a new patch version instead.
 
 The tagged **Build desktop installers** workflow validates that the tag matches
@@ -62,3 +62,9 @@ The Ubuntu package currently targets Ubuntu 24.04 amd64; Windows builds target
 x64. Windows binaries are unsigned, so SmartScreen may warn. Signing and
 broader platform QA are separate release-readiness decisions. Keep the existing
 Windows installer AppId unchanged across updates so upgrades work.
+
+## Manual publication while CI is disabled
+
+For v2.4.0 the maintainer has accepted the completed roadmap and reported successful complex workflow testing. This is not evidence that every desktop QA case or hosted CI job passed. Before publishing, build and smoke-test the current native Windows and Ubuntu installers, including upgrade and version metadata. Record any remaining exceptions; Ubuntu desktop automation is X11-only, and covered/minimized background input is not supported. Use Ubuntu 24.04 amd64 for the documented package target.
+
+Build both packages locally from the same clean release commit using [installation instructions](installation.md). Verify the version using `python -m macro_version --check-tag v2.4.0`. Once the maintainer approves publication, create the matching annotated tag (only if unused) as above while workflows remain disabled. Draft a GitHub Release for that tag, attach `MacroRunner-Setup-2.4.0.exe` and `macrorunner_2.4.0_amd64.deb`, document X11-only Linux support and unsigned Windows installer status, then publish. Do not represent deferred CI or untested platform cases as passing. Never re-enable workflows without explicit approval.
