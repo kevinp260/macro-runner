@@ -98,6 +98,33 @@ class SessionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.session.__enter__()
 
+    def test_read_only_session_never_requests_remote_desktop(self):
+        session = WaylandSession("test.desktop", self.stop, devices=0,
+                                 portal_factory=lambda _: self.portal)
+        with session:
+            for operation in (lambda: session.move_absolute(1, 1),
+                              lambda: session.key(97, True),
+                              lambda: session.button("left", True),
+                              lambda: session.scroll(1)):
+                with self.assertRaisesRegex(DesktopUnavailable, "not authorized"):
+                    operation()
+        self.assertEqual([(r[0], r[1]) for r in self.portal.requests],
+                         [(SCREEN, "CreateSession"), (SCREEN, "SelectSources"),
+                          (SCREEN, "Start")])
+        self.assertFalse(self.inputs())
+        self.assertTrue(self.portal.closed)
+
+    def test_pointer_only_session_rejects_keyboard(self):
+        self.portal.grant["devices"] = 2
+        session = WaylandSession("test.desktop", self.stop, devices=2,
+                                 portal_factory=lambda _: self.portal)
+        with session:
+            session.move_absolute(2, 3)
+            with self.assertRaisesRegex(DesktopUnavailable, "not authorized"):
+                session.key(97, True)
+        self.assertEqual(self.portal.requests[1][4]["types"], 2)
+        self.assertEqual(self.inputs(), [("NotifyPointerMotionAbsolute", (88, 2.0, 3.0))])
+
     def test_denial_closes_session_without_input(self):
         self.portal.denial = True
         with self.assertRaisesRegex(PortalRequestError, "cancelled"):

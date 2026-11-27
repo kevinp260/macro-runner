@@ -7,6 +7,7 @@ state transitions.
 """
 import sys
 import threading
+from contextlib import ExitStack
 
 import numpy as np
 from PIL import Image
@@ -47,10 +48,12 @@ class RegionMonitorWorker(QThread):
     frame = Signal(object)
     capture_error = Signal(str)
 
-    def __init__(self, action, screenshot=None, parent=None, window_target=None):
+    def __init__(self, action, screenshot=None, parent=None, window_target=None,
+                 capture_factory=None):
         super().__init__(parent)
         self.action = action
         self.screenshot = screenshot
+        self.capture_factory = capture_factory
         self.window_target = window_target
         self._stop_event = threading.Event()
         self._reset_event = threading.Event()
@@ -67,74 +70,78 @@ class RegionMonitorWorker(QThread):
 
     def run(self):
         try:
-            screenshot = self.screenshot
-            if screenshot is None:
-                screenshot = get_automation().screenshot
-            binding = (WindowBinding(self.window_target)
-                       if self.window_target is not None else None)
+            with ExitStack() as stack:
+                screenshot = self.screenshot
+                if screenshot is None:
+                    if self.capture_factory is not None:
+                        screenshot = stack.enter_context(self.capture_factory(self._stop_event))
+                    else:
+                        screenshot = get_automation().screenshot
+                binding = (WindowBinding(self.window_target)
+                           if self.window_target is not None else None)
 
-            def capture():
-                current = self.action
-                if binding is not None:
-                    # Follow the same client-relative region as playback.
-                    # Live testing must not activate windows or send input.
-                    current = binding.transform(current, binding.resolve())
-                region = (current.region_x, current.region_y,
-                          current.region_w, current.region_h)
-                if region[0] < 0 or region[1] < 0:
-                    raise ValueError("Screenshot region starts at negative desktop "
-                                     "coordinates; move the window onto a supported display.")
-                result = screenshot(region=region).convert("RGB")
-                if result.size != (region[2], region[3]):
-                    raise ValueError("Screenshot dimensions do not match the selected "
-                                     "region. Check monitor scaling and region bounds.")
-                return result, region
+                def capture():
+                    current = self.action
+                    if binding is not None:
+                        # Follow the same client-relative region as playback.
+                        # Live testing must not activate windows or send input.
+                        current = binding.transform(current, binding.resolve())
+                    region = (current.region_x, current.region_y,
+                              current.region_w, current.region_h)
+                    if region[0] < 0 or region[1] < 0:
+                        raise ValueError("Screenshot region starts at negative desktop "
+                                         "coordinates; move the window onto a supported display.")
+                    result = screenshot(region=region).convert("RGB")
+                    if result.size != (region[2], region[3]):
+                        raise ValueError("Screenshot dimensions do not match the selected "
+                                         "region. Check monitor scaling and region bounds.")
+                    return result, region
 
-            baseline, baseline_region = capture()
-            if self._stop_event.is_set():
-                return
-            detector = RegionChangeDetector(self.action, baseline)
-            self.detector = detector
-            self.frame.emit({
-                "state": "baseline", "baseline": _preview(baseline),
-                "current": _preview(baseline),
-                "mask": Image.new("RGB", _preview(baseline).size, "black"),
-                "percent": 0.0, "confirmations": 0, "triggers": 0,
-                "region": baseline_region,
-            })
-
-            while not self._stop_event.is_set():
-                self._wake.wait(self.action.poll_interval)
-                self._wake.clear()
+                baseline, baseline_region = capture()
                 if self._stop_event.is_set():
-                    break
-                latest, latest_region = capture()
-                if self._stop_event.is_set():
-                    break
-                if self._reset_event.is_set():
-                    self._reset_event.clear()
-                    detector = RegionChangeDetector(self.action, latest)
-                    self.detector = detector
-                    small = _preview(latest)
-                    self.frame.emit({
-                        "state": "reset", "baseline": small, "current": small,
-                        "mask": Image.new("RGB", small.size, "black"),
-                        "percent": 0.0, "confirmations": 0, "triggers": 0,
-                        "region": latest_region,
-                    })
-                    continue
-
-                percentage, confirmations, triggered, old, mask = detector.observe(latest)
-                mask_image = Image.fromarray(np.uint8(mask) * 255, mode="L")
+                    return
+                detector = RegionChangeDetector(self.action, baseline)
+                self.detector = detector
                 self.frame.emit({
-                    "state": ("triggered" if triggered else
-                              "confirming" if confirmations else "below"),
-                    "baseline": _preview(old),
-                    "current": _preview(latest),
-                    "mask": _preview(mask_image),
-                    "percent": percentage, "confirmations": confirmations,
-                    "triggers": detector.triggers, "region": latest_region,
+                    "state": "baseline", "baseline": _preview(baseline),
+                    "current": _preview(baseline),
+                    "mask": Image.new("RGB", _preview(baseline).size, "black"),
+                    "percent": 0.0, "confirmations": 0, "triggers": 0,
+                    "region": baseline_region,
                 })
+
+                while not self._stop_event.is_set():
+                    self._wake.wait(self.action.poll_interval)
+                    self._wake.clear()
+                    if self._stop_event.is_set():
+                        break
+                    latest, latest_region = capture()
+                    if self._stop_event.is_set():
+                        break
+                    if self._reset_event.is_set():
+                        self._reset_event.clear()
+                        detector = RegionChangeDetector(self.action, latest)
+                        self.detector = detector
+                        small = _preview(latest)
+                        self.frame.emit({
+                            "state": "reset", "baseline": small, "current": small,
+                            "mask": Image.new("RGB", small.size, "black"),
+                            "percent": 0.0, "confirmations": 0, "triggers": 0,
+                            "region": latest_region,
+                        })
+                        continue
+
+                    percentage, confirmations, triggered, old, mask = detector.observe(latest)
+                    mask_image = Image.fromarray(np.uint8(mask) * 255, mode="L")
+                    self.frame.emit({
+                        "state": ("triggered" if triggered else
+                                  "confirming" if confirmations else "below"),
+                        "baseline": _preview(old),
+                        "current": _preview(latest),
+                        "mask": _preview(mask_image),
+                        "percent": percentage, "confirmations": confirmations,
+                        "triggers": detector.triggers, "region": latest_region,
+                    })
         except Exception as exc:
             if not self._stop_event.is_set():
                 self.capture_error.emit(capture_error_text(exc))
@@ -166,10 +173,12 @@ def _pixmap(image):
 class RegionMonitorDialog(QDialog):
     """Small independent window showing live captures and detection decisions."""
 
-    def __init__(self, action, screenshot=None, parent=None, window_target=None):
+    def __init__(self, action, screenshot=None, parent=None, window_target=None,
+                 capture_factory=None):
         super().__init__(parent)
         self.action = action
         self.screenshot = screenshot
+        self.capture_factory = capture_factory
         self.window_target = window_target
         self.worker = None
         self._close_requested = False
@@ -299,7 +308,7 @@ class RegionMonitorDialog(QDialog):
         self.reset_button.setEnabled(True)
         worker = RegionMonitorWorker(
             self.action, self.screenshot, parent=self,
-            window_target=self.window_target)
+            window_target=self.window_target, capture_factory=self.capture_factory)
         self.worker = worker
         worker.frame.connect(self._frame_received)
         worker.capture_error.connect(self._capture_failed)

@@ -45,7 +45,7 @@ from macro_platform import (DesktopUnavailable, desktop_platform, get_automation
                             require_legacy_desktop, create_hotkeys,
                             create_mouse_listener, create_keyboard_listener,
                             DESKTOP_ACTIONS, wayland_trial_enabled)
-from macro_qt_wayland import WaylandRunGuard, single_screen
+from macro_qt_wayland import WaylandRunGuard, single_screen, EditorWorker, SnapshotPicker
 from macro_preflight import inspect_workflow
 from macro_recovery import RecoveryStore, atomic_json_write
 from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
@@ -260,6 +260,9 @@ class MacroWindow(QMainWindow):
         self._recovery_locked = False
         self.executor = None
         self._wayland_guard = None
+        self._wayland_editor_worker = None
+        self._wayland_picker = None
+        self._wayland_preview_guard = None
         self._restore_after_run = False
         self._debug_window_visible = False
         self.run_signals = WorkerSignals()
@@ -1355,6 +1358,11 @@ class MacroWindow(QMainWindow):
         elif self.executor:
             self.executor.stop()
             self._set_status("Stopping…")
+        elif self._wayland_editor_worker is not None:
+            self._wayland_editor_worker.stop()
+            self._set_status("Stopping Wayland editor operation…")
+        elif self._wayland_picker is not None:
+            self._wayland_picker.reject()
         elif self.region_monitor is not None:
             # Stop exits the read-only tester instead of leaving the editor
             # busy behind an open dialog.
@@ -1371,41 +1379,58 @@ class MacroWindow(QMainWindow):
                 "Stop the current workflow or recording before previewing.")
             return
         try:
-            automation = get_automation()
-            client_rect = None
-            current = action
-            if self.window_target is not None:
-                binding = WindowBinding(self.window_target)
-                info = binding.resolve()  # Never activate another window.
-                current = binding.transform(action, info)
-                if binding.spec["relative"]:
-                    client_rect = (info.x, info.y, info.width, info.height)
-            if current.region_x is not None and (
-                    current.region_x < 0 or current.region_y < 0):
-                raise ValueError(
-                    "The screenshot region has a negative screen origin, "
-                    "which this screenshot backend does not support.")
-            match = locate_image(current, automation.screenshot)
-            if match is None:
-                QMessageBox.warning(
-                    self, "No image match",
-                    "The reference image was not found at the configured "
-                    "confidence. Check the visible desktop, scaling and region.")
-                return
-            x, y = image_click_point(
-                action, match, screen_size=automation.size(),
-                client_rect=client_rect)
+            if wayland_trial_enabled():
+                result = self._wayland_editor_operation(
+                    lambda guard, stopped: self._wayland_image_match(guard, stopped, action))
+                if result is None:
+                    return
+                match, point = result
+                if match is None:
+                    QMessageBox.warning(self, "No image match", "Reference image not found.")
+                    return
+                x, y = point
+            else:
+                match, x, y = self._legacy_image_preview(action)
+                if match is None:
+                    return
         except Exception as exc:
             QMessageBox.warning(self, "Image click preview unavailable", str(exc))
             return
         QMessageBox.information(
             self, "Image click point preview",
-            f"Matched image center: ({match[0]}, {match[1]})\n"
-            f"Offset: ({action.image_offset_x:+}, {action.image_offset_y:+}) px\n"
-            f"Computed click point: ({x}, {y})\n"
-            f"Similarity: {match[2]:.1%}\n\n"
+            f"Matched image center: ({match[0]}, {match[1]})\\n"
+            f"Offset: ({action.image_offset_x:+}, {action.image_offset_y:+}) px\\n"
+            f"Computed click point: ({x}, {y})\\n"
+            f"Similarity: {match[2]:.1%}\\n\\n"
             "No click was sent. If the target is obscured by MacroRunner "
             "or another window, adjust visibility before checking again.")
+
+    def _legacy_image_preview(self, action):
+        automation = get_automation()
+        client_rect = None
+        current = action
+        if self.window_target is not None:
+            binding = WindowBinding(self.window_target)
+            info = binding.resolve()  # Never activate another window.
+            current = binding.transform(action, info)
+            if binding.spec["relative"]:
+                client_rect = (info.x, info.y, info.width, info.height)
+        if current.region_x is not None and (
+                current.region_x < 0 or current.region_y < 0):
+            raise ValueError(
+                "The screenshot region has a negative screen origin, "
+                "which this screenshot backend does not support.")
+        match = locate_image(current, automation.screenshot)
+        if match is None:
+            QMessageBox.warning(
+                self, "No image match",
+                "The reference image was not found at the configured "
+                "confidence. Check the visible desktop, scaling and region.")
+            return None, None, None
+        x, y = image_click_point(
+            action, match, screen_size=automation.size(),
+            client_rect=client_rect)
+        return match, x, y
 
     def _preview_text(self, action):
         if self._busy():
@@ -1413,7 +1438,13 @@ class MacroWindow(QMainWindow):
                 self, "OCR preview unavailable",
                 "Close the current run or screen preview before starting OCR.")
             return
-        dialog = OCRPreviewDialog(action, self.window_target, parent=self)
+        try:
+            factory = self._wayland_preview_factory()
+        except DesktopUnavailable as exc:
+            QMessageBox.warning(self, "OCR preview unavailable", str(exc))
+            return
+        dialog = OCRPreviewDialog(action, self.window_target, parent=self,
+                                  capture_factory=factory)
         self.ocr_preview = dialog
         dialog.finished.connect(self._ocr_preview_closed)
         self._set_status("Live local OCR preview (read-only).")
@@ -1425,6 +1456,7 @@ class MacroWindow(QMainWindow):
                           else None)
 
     def _ocr_preview_closed(self, _result):
+        self._close_wayland_preview_guard()
         self.ocr_preview = None
         self._update_controls()
 
@@ -1504,14 +1536,23 @@ class MacroWindow(QMainWindow):
             return
         # Match playback: resolve client-relative coordinates inside the preview
         # worker without activating or sending input to the target window.
-        dialog = RegionMonitorDialog(action, window_target=self.window_target)
+        try:
+            factory = self._wayland_preview_factory()
+        except DesktopUnavailable as exc:
+            QMessageBox.warning(self, "Monitoring preview unavailable", str(exc))
+            return
+        dialog = RegionMonitorDialog(action, window_target=self.window_target,
+                                     capture_factory=factory)
         self.region_monitor = dialog
         self._monitor_restore_state = None
         dialog.finished.connect(self._monitor_closed)
         self._set_status("Testing screen-region detection (read-only).")
         self._update_controls()
         dialog.show()
-        dialog.position_away_from_region()
+        if factory is None:
+            dialog.position_away_from_region()
+        else:
+            dialog.overlap_warning.setText("Move the preview outside the monitored region; Wayland controls window placement.")
         # Match the playback visibility preference; screen-selection visibility
         # controls picking, not this live test. The preview itself remains shown.
         if (self.minimize_on_run.isChecked() and self.isVisible()
@@ -1527,6 +1568,7 @@ class MacroWindow(QMainWindow):
         )
 
     def _monitor_closed(self, _result):
+        self._close_wayland_preview_guard()
         dialog = self.region_monitor
         self.region_monitor = None
         state = self._monitor_restore_state
@@ -1553,6 +1595,12 @@ class MacroWindow(QMainWindow):
         if self._busy():
             return
         try:
+            if wayland_trial_enabled():
+                result = self._wayland_editor_operation(
+                    lambda guard, stopped: (guard.test_move(stopped, x, y), True)[1])
+                if result:
+                    self._set_status(f"Moved pointer to ({x}, {y}).")
+                return
             automation = get_automation()
             if self.window_target and self.window_target["relative"]:
                 binding = WindowBinding(self.window_target)
@@ -1563,12 +1611,15 @@ class MacroWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, "Mouse movement unavailable", str(exc))
 
-    def _begin_screen_selection(self):
+    def _begin_screen_selection(self, *, native=False):
         """Temporarily change editor visibility for a point or region pick."""
         if self._busy():
             return False
         try:
-            require_legacy_desktop("Screen selection")
+            if native:
+                self._require_wayland_editor()
+            else:
+                require_legacy_desktop("Screen selection")
         except DesktopUnavailable as exc:
             QMessageBox.warning(self, "Screen selection unavailable", str(exc))
             return False
@@ -1603,6 +1654,16 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def _pick_region(self):
+        if wayland_trial_enabled():
+            try:
+                result = self._wayland_select(point_mode=False)
+                if result is not None:
+                    _, region = result
+                    self.inspector.update_picked_region(*region)
+                    self._set_status("Region selected. Choose Apply changes to save.")
+            except Exception as exc:
+                QMessageBox.warning(self, "Region selection unavailable", str(exc))
+            return
         if not self._begin_screen_selection():
             return
         self._set_status("Drag to select a region · Esc to cancel.")
@@ -1664,14 +1725,17 @@ class MacroWindow(QMainWindow):
             # inserting the action (which requires a valid reference path).
             loop = QEventLoop(self)
             result = [None]
+            completed = [False]
 
             def finished(path):
                 result[0] = path
+                completed[0] = True
                 loop.quit()
 
             if not self._start_reference_capture(finished):
                 return None
-            loop.exec()
+            if not completed[0]:
+                loop.exec()
             return result[0]
         return None
 
@@ -1692,6 +1756,18 @@ class MacroWindow(QMainWindow):
         self._start_reference_capture(assigned)
 
     def _start_reference_capture(self, finished):
+        if wayland_trial_enabled():
+            path = None
+            try:
+                result = self._wayland_select(point_mode=False)
+                if result is not None:
+                    image, (x, y, width, height) = result
+                    path = save_reference_capture(
+                        image.crop((x, y, x + width, y + height)), self.capture_assets_dir)
+            except Exception as exc:
+                QMessageBox.warning(self, "Cannot capture reference image", str(exc))
+            finished(path)
+            return True
         if not self._begin_screen_selection():
             return False
         self._set_status("Drag to capture a reference image · Esc to cancel.")
@@ -1730,6 +1806,18 @@ class MacroWindow(QMainWindow):
         return True
 
     def _pick_coordinates(self, mode):
+        if wayland_trial_enabled():
+            try:
+                result = self._wayland_select(point_mode=True)
+                if result is not None:
+                    image, (x, y) = result
+                    color = ("#{:02X}{:02X}{:02X}".format(*image.getpixel((x, y)))
+                             if mode == "pixel" else None)
+                    self.inspector.update_picked_coordinates(mode, x, y, color)
+                    self._set_status(f"Captured ({x}, {y}). Choose Apply changes to save.")
+            except Exception as exc:
+                QMessageBox.warning(self, "Screen capture unavailable", str(exc))
+            return
         if not self._begin_screen_selection():
             return
         self._set_status("Move the pointer to the target — capturing in 3 seconds…")
@@ -1756,6 +1844,93 @@ class MacroWindow(QMainWindow):
                 QMessageBox.warning(self, "Screen capture unavailable", str(error))
 
         QTimer.singleShot(3000, finish)
+
+    def _require_wayland_editor(self):
+        if self.window_target is not None:
+            raise DesktopUnavailable("Clear the window target before using Wayland editor tools.")
+        single_screen()
+
+    def _wayland_preview_factory(self):
+        if not wayland_trial_enabled():
+            return None
+        self._require_wayland_editor()
+        self._wayland_preview_guard = WaylandRunGuard(self)
+        return self._wayland_preview_guard.capture_factory
+
+    def _close_wayland_preview_guard(self):
+        if self._wayland_preview_guard is not None:
+            self._wayland_preview_guard.close()
+            self._wayland_preview_guard = None
+
+    def _wayland_worker_result(self, operation):
+        worker = EditorWorker(operation, self)
+        self._wayland_editor_worker = worker
+        loop = QEventLoop(self)
+        worker.finished.connect(loop.quit)
+        self._set_status("Waiting for Wayland permission and capture…")
+        try:
+            QTimer.singleShot(150, worker.start)
+            loop.exec()
+            if worker.stopped.is_set():
+                return None
+            if worker.error is not None:
+                raise worker.error
+            return worker.result
+        finally:
+            self._wayland_editor_worker = None
+            worker.deleteLater()
+
+    def _wayland_editor_operation(self, operation):
+        if self._busy():
+            return None
+        self._require_wayland_editor()
+        guard = WaylandRunGuard(self)
+        self._screen_selection_active = True
+        self._update_controls()
+        try:
+            result = self._wayland_worker_result(lambda stopped: operation(guard, stopped))
+            guard.check()
+            return result
+        finally:
+            guard.close()
+            self._end_screen_selection()
+
+    @staticmethod
+    def _wayland_image_match(guard, stopped, action):
+        with guard.capture_factory(stopped) as screenshot:
+            match = locate_image(action, screenshot)
+            return match, (image_click_point(action, match, screen_size=guard.size)
+                           if match is not None else None)
+
+    def _wayland_select(self, *, point_mode):
+        if not self._begin_screen_selection(native=True):
+            return None
+        guard = None
+        try:
+            guard = WaylandRunGuard(self)
+
+            def snapshot(stopped):
+                with guard.capture_factory(stopped) as screenshot:
+                    return screenshot()
+
+            image = self._wayland_worker_result(snapshot)
+            if image is None:
+                return None
+            guard.check()
+            picker = SnapshotPicker(image, point_mode, self)
+            self._wayland_picker = picker
+            try:
+                if picker.exec() != QDialog.DialogCode.Accepted:
+                    return None
+                guard.check()
+                return image, picker.selection
+            finally:
+                self._wayland_picker = None
+                picker.deleteLater()
+        finally:
+            if guard is not None:
+                guard.close()
+            self._end_screen_selection()
 
     def _start_hotkeys(self):
         try:
@@ -1938,6 +2113,14 @@ class MacroWindow(QMainWindow):
         self._update_controls()
 
     def closeEvent(self, event):
+        if self._wayland_editor_worker is not None:
+            self._wayland_editor_worker.stop()
+            event.ignore()
+            return
+        if self._wayland_picker is not None:
+            self._wayland_picker.reject()
+            event.ignore()
+            return
         if self.recording:
             self._drain_capture()
         if not self._confirm_unsaved():
