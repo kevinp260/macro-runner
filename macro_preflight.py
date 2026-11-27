@@ -19,7 +19,7 @@ from macro_files import FILE_KINDS, validate_file_action
 from macro_variables import validate_references, unset_warnings
 from macro_windows import WindowBinding, WindowManager, WindowUnavailable
 from macro_ocr import check_engine as check_ocr_engine, OCRError
-from macro_platform import desktop_platform
+from macro_platform import DESKTOP_ACTIONS, DesktopUnavailable, desktop_platform
 
 
 @dataclass(frozen=True)
@@ -121,7 +121,8 @@ def _geometry_issues(action, index, screen_size, findings):
 
 def inspect_workflow(actions, *, start_index=0, screen_size=None,
                      platform_name=None, session_type=None, window_target=None,
-                     window_manager=None, variables=None, variable_overrides=None):
+                     window_manager=None, variables=None, variable_overrides=None,
+                     wayland_ready=False, wayland_error=None):
     """Return pre-run findings in workflow order, without performing actions.
 
     The same model and structural checks as MacroExecutor are applied first.
@@ -183,21 +184,30 @@ def inspect_workflow(actions, *, start_index=0, screen_size=None,
         findings.append(PreflightFinding(
             "error", start_index, "No enabled executable actions from this position."))
 
-    desktop_actions = {"click", "move", "drag", "scroll", "key", "key_down",
-                       "key_up", "click_image", "watch_start", "wait_until",
-                       "if_start", "until_start", "clipboard_paste",
-                       "find_text", "wait_text"}
-    active = normalized[start_index:]
     platform_name = platform_name if platform_name is not None else sys.platform
-    # The caller supplies session context; keep inspection deterministic in
-    # headless tests and other callers that omit it.
-    if (desktop_platform(platform_name, {"XDG_SESSION_TYPE": session_type or ""})
-            == "wayland" and
-            any(a.enabled and a.kind in desktop_actions for a in active)):
-        findings.append(PreflightFinding(
-            "error", None,
-            "Desktop input and screen capture are not yet supported on Wayland. "
-            "Use an X11 session for this workflow."))
+    if desktop_platform(platform_name, {"XDG_SESSION_TYPE": session_type or ""}) == "wayland":
+        # Include the full workflow: repeated blocks can revisit earlier actions.
+        desktop_needed = any(a.enabled and a.kind in DESKTOP_ACTIONS for a in normalized)
+        if wayland_ready:
+            from macro_wayland_automation import validate_wayland_action
+            if window_target is not None:
+                findings.append(PreflightFinding("error", None,
+                    "Window targeting is not supported on Wayland. Clear the target explicitly."))
+            for index, action in enumerate(normalized):
+                if action.enabled:
+                    try:
+                        validate_wayland_action(action)
+                    except DesktopUnavailable as exc:
+                        findings.append(PreflightFinding("error", index, str(exc)))
+            if desktop_needed:
+                findings.append(PreflightFinding("warning", None,
+                    "Wayland trial: authorize keyboard, pointer and screen access. "
+                    "Input goes to the active desktop. Keep hands off during playback; "
+                    "use Stop or revoke control through the GNOME sharing indicator."))
+        elif desktop_needed:
+            findings.append(PreflightFinding("error", None, wayland_error or
+                "Desktop input and screen capture are not yet enabled on Wayland. "
+                "Use an X11 session for this workflow."))
 
     # Window waits are read-only checks; they do not require their window
     # to exist when a workflow starts. Verify the backend is available

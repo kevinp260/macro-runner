@@ -29,7 +29,8 @@ class MacroExecutor:
                  on_diagnostic=None, on_failure_capture=None,
                  breakpoints=(), debug_gap=0.0,
                  window_target=None, window_manager=None,
-                 clipboard=None, variables=None, variable_overrides=None):
+                 clipboard=None, variables=None, variable_overrides=None,
+                 wayland_factory=None):
         self.actions = [validate_action(asdict(a)) for a in actions]
         validate_flow(self.actions)
         self.variables = VariableContext(
@@ -57,6 +58,9 @@ class MacroExecutor:
             ("loop_start", "loop_end", "if_start", "if_end", "else",
              "until_start", "until_end", "watch_start", "watch_end"))
         self.debug_gap = float(debug_gap)
+        if wayland_factory is not None and (window_target is not None or automation is not None):
+            raise DesktopUnavailable("Wayland playback cannot use window targeting or an injected legacy adapter.")
+        self.wayland_factory = wayland_factory
         self.window_binding = (WindowBinding(window_target, manager=window_manager)
                                if window_target is not None else None)
         self.clipboard = clipboard
@@ -235,6 +239,9 @@ class MacroExecutor:
     def _execute(self, a):
         original = a
         a = self.variables.resolve(a)
+        if self.wayland_factory is not None:
+            from macro_wayland_automation import validate_wayland_action
+            validate_wayland_action(a)
         # Opening apps/files/URLs and setting clipboard text do not need
         # PyAutoGUI or a configured global input session.
         pag = self._pag() if a.kind not in (
@@ -419,7 +426,14 @@ class MacroExecutor:
 
     def run(self):
         success, message = False, "Stopped."
+        managed = None
         try:
+            if self.wayland_factory is not None:
+                from macro_wayland_automation import validate_wayland_action
+                for action in self.actions:
+                    if action.enabled:
+                        validate_wayland_action(action)
+
             # Launch-only workflows can work without an available display
             # automation backend; input, screen watchers and conditions still
             # load PyAutoGUI as before.
@@ -428,6 +442,10 @@ class MacroExecutor:
                           "loop_end", "else", "if_end", "until_end", "watch_end"}
             if any(a.enabled and a.kind not in (no_desktop | FILE_KINDS)
                    for a in self.actions):
+                if self.wayland_factory is not None:
+                    managed = self.wayland_factory(self.gate)
+                    self.automation = managed.__enter__()
+                    self.gate.health_check = managed.check
                 pag = self._pag()
                 self.held = HeldKeys(pag.keyDown, pag.keyUp)
             remaining = self.start_delay
@@ -469,6 +487,7 @@ class MacroExecutor:
                                        cycle=repeat + 1)
                     finally:
                         self.gate.end_action()
+            self.gate._check_health()
             success, message = True, "Workflow completed."
         except Exception as exc:
             stopped = self.gate.stopped.is_set() or str(exc) == "Stopped"
@@ -476,7 +495,10 @@ class MacroExecutor:
             if not stopped:
                 self._emit("action_error", index=self._active_index,
                            error=safe_error_code(exc))
-                if self.on_failure_capture is not None:
+                if (self.on_failure_capture is not None and
+                        (self.wayland_factory is None or
+                         (managed is not None and self.automation is managed and
+                          not isinstance(exc, DesktopUnavailable)))):
                     try:
                         image = self._pag().screenshot()
                         self.on_failure_capture(image)
@@ -484,7 +506,16 @@ class MacroExecutor:
                         self._emit("screenshot_unavailable",
                                    error=safe_error_code(capture_exc))
         finally:
-            if self.held:
+            self.gate.health_check = None
+            if managed is not None:
+                try:
+                    if not managed.close():
+                        success = False
+                        message += " Warning: Wayland session cleanup could not be confirmed."
+                except Exception:
+                    success = False
+                    message += " Warning: Wayland session cleanup could not be confirmed."
+            elif self.held:
                 errors = self.held.release_all()
                 if errors:
                     message += " Warning: unable to release some held keys."

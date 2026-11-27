@@ -50,6 +50,7 @@ class PlaybackGate:
         self._step_tokens = 0
         self._step_active = False
         self._in_action = False
+        self.health_check = None  # Worker-only, optional desktop session check.
 
     @property
     def paused(self):
@@ -97,17 +98,21 @@ class PlaybackGate:
 
     def begin_action(self):
         """Wait until running or a single-step token is granted."""
-        with self._condition:
-            while self._paused and self._step_tokens == 0 and not self.stopped.is_set():
-                self._condition.wait(0.05)
-            if self.stopped.is_set():
-                raise RuntimeError("Stopped")
-            self._in_action = True
-            if self._paused:
-                self._step_tokens -= 1
-                self._step_active = True
-            else:
-                self._step_active = False
+        while True:
+            self._check_health()
+            with self._condition:
+                if self.stopped.is_set():
+                    raise RuntimeError("Stopped")
+                if self._paused and self._step_tokens == 0:
+                    self._condition.wait(0.05)
+                    continue
+                self._in_action = True
+                if self._paused:
+                    self._step_tokens -= 1
+                    self._step_active = True
+                else:
+                    self._step_active = False
+                return
 
     def end_action(self):
         """Release single-step permission at the action boundary."""
@@ -118,14 +123,21 @@ class PlaybackGate:
             self._condition.notify_all()
             return was_step and self._paused
 
-    def wait(self, duration):
+    def _check_health(self):
+        if self.stopped.is_set():
+            raise RuntimeError("Stopped")
+        if self.health_check is not None:
+            self.health_check()
+
+    def wait(self, duration, *, abort_on_pause=False):
         """Wait for active time; Stop interrupts, a Step runs to completion."""
         remaining = max(0.0, float(duration))
         while True:
-            if self.stopped.is_set():
-                raise RuntimeError("Stopped")
+            self._check_health()
             with self._condition:
                 if self._paused and not self._step_active:
+                    if abort_on_pause:
+                        raise RuntimeError("Paused during held pointer movement")
                     self._condition.wait(0.05)
                     continue
             if remaining <= 0:
