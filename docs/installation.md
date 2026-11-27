@@ -23,8 +23,7 @@ application and app-menu launcher, but leaves shared APT libraries installed.
 
 ## Ubuntu: standalone .deb
 
-Download `macrorunner_<version>_amd64.deb` from the GitHub Actions
-**Build desktop installers** workflow and run:
+Download `macrorunner_<version>_amd64.deb` from GitHub Releases (or the **Build desktop installers** workflow for development builds) and run:
 
 ```bash
 sudo apt install ./macrorunner_<version>_amd64.deb
@@ -34,17 +33,16 @@ APT automatically resolves the declared native Qt/X11 and screenshot
 dependencies. The package includes the application executable, bundled Python
 runtime and Python packages, application-menu entry and icon.
 
-The .deb is built and tested for **Ubuntu 24.04 amd64**. Xorg/X11 is recommended
-for reliable desktop input automation. Other Linux distributions and Wayland
-are not guaranteed. Remove with `sudo apt remove macrorunner`.
+The .deb is built and tested for **Ubuntu 24.04 amd64**. Xorg/X11 is required
+for supported desktop input automation. Wayland desktop automation is not supported.
+Other Linux distributions are not guaranteed. Remove with `sudo apt remove macrorunner`.
 
 **Choose one Ubuntu installation method.** pipx and the .deb both expose
 `macro-runner` commands; uninstall one before switching.
 
 ## Windows
 
-Download `MacroRunner-Setup-<version>.exe` from the same GitHub Actions
-workflow. Run it to install the Windows application, Start Menu shortcut and
+Download `MacroRunner-Setup-<version>.exe` from GitHub Releases (or the same GitHub Actions workflow for development builds). Run it to install the Windows application, Start Menu shortcut and
 Desktop shortcut. Python and Qt are bundled in the executable; users do not
 need to install Python or Qt separately.
 
@@ -68,7 +66,7 @@ $version = (& .venv\Scripts\python -m macro_version).Trim()
 ```
 
 GitHub Actions builds both formats and uploads separate downloadable artifacts.
-On an approved version tag (such as `v2.1.0`), CI verifies the tag matches
+On an approved version tag (such as `v2.4.0`), CI verifies the tag matches
 `pyproject.toml`, runs tests, and publishes both installers on GitHub Releases.
 Merging a branch alone never publishes a release. See [release process](releasing.md)
 and [changelog](../CHANGELOG.md).
