@@ -4,8 +4,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QRect
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QRect, QTimer
+from PySide6.QtWidgets import QApplication, QDialog
 
 from macro_platform import DesktopUnavailable
 from macro_qt_wayland import (WaylandRunGuard, single_screen, image_point,
@@ -125,3 +125,61 @@ class EditorTests(unittest.TestCase):
             session.move_absolute.assert_called_once_with(2, 3)
             self.assertEqual(session_cm.__exit__.call_count, 2)
             self.assertEqual(capture_cm.__exit__.call_count, 2)
+
+
+class SnapshotLifecycleTests(unittest.TestCase):
+    def test_editor_restored_before_picker_and_after_accept_or_cancel(self):
+        from macro_qt import MacroWindow
+        from qt_test_helpers import close_test_window
+
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        original_mode = window.settings.value("selection_window_mode")
+        image = Image.new("RGB", (20, 10))
+        try:
+            for mode in ("hide", "minimize", "show"):
+                for accept in (True, False):
+                    with self.subTest(mode=mode, accept=accept):
+                        window.showNormal()
+                        app.processEvents()
+                        window.settings.setValue("selection_window_mode", mode)
+                        observations = []
+
+                        def capture(operation):
+                            observations.append(
+                                ("capture", window.isVisible(), window.isMinimized()))
+                            return image
+
+                        class Picker(SnapshotPicker):
+                            def exec(self):
+                                observations.append(
+                                    ("picker", window.isVisible(), window.isMinimized(),
+                                     window._busy()))
+                                QTimer.singleShot(
+                                    0, lambda: self._selected((2, 3)) if accept
+                                    else self.reject())
+                                result = super().exec()
+                                observations.append(("closed", self.isVisible()))
+                                return result
+
+                        with patch.object(window, "_require_wayland_editor"), patch(
+                                "macro_qt.WaylandRunGuard"), patch.object(
+                                window, "_wayland_worker_result", side_effect=capture), patch(
+                                "macro_qt.SnapshotPicker", Picker):
+                            result = window._wayland_select(point_mode=True)
+
+                        self.assertEqual(observations[0],
+                                         ("capture", mode != "hide", mode == "minimize"))
+                        self.assertEqual(observations[1], ("picker", True, False, True))
+                        self.assertEqual(observations[2], ("closed", False))
+                        self.assertEqual(result, (image, (2, 3)) if accept else None)
+                        self.assertIsNone(window._wayland_picker)
+                        self.assertTrue(window.isVisible())
+                        self.assertFalse(window.isMinimized())
+                        self.assertFalse(window._busy())
+        finally:
+            if original_mode is None:
+                window.settings.remove("selection_window_mode")
+            else:
+                window.settings.setValue("selection_window_mode", original_mode)
+            close_test_window(window)
