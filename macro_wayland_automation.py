@@ -103,6 +103,8 @@ class WaylandAutomation:
     def check(self):
         self._geometry_check()
         self.session.check()
+        if self.gate.pause_pending and self.session.held:
+            raise DesktopUnavailable("Wayland paused with held input; run stopped for safety.")
         if self.capture is not None:
             self.capture.check()
 
@@ -215,7 +217,10 @@ class WaylandAutomation:
             self.session.key(symbol, False)
 
     def press(self, name):
-        self._chord([key_symbol(name)])
+        symbol = key_symbol(name)
+        if symbol in self.keys:
+            raise DesktopUnavailable("Cannot press a key that the Wayland run already holds.")
+        self._chord([symbol])
 
     def hotkey(self, *names):
         symbols = [key_symbol(name) for name in names]

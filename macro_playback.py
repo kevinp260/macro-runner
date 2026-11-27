@@ -57,6 +57,11 @@ class PlaybackGate:
         with self._condition:
             return self._paused
 
+    @property
+    def pause_pending(self):
+        with self._condition:
+            return self._paused and not self._step_active
+
     def pause(self):
         with self._condition:
             self._paused = True

@@ -487,7 +487,8 @@ class MacroExecutor:
                                        cycle=repeat + 1)
                     finally:
                         self.gate.end_action()
-            self.gate._check_health()
+            if managed is not None:
+                managed.check()
             success, message = True, "Workflow completed."
         except Exception as exc:
             stopped = self.gate.stopped.is_set() or str(exc) == "Stopped"
