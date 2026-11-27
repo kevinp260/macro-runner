@@ -190,11 +190,15 @@ class WaylandSession:
     persistence, automatic authorization or global shortcut registration.
     """
 
-    def __init__(self, app_id, stopped, *, portal_factory=GioPortal, devices=DEVICES):
+    def __init__(self, app_id, stopped, *, portal_factory=GioPortal, devices=DEVICES,
+                 cursor_mode=1):
         if not isinstance(app_id, str) or not app_id.strip():
             raise ValueError("An installed desktop application ID is required.")
         if type(devices) is not int or devices not in (0, 2, DEVICES):
             raise ValueError("Unsupported Wayland session device scope.")
+        if type(cursor_mode) is not int or cursor_mode not in (1, 4):
+            raise ValueError("Unsupported Wayland cursor mode.")
+        self.cursor_mode = cursor_mode
         self.devices = devices
         self.app_id = app_id
         self.stopped = stopped
@@ -254,7 +258,7 @@ class WaylandSession:
                           {"types": v("u", self.devices)})
         self._request(SCREEN, "SelectSources", "(oa{sv})", (self.handle,),
                       {"types": v("u", 1), "multiple": v("b", False),
-                       "cursor_mode": v("u", 1)})
+                       "cursor_mode": v("u", self.cursor_mode)})
         result = self._request(interface, "Start", "(osa{sv})", (self.handle, ""))
         if self.devices and result.get("devices", 0) & self.devices != self.devices:
             raise DesktopUnavailable(

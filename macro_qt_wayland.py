@@ -1,5 +1,6 @@
 """Main-thread display validation for the opt-in Wayland trial."""
 import threading
+import time
 from contextlib import contextmanager
 
 from PySide6.QtCore import QObject, QTimer, QThread, Qt, QRect, Signal
@@ -71,14 +72,27 @@ class WaylandRunGuard(QObject):
             yield capture.screenshot
 
     @contextmanager
-    def _capture_session(self, stopped, *, devices):
+    def _capture_session(self, stopped, *, devices, cursor_mode=1):
         self.check()
-        with WaylandSession(APP_ID, stopped, devices=devices) as session:
+        with WaylandSession(APP_ID, stopped, devices=devices, cursor_mode=cursor_mode) as session:
             if session.logical_size != self.size:
                 raise DesktopUnavailable("Authorized monitor differs from the editor display.")
             session.geometry_guard = self.check
             with WaylandCapture(session) as capture:
                 yield session, capture
+
+    def pick_pointer(self, stopped, announce):
+        # Wait until screen permission and the capture stream are ready.
+        # The editor remains visible and no extra picker window is created.
+        with self._capture_session(stopped, devices=0, cursor_mode=4) as (_, capture):
+            capture.screenshot()
+            announce("Move the pointer to the target — capturing in 3 seconds…")
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                capture.check()
+                if stopped.wait(min(.05, max(0, deadline - time.monotonic()))):
+                    raise RuntimeError("Stopped")
+            return capture.pointer_sample()
 
     def test_move(self, stopped, x, y):
         # Explicitly authorized pointer-only action; verify capture geometry first.
@@ -99,9 +113,12 @@ class WaylandRunGuard(QObject):
 
 class EditorWorker(QThread):
     """Own native permission and capture work outside the GUI thread."""
-    def __init__(self, operation, parent=None):
+    status = Signal(str)
+
+    def __init__(self, operation, parent=None, *, announce=False):
         super().__init__(parent)
         self.operation = operation
+        self.announce = announce
         self.stopped = threading.Event()
         self.result = None
         self.error = None
@@ -111,7 +128,10 @@ class EditorWorker(QThread):
 
     def run(self):
         try:
-            self.result = self.operation(self.stopped)
+            if self.announce:
+                self.result = self.operation(self.stopped, self.status.emit)
+            else:
+                self.result = self.operation(self.stopped)
         except Exception as exc:
             self.error = exc
 

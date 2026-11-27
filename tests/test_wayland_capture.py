@@ -1,10 +1,11 @@
 """Capture and coordinate tests with fake frames, no GI or desktop required."""
 import unittest
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from PIL import Image
 from macro_platform import DesktopUnavailable
-from macro_wayland_capture import (WaylandCapture, decode_rgbx, region_box,
+from macro_wayland_capture import (WaylandCapture, decode_rgbx, region_box, cursor_point,
                                    MAX_FRAME_AGE_NS)
 
 
@@ -63,6 +64,16 @@ class FrameTests(unittest.TestCase):
             with self.assertRaises(DesktopUnavailable):
                 decode_rgbx(raw, (2, 2), stride, offset)
 
+    def test_cursor_metadata_must_match_type_and_geometry(self):
+        meta = SimpleNamespace(roi_type=17, w=0, h=0, x=3, y=2)
+        self.assertEqual(cursor_point(meta, 17, (4, 3)), (3, 2))
+        self.assertIsNone(cursor_point(None, 17, (4, 3)))
+        self.assertIsNone(cursor_point(meta, 18, (4, 3)))
+        meta.x = 2**32 - 1
+        self.assertIsNone(cursor_point(meta, 17, (4, 3)))
+        meta.x, meta.w = 1, 1
+        self.assertIsNone(cursor_point(meta, 17, (4, 3)))
+
     def test_region_bounds(self):
         self.assertIsNone(region_box(None, (4, 3)))
         self.assertEqual(region_box((1, 1, 3, 2), (4, 3)), (1, 1, 4, 3))
@@ -93,6 +104,28 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(second.size, (2, 2))
             self.assertEqual(second.getpixel((0, 0)), (255, 0, 0))
         self.assertTrue(self.source.closed)
+
+    def test_pointer_sample_ignores_stale_and_missing_metadata(self):
+        self.session.cursor_mode = 4
+        frames = iter([(99, self.red, (0, 0)), (101, self.red, None),
+                       (102, self.blue, (3, 2))])
+
+        def read(timeout_ms):
+            timestamp, image, self.source.cursor = next(frames)
+            self.source.clock = max(self.source.clock, timestamp)
+            return timestamp, image
+
+        self.source.read = read
+        with self.capture as capture:
+            self.assertEqual(capture.pointer_sample(), ((3, 2), (0, 0, 255)))
+
+    def test_pointer_sample_never_guesses_missing_metadata(self):
+        self.session.cursor_mode = 4
+        self.source.cursor = None
+        self.source.frames = [(101, self.red)]
+        with self.capture as capture:
+            with self.assertRaisesRegex(DesktopUnavailable, "cursor metadata"):
+                capture.pointer_sample()
 
     def test_stale_frame_fails_closed(self):
         self.source.frames = [(99, self.red)]

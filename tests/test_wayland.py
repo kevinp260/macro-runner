@@ -114,6 +114,14 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(self.inputs())
         self.assertTrue(self.portal.closed)
 
+    def test_read_only_cursor_metadata_requested_explicitly(self):
+        session = WaylandSession("test.desktop", self.stop, devices=0, cursor_mode=4,
+                                 portal_factory=lambda _: self.portal)
+        with session:
+            self.assertEqual(session.cursor_mode, 4)
+        self.assertEqual(self.portal.requests[1][4]["cursor_mode"], 4)
+        self.assertFalse(self.inputs())
+
     def test_pointer_only_session_rejects_keyboard(self):
         self.portal.grant["devices"] = 2
         session = WaylandSession("test.desktop", self.stop, devices=2,

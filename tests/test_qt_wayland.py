@@ -97,6 +97,33 @@ class EditorTests(unittest.TestCase):
         self.assertIsInstance(worker.error, DesktopUnavailable)
         self.assertIsNone(worker.result)
 
+    def test_timed_pointer_pick_does_not_open_snapshot_dialog(self):
+        from macro_qt import MacroWindow
+        from macro_model import Action
+        from qt_test_helpers import close_test_window
+
+        with patch.object(MacroWindow, "_start_hotkeys"):
+            window = MacroWindow()
+        try:
+            window.show()
+            window.inspector.show_action(Action(kind="click", x=1, y=2))
+            guard = Mock()
+            guard.pick_pointer.return_value = ((9, 7), (12, 34, 56))
+            def operation(fn, *, announce=False):
+                self.assertTrue(announce)
+                self.assertTrue(window.isVisible())
+                self.assertFalse(window.isMinimized())
+                return fn(guard, threading.Event(), Mock())
+            with patch("macro_qt.wayland_trial_enabled", return_value=True), patch(
+                    "macro_qt.SnapshotPicker") as picker, patch.object(
+                    window, "_wayland_editor_operation", side_effect=operation):
+                window._pick_coordinates("start")
+            picker.assert_not_called()
+            self.assertEqual(window.inspector.controls["x"].text(), "9")
+            self.assertEqual(window.inspector.controls["y"].text(), "7")
+        finally:
+            close_test_window(window)
+
     def test_read_only_capture_and_pointer_test_scope(self):
         # Exercise the context factories without Qt screen queries on worker.
         guard = Mock(spec=WaylandRunGuard)

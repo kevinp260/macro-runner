@@ -1819,10 +1819,12 @@ class MacroWindow(QMainWindow):
     def _pick_coordinates(self, mode):
         if wayland_trial_enabled():
             try:
-                result = self._wayland_select(point_mode=True)
+                result = self._wayland_editor_operation(
+                    lambda guard, stopped, announce: guard.pick_pointer(stopped, announce),
+                    announce=True)
                 if result is not None:
-                    image, (x, y) = result
-                    color = ("#{:02X}{:02X}{:02X}".format(*image.getpixel((x, y)))
+                    (x, y), rgb = result
+                    color = ("#{:02X}{:02X}{:02X}".format(*rgb)
                              if mode == "pixel" else None)
                     self.inspector.update_picked_coordinates(mode, x, y, color)
                     self._set_status(f"Captured ({x}, {y}). Choose Apply changes to save.")
@@ -1873,8 +1875,9 @@ class MacroWindow(QMainWindow):
             self._wayland_preview_guard.close()
             self._wayland_preview_guard = None
 
-    def _wayland_worker_result(self, operation):
-        worker = EditorWorker(operation, self)
+    def _wayland_worker_result(self, operation, *, announce=False):
+        worker = EditorWorker(operation, self, announce=announce)
+        worker.status.connect(self._set_status)
         self._wayland_editor_worker = worker
         loop = QEventLoop(self)
         worker.finished.connect(loop.quit)
@@ -1893,7 +1896,7 @@ class MacroWindow(QMainWindow):
             self._wayland_editor_worker = None
             worker.deleteLater()
 
-    def _wayland_editor_operation(self, operation):
+    def _wayland_editor_operation(self, operation, *, announce=False):
         if self._busy():
             return None
         self._require_wayland_editor()
@@ -1901,12 +1904,18 @@ class MacroWindow(QMainWindow):
         self._screen_selection_active = True
         self._update_controls()
         try:
-            result = self._wayland_worker_result(lambda stopped: operation(guard, stopped))
+            if announce:
+                result = self._wayland_worker_result(
+                    lambda stopped, status: operation(guard, stopped, status), announce=True)
+            else:
+                result = self._wayland_worker_result(lambda stopped: operation(guard, stopped))
             guard.check()
             return result
         finally:
             guard.close()
             self._end_screen_selection()
+            if announce and self.isVisible() and not self.isMinimized():
+                self.activateWindow()
 
     @staticmethod
     def _wayland_image_match(guard, stopped, action):
