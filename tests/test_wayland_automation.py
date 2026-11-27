@@ -178,10 +178,22 @@ class AdapterTests(unittest.TestCase):
             with adapter:
                 gate.health_check = adapter.check
                 adapter.moveTo(1, 1)
-                adapter.session.on_motion = gate.pause
+                def pause_on_drag_motion():
+                    if ("button", "left") in adapter.session.held:
+                        gate.pause()
+                adapter.session.on_motion = pause_on_drag_motion
                 adapter.dragTo(5, 5, duration=.04)
         self.assertIn(("button", "left", False), adapter.session.events)
         self.assertNotIn(("move", 5, 5), adapter.session.events)
+
+    def test_pause_before_button_press_sends_no_button_event(self):
+        gate = PlaybackGate()
+        adapter = backend(gate)
+        with adapter:
+            adapter.session.on_motion = gate.pause
+            with self.assertRaisesRegex(DesktopUnavailable, "before button press"):
+                adapter.click(2, 3)
+        self.assertFalse(any(event[0] == "button" for event in adapter.session.events))
 
     def test_existing_modifier_not_released_by_chord(self):
         adapter = backend(PlaybackGate())

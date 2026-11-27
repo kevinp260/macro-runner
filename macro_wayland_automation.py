@@ -157,6 +157,8 @@ class WaylandAutomation:
         self._ready()
         # Reassert the exact target immediately before each click.
         self._move(x, y, 0)
+        if self.gate.pause_pending:
+            raise DesktopUnavailable("Wayland click interrupted before button press.")
         self.session.button(button, True)
         self.session.button(button, False)
 
@@ -166,6 +168,8 @@ class WaylandAutomation:
         if self.pointer is None:
             raise DesktopUnavailable("Wayland drag has no known start coordinates.")
         self._move(*self.pointer, 0)
+        if self.gate.pause_pending:
+            raise DesktopUnavailable("Wayland drag interrupted before button press.")
         self.session.button(button, True)
         try:
             self._move(x, y, duration, dragging=True)

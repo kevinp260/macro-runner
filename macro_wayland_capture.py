@@ -184,7 +184,11 @@ class WaylandCapture:
         self.session.check()
         if self.source is None:
             raise DesktopUnavailable("Wayland capture is not active.")
-        self.source.running_time()  # Also checks the GStreamer bus for errors.
+        try:
+            self.source.running_time()  # Also checks the GStreamer bus for errors.
+        except Exception:
+            self.session.broken = True
+            raise
 
     def screenshot(self, region=None):
         """Return an independent RGB image from a fresh, validated sample."""

@@ -1972,6 +1972,7 @@ class MacroWindow(QMainWindow):
                         "MacroRunner is still stopping the active action. "
                         "Please close again after the action finishes.")
                     return
+        self._close_wayland_guard()
         if self.hotkeys:
             self.hotkeys.stop()
         self.settings.setValue("geometry", self.saveGeometry())
