@@ -54,7 +54,7 @@ class FrameTests(unittest.TestCase):
         raw = b"abc" + bytes([255, 0, 0, 0, 0, 255, 0, 0, 9, 9, 9, 9,
                               0, 0, 255, 0, 255, 255, 255, 0, 9, 9, 9, 9])
         image = decode_rgbx(raw, (2, 2), 12, 3)
-        self.assertEqual(list(image.getdata()), [(255, 0, 0), (0, 255, 0),
+        self.assertEqual([image.getpixel((x, y)) for y in range(2) for x in range(2)], [(255, 0, 0), (0, 255, 0),
                                                 (0, 0, 255), (255, 255, 255)])
 
     def test_invalid_layout(self):
