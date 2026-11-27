@@ -1,7 +1,7 @@
 """Workflow adapter over authorized native Wayland input and capture.
 
-No global cursor query is available: remembered positions are commanded
-coordinates, not observations. The caller must keep hands off during playback.
+Timed moves start at a fresh authorized cursor observation. Drag starts
+from the explicit commanded point. Keep hands off during playback.
 """
 import math
 
@@ -71,7 +71,7 @@ class WaylandAutomation:
         self.gate = gate
         self.screen_size = screen_size
         self.invalidated = invalidated
-        self.session = session_factory(APP_ID, gate.stopped)
+        self.session = session_factory(APP_ID, gate.stopped, cursor_mode=4)
         self.capture_factory = capture_factory
         self.capture = None
         self.pointer = None
@@ -136,9 +136,15 @@ class WaylandAutomation:
         if duration == 0:
             self.session.move_absolute(x, y)
         else:
-            if self.pointer is None:
-                raise DesktopUnavailable("Use an immediate Move or Click before a timed Wayland Move.")
-            start_x, start_y = self.pointer
+            if dragging:
+                # The explicit drag origin was commanded before button down.
+                start_x, start_y = self.pointer
+            else:
+                # Observe the real pointer at action time, after start delay.
+                # Never guess from a previous command or silently jump.
+                (start_x, start_y), _ = self.capture.pointer_sample()
+                self._point(start_x, start_y)
+                self.check()
             # At most 50 motion updates per second; never build a list of steps.
             count = max(1, math.ceil(duration / .02))
             for step in range(1, count + 1):
