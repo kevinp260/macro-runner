@@ -14,7 +14,7 @@ macro-runner = "macro_runner:main"
 
 [tool.setuptools]
 packages = ["macro_ui_assets"]
-py-modules = ["macro_platform", "macro_wayland", "macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region", "macro_qt_monitor", "macro_diagnostics", "macro_qt_history", "macro_preflight", "macro_qt_preflight", "macro_recovery", "macro_windows", "macro_qt_windows", "macro_clipboard", "macro_qt_clipboard", "macro_launch", "macro_window_wait", "macro_files", "macro_variables", "macro_qt_variables", "macro_snippets", "macro_qt_snippets", "macro_packages", "macro_ocr", "macro_qt_ocr", "macro_find_replace", "macro_qt_find_replace", "macro_help", "macro_qt_help", "macro_version"]
+py-modules = ["macro_platform", "macro_wayland", "macro_wayland_capture", "macro_runner", "macro_model", "macro_playback", "macro_flow", "macro_vision", "macro_keys", "macro_editing", "macro_runtime", "macro_workflow", "macro_qt", "macro_qt_workflow", "macro_qt_properties", "macro_qt_region", "macro_qt_monitor", "macro_diagnostics", "macro_qt_history", "macro_preflight", "macro_qt_preflight", "macro_recovery", "macro_windows", "macro_qt_windows", "macro_clipboard", "macro_qt_clipboard", "macro_launch", "macro_window_wait", "macro_files", "macro_variables", "macro_qt_variables", "macro_snippets", "macro_qt_snippets", "macro_packages", "macro_ocr", "macro_qt_ocr", "macro_find_replace", "macro_qt_find_replace", "macro_help", "macro_qt_help", "macro_version"]
 
 [tool.setuptools.package-data]
 macro_ui_assets = ["*.svg"]
