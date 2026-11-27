@@ -1,10 +1,22 @@
 """Lazy desktop integration boundary for the supported legacy platforms.
 
 Automation follows the existing PyAutoGUI method contract so callers can
-continue injecting fake implementations. Native Wayland is not enabled yet.
+continue injecting fake implementations. Native Wayland playback is opt-in during QA.
 """
 import os
 import sys
+
+
+DESKTOP_ACTIONS = frozenset({
+    "click", "move", "drag", "scroll", "key", "key_down", "key_up",
+    "click_image", "watch_start", "wait_until", "if_start", "until_start",
+    "clipboard_paste", "find_text", "wait_text",
+})
+
+
+def wayland_trial_enabled():
+    return (desktop_platform() == "wayland" and
+            os.environ.get("MACRORUNNER_WAYLAND_EXPERIMENTAL") == "1")
 
 
 class DesktopUnavailable(RuntimeError):

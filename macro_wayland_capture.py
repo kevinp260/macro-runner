@@ -154,7 +154,7 @@ class GstFrameSource:
 
 
 class WaylandCapture:
-    """Single-use capture owner. Close before the outer portal session exits."""
+    """Single-use capture owner; close the pipeline and its owned descriptor."""
 
     def __init__(self, session, *, source_factory=GstFrameSource, timeout=3.0):
         if not 0 < timeout <= 10:
@@ -178,6 +178,16 @@ class WaylandCapture:
         except BaseException:
             self.session.broken = True
             self.close()
+            raise
+
+    def check(self):
+        self.session.check()
+        if self.source is None:
+            raise DesktopUnavailable("Wayland capture is not active.")
+        try:
+            self.source.running_time()  # Also checks the GStreamer bus for errors.
+        except Exception:
+            self.session.broken = True
             raise
 
     def screenshot(self, region=None):

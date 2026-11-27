@@ -43,7 +43,9 @@ from macro_version import app_version
 from macro_runtime import MacroExecutor
 from macro_platform import (DesktopUnavailable, desktop_platform, get_automation,
                             require_legacy_desktop, create_hotkeys,
-                            create_mouse_listener, create_keyboard_listener)
+                            create_mouse_listener, create_keyboard_listener,
+                            DESKTOP_ACTIONS, wayland_trial_enabled)
+from macro_qt_wayland import WaylandRunGuard, single_screen
 from macro_preflight import inspect_workflow
 from macro_recovery import RecoveryStore, atomic_json_write
 from macro_windows import (WindowBinding, WindowManager, WindowUnavailable,
@@ -257,6 +259,7 @@ class MacroWindow(QMainWindow):
         self._recovery_warning_shown = False
         self._recovery_locked = False
         self.executor = None
+        self._wayland_guard = None
         self._restore_after_run = False
         self._debug_window_visible = False
         self.run_signals = WorkerSignals()
@@ -1217,18 +1220,25 @@ class MacroWindow(QMainWindow):
         # Use the same physical coordinates as PyAutoGUI, not Qt's
         # DPI-scaled logical screen geometry. Checking size sends no input.
         screen_size = None
-        try:
-            dimensions = get_automation().size()
-            screen_size = (int(dimensions[0]), int(dimensions[1]))
-        except Exception:
-            # Restricted desktops may prevent geometry lookup; no unsupported
-            # assumption about monitor bounds should block a workflow.
-            pass
+        wayland_ready, wayland_error = False, None
+        if wayland_trial_enabled():
+            try:
+                _, screen_size = single_screen()
+                wayland_ready = True
+            except DesktopUnavailable as exc:
+                wayland_error = str(exc)
+        else:
+            try:
+                dimensions = get_automation().size()
+                screen_size = (int(dimensions[0]), int(dimensions[1]))
+            except Exception:
+                pass  # Geometry is advisory on legacy platforms.
         findings = inspect_workflow(
             self.actions, start_index=start_index, screen_size=screen_size,
             session_type=desktop_platform(),
             window_target=self.window_target, variables=self.variables,
-            variable_overrides=self.variable_overrides)
+            variable_overrides=self.variable_overrides,
+            wayland_ready=wayland_ready, wayland_error=wayland_error)
         if not findings:
             return True
 
@@ -1250,14 +1260,24 @@ class MacroWindow(QMainWindow):
             repeats = 1 if (start_selected or step_mode) else self.repeats.value()
             if not self._validate_before_run(begin):
                 return
+            wayland_factory = None
+            delay = self.delay.value()
+            if wayland_trial_enabled() and any(
+                    a.enabled and a.kind in DESKTOP_ACTIONS for a in self.actions):
+                self._wayland_guard = WaylandRunGuard(self)
+                wayland_factory = self._wayland_guard.factory
+                # Give the user time to focus the target after consent.
+                if not step_mode:
+                    delay = max(3, delay)
             self.executor = MacroExecutor(
-                self.actions, repeats, self.delay.value(),
+                self.actions, repeats, delay,
                 self.run_signals.progress.emit, self.run_signals.finished.emit,
                 start_index=begin, step_mode=step_mode,
                 breakpoints=self.tree.breakpoint_indices(), debug_gap=self.debug_gap.value(),
                 window_target=self.window_target,
                 clipboard=self.clipboard_client, variables=self.variables,
                 variable_overrides=self.variable_overrides,
+                wayland_factory=wayland_factory,
                 on_diagnostic=self.run_signals.diagnostic.emit,
                 on_failure_capture=(self.run_signals.failure_capture.emit
                     if self.settings.value("diagnostics_capture_errors", False, type=bool)
@@ -1271,7 +1291,8 @@ class MacroWindow(QMainWindow):
             self._debug_window_visible = False
             # Hide the editor before the start delay begins. Restore only if
             # this run minimized the window, not if the user did so manually.
-            self._restore_after_run = self.minimize_on_run.isChecked() and not self.isMinimized()
+            self._restore_after_run = (wayland_factory is None and
+                                       self.minimize_on_run.isChecked() and not self.isMinimized())
             if self._restore_after_run:
                 self.showMinimized()
             try:
@@ -1284,6 +1305,7 @@ class MacroWindow(QMainWindow):
             self._set_status("Paused — Step to advance" if step_mode else "Running…")
             self._update_controls()
         except (ValueError, RuntimeError) as exc:
+            self._close_wayland_guard()
             self.executor = None
             self._run_session = None
             self._pending_failure_capture = None
@@ -1440,7 +1462,13 @@ class MacroWindow(QMainWindow):
             self.raise_()
             self.activateWindow()
 
+    def _close_wayland_guard(self):
+        if self._wayland_guard is not None:
+            self._wayland_guard.close()
+            self._wayland_guard = None
+
     def _finished(self, success, message):
+        self._close_wayland_guard()
         is_stopped = (not success and
                       (message == "Stopped." or
                        (self.executor is not None and
@@ -1944,6 +1972,7 @@ class MacroWindow(QMainWindow):
                         "MacroRunner is still stopping the active action. "
                         "Please close again after the action finishes.")
                     return
+        self._close_wayland_guard()
         if self.hotkeys:
             self.hotkeys.stop()
         self.settings.setValue("geometry", self.saveGeometry())
@@ -1977,6 +2006,9 @@ def _windows_single_instance():
 
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
+    if wayland_trial_enabled():
+        from macro_wayland_automation import APP_ID
+        app.setDesktopFileName(APP_ID)
     app.setApplicationName("MacroRunner")
     app.setOrganizationName("MacroRunner")
     app.setApplicationVersion(app_version())

@@ -206,6 +206,7 @@ class WaylandSession:
         self.used = False
         self.capture_opened = False
         self.held = []
+        self.geometry_guard = None
 
     def __enter__(self):
         if self.used:
@@ -272,6 +273,8 @@ class WaylandSession:
         if not self.active or self.broken:
             raise DesktopUnavailable("Wayland desktop session is not active.")
         self.portal.pump()
+        if self.geometry_guard is not None:
+            self.geometry_guard()
         if self.stopped.is_set():
             raise RuntimeError("Stopped")
         if self.revoked:
