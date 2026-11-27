@@ -3,7 +3,9 @@
 Notable MacroRunner changes are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
 
-## [Unreleased]
+## [2.4.0] — Pending publication
+
+Consolidates the completed v2.2–v2.4 roadmaps and the previously unpublished v2.1.0 installer/editor improvements.
 
 - Added **Capture…** beside **Browse…** for image-based actions: draw a rectangle to save a unique local PNG and assign it as the reference image, without changing the search region. Click Image offers Browse/Capture when inserted (Issue #87).
 
@@ -70,12 +72,11 @@ Notable MacroRunner changes are recorded here. Versions follow
   differences, confirmation rules, and A→B→A state transitions before
   executing macros (Issue #35).
 
-## [2.1.0] — Pending release
+### Installer and editor foundation (previously planned for v2.1.0)
 
-This version is prepared but **not published** until desktop QA is complete
-and a maintainer creates the matching `v2.1.0` tag.
+These changes are included in the consolidated v2.4.0 release.
 
-### Added
+#### Added
 - Native Ubuntu `.deb` and Windows Inno Setup installer builds, with automated
   packaging and startup smoke tests.
 - Optional minimize-on-playback preference, remembered between sessions.
@@ -86,7 +87,7 @@ and a maintainer creates the matching `v2.1.0` tag.
   during screen selection and coordinate/pixel picking.
 - Application version display via Help → About MacroRunner.
 
-### Improved
+#### Improved
 - Ubuntu source installer detects missing system dependencies and asks
   permission before installing them.
 - Rounded panel gutters, inspector minimum widths, label spacing, and
@@ -95,7 +96,7 @@ and a maintainer creates the matching `v2.1.0` tag.
   controls.
 - Version synchronization across Python packaging, Ubuntu, and Windows.
 
-### Fixed
+#### Fixed
 - Preserve the last confirmed screen-region screenshot between monitoring
   cycles; changes during nested action execution are no longer discarded by
   automatically resetting the baseline.
