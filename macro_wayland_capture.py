@@ -42,6 +42,17 @@ def region_box(region, size):
     return x, y, x + width, y + height
 
 
+def cursor_point(meta, cursor_type, size):
+    """Accept only a cursor ROI in the authorized pixel coordinate space."""
+    if (meta is None or meta.roi_type != cursor_type or
+            meta.w != 0 or meta.h != 0):
+        return None
+    x, y = meta.x, meta.y
+    if 0 <= x < size[0] and 0 <= y < size[1]:
+        return x, y
+    return None
+
+
 class GstFrameSource:
     """The only GStreamer-specific boundary; owns the remote FD and pipeline."""
 
@@ -51,10 +62,12 @@ class GstFrameSource:
             gi.require_version("Gst", "1.0")
             gi.require_version("GstApp", "1.0")
             gi.require_version("GstVideo", "1.0")
-            from gi.repository import Gst, GstApp, GstVideo
+            from gi.repository import GLib, Gst, GstApp, GstVideo
         except (ImportError, ValueError) as exc:
             raise DesktopUnavailable("Wayland capture requires GStreamer, PipeWire and GI typelibs.") from exc
         self.gst, self.video = Gst, GstVideo
+        self.cursor_type = GLib.quark_from_string("cursor")
+        self.cursor = None
         self.session = session
         self.pipeline = None
         self.sink = None
@@ -97,6 +110,7 @@ class GstFrameSource:
         return now - base
 
     def read(self, timeout_ms):
+        self.cursor = None  # Never reuse metadata from another sample.
         gst = self.gst
         self._check_stream()
         sample = self.sink.try_pull_sample(timeout_ms * gst.MSECOND)
@@ -126,6 +140,11 @@ class GstFrameSource:
             length = buf.get_size()
             if not 0 < length <= MAX_FRAME_BYTES:
                 raise DesktopUnavailable("Invalid Wayland frame buffer size.")
+            if self.session.cursor_mode == 4:
+                # PipeWire 1.6.2 exposes SPA_META_Cursor as a zero-size ROI
+                # named cursor (GStreamer initializes ROI id to zero).
+                cursor = self.video.buffer_get_video_region_of_interest_meta_id(buf, 0)
+                self.cursor = cursor_point(cursor, self.cursor_type, size)
             raw = buf.extract_dup(0, length)
             return timestamp, decode_rgbx(raw, size, stride, offset)
         except DesktopUnavailable:
@@ -192,11 +211,26 @@ class WaylandCapture:
 
     def screenshot(self, region=None):
         """Return an independent RGB image from a fresh, validated sample."""
+        try:
+            box = region_box(region, self.session.logical_size)
+            image, _ = self._fresh_frame()
+            return image.crop(box) if box is not None else image.copy()
+        except BaseException:
+            self.session.broken = True
+            raise
+
+    def pointer_sample(self):
+        """Return coordinates and underlying RGB pixel from the same fresh frame."""
+        if self.session.cursor_mode != 4:
+            raise DesktopUnavailable("Wayland cursor metadata was not requested.")
+        image, point = self._fresh_frame(require_cursor=True)
+        return point, image.getpixel(point)
+
+    def _fresh_frame(self, *, require_cursor=False):
         if self.source is None:
             raise DesktopUnavailable("Wayland capture is not active.")
         self.session.check()
         try:
-            box = region_box(region, self.session.logical_size)
             deadline = time.monotonic() + self.timeout
             cutoff = self.source.running_time()
             while time.monotonic() < deadline:
@@ -220,10 +254,15 @@ class WaylandCapture:
                     continue
                 if time.monotonic() >= deadline:
                     break
+                point = self.source.cursor if require_cursor else None
+                if require_cursor and point is None:
+                    continue
                 self.session.check()
                 self.last_timestamp = timestamp
-                return image.crop(box) if box is not None else image.copy()
-            raise DesktopUnavailable("No fresh Wayland screen frame received before timeout.")
+                return image, point
+            raise DesktopUnavailable(
+                "No fresh Wayland cursor metadata received; move the pointer and retry."
+                if require_cursor else "No fresh Wayland screen frame received before timeout.")
         except BaseException:
             # A failed capture is fatal to combined input/capture execution.
             self.session.broken = True

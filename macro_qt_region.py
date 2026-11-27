@@ -8,10 +8,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import Qt, QRect, QPoint, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QCursor
+from PySide6.QtGui import QColor, QPainter, QPen, QCursor, QImage
 from PySide6.QtWidgets import QWidget, QApplication
 
-from macro_platform import get_automation
+from macro_platform import DesktopUnavailable, get_automation
 
 
 def normalized_region(start, end):
@@ -54,16 +54,23 @@ class RegionOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        self._paint_background(painter)
         painter.fillRect(self.rect(), QColor(10, 20, 35, 100))
         if self.start is not None and self.end is not None:
             rect = QRect(self.start, self.end).normalized()
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            painter.fillRect(rect, Qt.GlobalColor.transparent)
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            self._paint_selection(painter, rect)
             painter.setPen(QPen(QColor(94, 183, 255), 2))
             painter.drawRect(rect)
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(20, 32, "Drag to select a screen region · Esc to cancel")
+
+    def _paint_background(self, painter):
+        pass
+
+    def _paint_selection(self, painter, rect):
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(rect, Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
     @staticmethod
     def _pointer_pixel():
@@ -72,10 +79,13 @@ class RegionOverlay(QWidget):
         x, y = get_automation().position()
         return QPoint(int(x), int(y))
 
+    def _event_pixel(self, event):
+        return self._pointer_pixel()
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             try:
-                self.start_native = self._pointer_pixel()
+                self.start_native = self._event_pixel(event)
             except Exception:
                 self.cancelled.emit()
                 return
@@ -93,7 +103,7 @@ class RegionOverlay(QWidget):
             return
         self.end = event.position().toPoint()
         try:
-            end_native = self._pointer_pixel()
+            end_native = self._event_pixel(event)
         except Exception:
             self.cancelled.emit()
             return
@@ -151,3 +161,76 @@ class RegionPicker:
         self._close()
         if notify and self._cancelled:
             self._cancelled()
+
+
+class WaylandRegionOverlay(RegionOverlay):
+    """Pixel-exact fullscreen region overlay; Mutter obscures live transparency."""
+
+    def __init__(self, screen, size, image):
+        if image.size != size:
+            raise DesktopUnavailable("Captured screen dimensions differ from the selection monitor.")
+        super().__init__(screen)
+        self.expected_size = size
+        self.closing = False
+        rgb = image.convert("RGB")
+        pixels = rgb.tobytes()
+        self.background = QImage(pixels, rgb.width, rgb.height, rgb.width * 3,
+                                 QImage.Format.Format_RGB888).copy()
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _paint_background(self, painter):
+        # No fitting, resampling, margins or window decorations. Draw 1:1.
+        painter.fillRect(self.rect(), Qt.GlobalColor.black)
+        painter.drawImage(QPoint(0, 0), self.background)
+
+    def _paint_selection(self, painter, rect):
+        # Reveal original pixels instead of clearing to Mutter's black backing.
+        painter.drawImage(rect, self.background, rect)
+
+    def _event_pixel(self, event):
+        if (not self.isFullScreen() or self.devicePixelRatioF() != 1 or
+                (self.width(), self.height()) != self.expected_size or
+                self.windowHandle() is None or
+                self.windowHandle().screen() != self.screen):
+            raise DesktopUnavailable("Fullscreen selection geometry does not match the Wayland monitor.")
+        point = event.position().toPoint()
+        if not self.rect().contains(point):
+            raise DesktopUnavailable("Selection is outside the authorized monitor.")
+        return point
+
+    def closeEvent(self, event):
+        event.accept()
+        if not self.closing:
+            self.closing = True
+            self.cancelled.emit()
+
+
+class WaylandRegionPicker(RegionPicker):
+    """Select a region from a native-size, undecorated desktop overlay."""
+
+    def __init__(self, screen, size, image, selected, cancelled):
+        self._selected = selected
+        self._cancelled = cancelled
+        overlay = WaylandRegionOverlay(screen, size, image)
+        overlay.selected.connect(self._finish)
+        overlay.cancelled.connect(self.cancel)
+        self.overlays = [overlay]
+
+    def show(self):
+        for overlay in self.overlays:
+            overlay.showFullScreen()
+            overlay.activateWindow()
+            overlay.setFocus()
+
+    def _close(self):
+        for overlay in self.overlays:
+            overlay.closing = True
+            overlay.hide()
+        super()._close()
+
+    def reject(self):
+        self.cancel()

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 from macro_model import Action
 from macro_qt_properties import PropertiesPanel
 from macro_qt_region import (RegionOverlay, RegionPicker, normalized_region,
-                             save_reference_capture)
+                             save_reference_capture, WaylandRegionOverlay)
 from macro_qt_workflow import WorkflowTree
 from macro_qt import MacroWindow
 from qt_test_helpers import close_test_window
@@ -55,6 +55,38 @@ class RegionUITests(unittest.TestCase):
             self.assertEqual(selected, [(400, 210, 60, 40)])
         finally:
             overlay.close()
+
+    def test_wayland_region_uses_fullscreen_local_coordinates(self):
+        class Mouse:
+            def __init__(self, x, y):
+                self.point = QPointF(x, y)
+            def button(self):
+                return Qt.MouseButton.LeftButton
+            def position(self):
+                return self.point
+
+        screen = QApplication.primaryScreen()
+        size = (screen.geometry().width(), screen.geometry().height())
+        overlay = WaylandRegionOverlay(screen, size, Image.new('RGB', size, 'red'))
+        selected = []
+        overlay.selected.connect(lambda *rect: selected.append(rect))
+        try:
+            overlay.showFullScreen()
+            app.processEvents()
+            with patch("macro_qt_region.get_automation",
+                       side_effect=AssertionError("legacy pointer queried")):
+                overlay.mousePressEvent(Mouse(50, 60))
+                overlay.mouseReleaseEvent(Mouse(10, 20))
+            self.assertEqual(selected, [(10, 20, 40, 40)])
+        finally:
+            overlay.closing = True
+            overlay.close()
+
+    def test_wayland_region_rejects_mismatched_image_size(self):
+        from macro_platform import DesktopUnavailable
+        with self.assertRaisesRegex(DesktopUnavailable, "dimensions"):
+            WaylandRegionOverlay(QApplication.primaryScreen(), (20, 20),
+                                 Image.new("RGB", (19, 20)))
 
     def test_inspector_draw_button_populates_fields_and_saves(self):
         panel = PropertiesPanel()

@@ -14,7 +14,8 @@ from macro_wayland_automation import (WaylandAutomation, key_symbol, text_symbol
 
 
 class FakeSession:
-    def __init__(self, app_id, stopped):
+    def __init__(self, app_id, stopped, *, cursor_mode=1):
+        self.cursor_mode = cursor_mode
         self.stopped = stopped
         self.logical_size = (20, 10)
         self.held = []
@@ -77,6 +78,7 @@ class FakeCapture:
     def __init__(self, session):
         self.session = session
         self.active = False
+        self.observed_pointer = (1, 1)
 
     def __enter__(self):
         self.active = True
@@ -86,6 +88,10 @@ class FakeCapture:
         self.session.check()
         if not self.active:
             raise DesktopUnavailable("Capture inactive")
+
+    def pointer_sample(self):
+        self.check()
+        return self.observed_pointer, (0, 128, 0)
 
     def screenshot(self, region=None):
         self.check()
@@ -150,15 +156,32 @@ class AdapterTests(unittest.TestCase):
                 adapter.moveTo(1, 1)
         self.assertNotIn(("move", 1, 1), adapter.session.events)
 
-    def test_timed_move_requires_known_start(self):
+    def test_first_timed_move_uses_observed_start(self):
         adapter = backend(PlaybackGate())
         with adapter:
-            with self.assertRaisesRegex(DesktopUnavailable, "immediate Move"):
-                adapter.moveTo(5, 5, duration=.02)
-            adapter.moveTo(1, 1)
+            self.assertEqual(adapter.session.cursor_mode, 4)
+            adapter.capture.observed_pointer = (1, 1)
             adapter.moveTo(5, 5, duration=.04)
-        self.assertIn(("move", 3.0, 3.0), adapter.session.events)
-        self.assertIn(("move", 5.0, 5.0), adapter.session.events)
+        self.assertEqual([e for e in adapter.session.events if e[0] == "move"],
+                         [("move", 3.0, 3.0), ("move", 5.0, 5.0)])
+
+    def test_timed_move_observes_pointer_again_after_previous_command(self):
+        adapter = backend(PlaybackGate())
+        with adapter:
+            adapter.moveTo(1, 1)
+            adapter.capture.observed_pointer = (7, 3)
+            adapter.moveTo(11, 7, duration=.04)
+        self.assertEqual([e for e in adapter.session.events if e[0] == "move"],
+                         [("move", 1, 1), ("move", 9.0, 5.0), ("move", 11.0, 7.0)])
+
+    def test_missing_cursor_metadata_never_moves(self):
+        adapter = backend(PlaybackGate())
+        with adapter:
+            adapter.capture.pointer_sample = Mock(
+                side_effect=DesktopUnavailable("No fresh cursor metadata"))
+            with self.assertRaisesRegex(DesktopUnavailable, "cursor metadata"):
+                adapter.moveTo(5, 5, duration=.04)
+        self.assertFalse(any(e[0] == "move" for e in adapter.session.events))
 
     def test_pause_with_held_key_aborts(self):
         gate = PlaybackGate()
@@ -206,6 +229,25 @@ class AdapterTests(unittest.TestCase):
 
 
 class IntegrationTests(unittest.TestCase):
+    def test_workflow_starting_with_timed_move(self):
+        outcomes = []
+        adapters = []
+
+        def factory(gate):
+            adapter = backend(gate)
+            adapters.append(adapter)
+            return adapter
+
+        runner = MacroExecutor(
+            [Action(kind="click", x=2, y=3, enabled=False),
+             Action(kind="move", x=5, y=5, move_duration=.04)],
+            1, 0, lambda *a: None, lambda *a: outcomes.append(a),
+            wayland_factory=factory)
+        runner.run()
+        self.assertTrue(outcomes[0][0], outcomes)
+        self.assertEqual([e for e in adapters[0].session.events if e[0] == "move"],
+                         [("move", 3.0, 3.0), ("move", 5.0, 5.0)])
+
     def test_runtime_uses_managed_adapter_and_closes(self):
         outcomes = []
         adapters = []

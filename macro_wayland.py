@@ -190,9 +190,16 @@ class WaylandSession:
     persistence, automatic authorization or global shortcut registration.
     """
 
-    def __init__(self, app_id, stopped, *, portal_factory=GioPortal):
+    def __init__(self, app_id, stopped, *, portal_factory=GioPortal, devices=DEVICES,
+                 cursor_mode=1):
         if not isinstance(app_id, str) or not app_id.strip():
             raise ValueError("An installed desktop application ID is required.")
+        if type(devices) is not int or devices not in (0, 2, DEVICES):
+            raise ValueError("Unsupported Wayland session device scope.")
+        if type(cursor_mode) is not int or cursor_mode not in (1, 4):
+            raise ValueError("Unsupported Wayland cursor mode.")
+        self.cursor_mode = cursor_mode
+        self.devices = devices
         self.app_id = app_id
         self.stopped = stopped
         self.portal_factory = portal_factory
@@ -241,18 +248,22 @@ class WaylandSession:
         token = "s" + uuid.uuid4().hex
         self.handle = p.path("session", token)
         p.subscribe(SESSION, "Closed", self.handle, self._on_closed)
-        result = self._request(REMOTE, "CreateSession", "(a{sv})", (),
+        interface = REMOTE if self.devices else SCREEN
+        result = self._request(interface, "CreateSession", "(a{sv})", (),
                                {"session_handle_token": v("s", token)})
         if result.get("session_handle") != self.handle:
             raise DesktopUnavailable("Unexpected Wayland portal session handle.")
-        self._request(REMOTE, "SelectDevices", "(oa{sv})", (self.handle,),
-                      {"types": v("u", DEVICES)})
+        if self.devices:
+            self._request(REMOTE, "SelectDevices", "(oa{sv})", (self.handle,),
+                          {"types": v("u", self.devices)})
         self._request(SCREEN, "SelectSources", "(oa{sv})", (self.handle,),
                       {"types": v("u", 1), "multiple": v("b", False),
-                       "cursor_mode": v("u", 1)})
-        result = self._request(REMOTE, "Start", "(osa{sv})", (self.handle, ""))
-        if result.get("devices", 0) & DEVICES != DEVICES:
-            raise DesktopUnavailable("Keyboard and pointer permission are both required.")
+                       "cursor_mode": v("u", self.cursor_mode)})
+        result = self._request(interface, "Start", "(osa{sv})", (self.handle, ""))
+        if self.devices and result.get("devices", 0) & self.devices != self.devices:
+            raise DesktopUnavailable(
+                "Keyboard and pointer permission are both required." if self.devices == DEVICES
+                else "Pointer permission is required.")
         streams = result.get("streams", [])
         if len(streams) != 1:
             raise DesktopUnavailable("Select exactly one monitor for Wayland automation.")
@@ -298,7 +309,12 @@ class WaylandSession:
             self.broken = True
             raise
 
+    def _require_device(self, device):
+        if not self.devices & device:
+            raise DesktopUnavailable("Input is not authorized for this Wayland session.")
+
     def _send(self, method, signature, args):
+        self._require_device(2)
         self.check()
         self._dispatch(method, signature, args)
 
@@ -327,6 +343,7 @@ class WaylandSession:
         return method, "(oa{sv}iu)", (code, state)
 
     def _change_held(self, kind, code, pressed):
+        self._require_device(1 if kind == "key" else 2)
         self.check()
         item = (kind, code)
         if pressed:
