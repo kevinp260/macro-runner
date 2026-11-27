@@ -1639,21 +1639,29 @@ class MacroWindow(QMainWindow):
         self._update_controls()
         return True
 
+    def _restore_selection_window(self, *, activate=True):
+        state = self._screen_selection_restore
+        self._screen_selection_restore = None
+        if state is None:
+            return
+        if state & Qt.WindowState.WindowFullScreen:
+            self.showFullScreen()
+        elif state & Qt.WindowState.WindowMaximized:
+            self.showMaximized()
+        else:
+            self.showNormal()
+        if activate:
+            self.raise_()
+            self.activateWindow()
+
     def _end_screen_selection(self, restore=True):
         if not self._screen_selection_active:
             return
-        state = self._screen_selection_restore
         self._screen_selection_active = False
-        self._screen_selection_restore = None
-        if restore and state is not None:
-            if state & Qt.WindowState.WindowFullScreen:
-                self.showFullScreen()
-            elif state & Qt.WindowState.WindowMaximized:
-                self.showMaximized()
-            else:
-                self.showNormal()
-            self.raise_()
-            self.activateWindow()
+        if restore:
+            self._restore_selection_window()
+        else:
+            self._screen_selection_restore = None
         self._update_controls()
 
     def _pick_region(self):
@@ -1922,6 +1930,10 @@ class MacroWindow(QMainWindow):
             if image is None:
                 return None
             guard.check()
+            # The desktop is already captured. Remap the editor BEFORE opening
+            # its modal child so Wayland has a visible transient parent to
+            # return focus to. Keep the editor busy until the picker closes.
+            self._restore_selection_window(activate=False)
             picker = SnapshotPicker(image, point_mode, self)
             self._wayland_picker = picker
             try:
@@ -1930,8 +1942,12 @@ class MacroWindow(QMainWindow):
                 guard.check()
                 return image, picker.selection
             finally:
+                picker.hide()
                 self._wayland_picker = None
                 picker.deleteLater()
+                if self.isVisible() and not self.isMinimized():
+                    # Activation is a request; the compositor decides.
+                    self.activateWindow()
         finally:
             if guard is not None:
                 guard.close()
