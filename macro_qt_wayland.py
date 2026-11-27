@@ -163,6 +163,7 @@ class SnapshotCanvas(QWidget):
 
     def resizeEvent(self, event):
         self.start = self.end = None
+        self.drawn = QRect()
         super().resizeEvent(event)
 
     def _point(self, position):

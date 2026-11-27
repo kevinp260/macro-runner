@@ -1398,10 +1398,10 @@ class MacroWindow(QMainWindow):
             return
         QMessageBox.information(
             self, "Image click point preview",
-            f"Matched image center: ({match[0]}, {match[1]})\\n"
-            f"Offset: ({action.image_offset_x:+}, {action.image_offset_y:+}) px\\n"
-            f"Computed click point: ({x}, {y})\\n"
-            f"Similarity: {match[2]:.1%}\\n\\n"
+            f"Matched image center: ({match[0]}, {match[1]})\n"
+            f"Offset: ({action.image_offset_x:+}, {action.image_offset_y:+}) px\n"
+            f"Computed click point: ({x}, {y})\n"
+            f"Similarity: {match[2]:.1%}\n\n"
             "No click was sent. If the target is obscured by MacroRunner "
             "or another window, adjust visibility before checking again.")
 
@@ -1444,7 +1444,7 @@ class MacroWindow(QMainWindow):
             QMessageBox.warning(self, "OCR preview unavailable", str(exc))
             return
         dialog = OCRPreviewDialog(action, self.window_target, parent=self,
-                                  capture_factory=factory)
+                                  **({"capture_factory": factory} if factory is not None else {}))
         self.ocr_preview = dialog
         dialog.finished.connect(self._ocr_preview_closed)
         self._set_status("Live local OCR preview (read-only).")
@@ -1542,7 +1542,7 @@ class MacroWindow(QMainWindow):
             QMessageBox.warning(self, "Monitoring preview unavailable", str(exc))
             return
         dialog = RegionMonitorDialog(action, window_target=self.window_target,
-                                     capture_factory=factory)
+                                     **({"capture_factory": factory} if factory is not None else {}))
         self.region_monitor = dialog
         self._monitor_restore_state = None
         dialog.finished.connect(self._monitor_closed)
@@ -1596,8 +1596,11 @@ class MacroWindow(QMainWindow):
             return
         try:
             if wayland_trial_enabled():
-                result = self._wayland_editor_operation(
-                    lambda guard, stopped: (guard.test_move(stopped, x, y), True)[1])
+                def move(guard, stopped):
+                    guard.test_move(stopped, x, y)
+                    return True
+
+                result = self._wayland_editor_operation(move)
                 if result:
                     self._set_status(f"Moved pointer to ({x}, {y}).")
                 return
@@ -1871,6 +1874,8 @@ class MacroWindow(QMainWindow):
         try:
             QTimer.singleShot(150, worker.start)
             loop.exec()
+            # Closing the parent is refused while the worker is active. Do
+            # not consume a result if cancellation raced with completion.
             if worker.stopped.is_set():
                 return None
             if worker.error is not None:

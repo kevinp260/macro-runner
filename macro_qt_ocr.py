@@ -3,7 +3,7 @@ import threading
 from contextlib import ExitStack
 
 from PIL import ImageDraw
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout
 
@@ -97,6 +97,7 @@ class OCRPreviewDialog(QDialog):
         self.screenshot = screenshot
         self.capture_factory = capture_factory
         self.worker = None
+        self._close_requested = False
         self.setWindowTitle("Live offline OCR preview")
         self.resize(730, 480)
         layout = QVBoxLayout(self)
@@ -125,6 +126,8 @@ class OCRPreviewDialog(QDialog):
                                        capture_factory=self.capture_factory)
         self.worker.frame.connect(self._frame)
         self.worker.error.connect(self._error)
+        if self.capture_factory is not None:
+            self.worker.finished.connect(self._wayland_worker_finished)
         self.worker.start()
 
     def _frame(self, data):
@@ -141,7 +144,28 @@ class OCRPreviewDialog(QDialog):
     def _error(self, message):
         self.status.setText(message)
 
+    def _wayland_worker_finished(self):
+        worker, self.worker = self.worker, None
+        if worker is not None:
+            worker.deleteLater()
+        if self._close_requested:
+            QTimer.singleShot(0, self.close)
+
+    def reject(self):
+        if self.capture_factory is not None and self.worker is not None:
+            self._close_requested = True
+            self.worker.stop()
+            self.status.setText("Stopping Wayland capture…")
+            return
+        super().reject()
+
     def closeEvent(self, event):
+        if self.capture_factory is not None and self.worker is not None:
+            self._close_requested = True
+            self.worker.stop()
+            self.status.setText("Stopping Wayland capture…")
+            event.ignore()
+            return
         if self.worker is not None:
             self.worker.stop()
             if not self.worker.wait(12000):
