@@ -35,15 +35,18 @@ class WaylandRunGuard(QObject):
         self.screen, self.size = single_screen()
         self.invalidated = threading.Event()
         app = QApplication.instance()
-        self.signals = [app.screenAdded, app.screenRemoved,
-                        self.screen.geometryChanged,
-                        self.screen.logicalDotsPerInchChanged,
-                        self.screen.physicalDotsPerInchChanged]
+        # Topology changes invalidate immediately. DPI notifications can
+        # occur on fullscreen transitions even without a coordinate change.
+        self.signals = [(app.screenAdded, self.invalidate),
+                        (app.screenRemoved, self.invalidate),
+                        (self.screen.geometryChanged, self._check),
+                        (self.screen.logicalDotsPerInchChanged, self._check),
+                        (self.screen.physicalDotsPerInchChanged, self._check)]
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self._check)
-        for signal in self.signals:
-            signal.connect(self.invalidate)
+        for signal, callback in self.signals:
+            signal.connect(callback)
         self.timer.start()
 
     def invalidate(self, *args):
@@ -51,7 +54,7 @@ class WaylandRunGuard(QObject):
             self.invalidated.set()
             self.geometry_invalidated.emit()
 
-    def _check(self):
+    def _check(self, *args):
         try:
             screen, size = single_screen()
             if screen != self.screen or size != self.size:
@@ -104,9 +107,9 @@ class WaylandRunGuard(QObject):
 
     def close(self):
         self.timer.stop()
-        for signal in self.signals:
+        for signal, callback in self.signals:
             try:
-                signal.disconnect(self.invalidate)
+                signal.disconnect(callback)
             except (RuntimeError, TypeError):
                 pass
         self.signals.clear()

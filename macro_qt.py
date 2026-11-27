@@ -1928,6 +1928,23 @@ class MacroWindow(QMainWindow):
         guard = picker = None
         try:
             guard = WaylandRunGuard(self)
+
+            def grab(stopped):
+                with guard.capture_factory(stopped) as screenshot:
+                    # Let the permission dialog disappear before sampling.
+                    if stopped.wait(.18):
+                        raise RuntimeError("Stopped")
+                    return screenshot()
+
+            image = self._wayland_worker_result(grab)
+            if image is None:
+                return None
+            guard.check()
+            if image.size != guard.size:
+                raise DesktopUnavailable("Captured screen dimensions differ from the selection monitor.")
+            # The target is captured now; restore the editor behind the
+            # standalone fullscreen surface, not a child of a hidden window.
+            self._restore_selection_window(activate=False)
             loop = QEventLoop(self)
             region = []
             errors = []
@@ -1940,7 +1957,7 @@ class MacroWindow(QMainWindow):
                     region.extend(rect)
                     loop.quit()
 
-            picker = WaylandRegionPicker(guard.screen, guard.size, finish, finish)
+            picker = WaylandRegionPicker(guard.screen, guard.size, image, finish, finish)
             self._wayland_picker = picker
             guard.geometry_invalidated.connect(picker.reject)
             self._set_status("Drag to select a region · Esc to cancel.")
@@ -1967,19 +1984,10 @@ class MacroWindow(QMainWindow):
             if not capture:
                 return selected
 
-            # No overlay or editor restoration before sampling the selected
-            # desktop area. The read-only permission prompt is now shown.
-            picker.cancel(notify=False)
-            self._wayland_picker = None
-
-            def grab(stopped):
-                with guard.capture_factory(stopped) as screenshot:
-                    # Allow the permission dialog and overlay to disappear.
-                    if stopped.wait(.18):
-                        raise RuntimeError("Stopped")
-                    return screenshot(region=selected)
-
-            return self._wayland_worker_result(grab)
+            # Crop the exact frame the user selected. Never take a second
+            # screenshot which could include the restored editor or prompt.
+            x, y, width, height = selected
+            return image.crop((x, y, x + width, y + height))
         finally:
             if picker is not None:
                 if guard is not None:
@@ -1989,6 +1997,8 @@ class MacroWindow(QMainWindow):
             if guard is not None:
                 guard.close()
             self._end_screen_selection()
+            if self.isVisible() and not self.isMinimized():
+                self.activateWindow()
 
     def _start_hotkeys(self):
         try:

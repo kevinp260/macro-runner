@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import Qt, QRect, QPoint, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QCursor
+from PySide6.QtGui import QColor, QPainter, QPen, QCursor, QImage
 from PySide6.QtWidgets import QWidget, QApplication
 
 from macro_platform import DesktopUnavailable, get_automation
@@ -54,16 +54,23 @@ class RegionOverlay(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        self._paint_background(painter)
         painter.fillRect(self.rect(), QColor(10, 20, 35, 100))
         if self.start is not None and self.end is not None:
             rect = QRect(self.start, self.end).normalized()
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            painter.fillRect(rect, Qt.GlobalColor.transparent)
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+            self._paint_selection(painter, rect)
             painter.setPen(QPen(QColor(94, 183, 255), 2))
             painter.drawRect(rect)
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(20, 32, "Drag to select a screen region · Esc to cancel")
+
+    def _paint_background(self, painter):
+        pass
+
+    def _paint_selection(self, painter, rect):
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.fillRect(rect, Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
     @staticmethod
     def _pointer_pixel():
@@ -157,18 +164,32 @@ class RegionPicker:
 
 
 class WaylandRegionOverlay(RegionOverlay):
-    """Live fullscreen overlay on the validated single 1:1 Wayland output."""
+    """Pixel-exact fullscreen region overlay; Mutter obscures live transparency."""
 
-    def __init__(self, screen, size):
+    def __init__(self, screen, size, image):
+        if image.size != size:
+            raise DesktopUnavailable("Captured screen dimensions differ from the selection monitor.")
         super().__init__(screen)
         self.expected_size = size
         self.closing = False
-        # A normal fullscreen surface, not an arbitrarily positioned tool
-        # window. Qt Wayland/compositor negotiate the actual fullscreen size.
+        rgb = image.convert("RGB")
+        pixels = rgb.tobytes()
+        self.background = QImage(pixels, rgb.width, rgb.height, rgb.width * 3,
+                                 QImage.Format.Format_RGB888).copy()
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _paint_background(self, painter):
+        # No fitting, resampling, margins or window decorations. Draw 1:1.
+        painter.fillRect(self.rect(), Qt.GlobalColor.black)
+        painter.drawImage(QPoint(0, 0), self.background)
+
+    def _paint_selection(self, painter, rect):
+        # Reveal original pixels instead of clearing to Mutter's black backing.
+        painter.drawImage(rect, self.background, rect)
 
     def _event_pixel(self, event):
         if (not self.isFullScreen() or self.devicePixelRatioF() != 1 or
@@ -189,12 +210,12 @@ class WaylandRegionOverlay(RegionOverlay):
 
 
 class WaylandRegionPicker(RegionPicker):
-    """Select a live desktop region using only events delivered to our overlay."""
+    """Select a region from a native-size, undecorated desktop overlay."""
 
-    def __init__(self, screen, size, selected, cancelled):
+    def __init__(self, screen, size, image, selected, cancelled):
         self._selected = selected
         self._cancelled = cancelled
-        overlay = WaylandRegionOverlay(screen, size)
+        overlay = WaylandRegionOverlay(screen, size, image)
         overlay.selected.connect(self._finish)
         overlay.cancelled.connect(self.cancel)
         self.overlays = [overlay]

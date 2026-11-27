@@ -49,6 +49,10 @@ class WaylandGeometryTests(unittest.TestCase):
             guard = WaylandRunGuard(None)
             try:
                 self.assertFalse(guard.invalidated.is_set())
+                # A DPI notification alone is not a coordinate change.
+                callback = screen.logicalDotsPerInchChanged.connect.call_args.args[0]
+                callback(96.0)
+                self.assertFalse(guard.invalidated.is_set())
                 screen.geometry = lambda: QRect(0, 0, 1600, 900)
                 guard._check()
                 self.assertTrue(guard.invalidated.is_set())
@@ -131,14 +135,15 @@ class EditorTests(unittest.TestCase):
 
 
 class RegionLifecycleTests(unittest.TestCase):
-    def test_live_region_selection_restores_editor_and_only_captures_on_request(self):
+    def test_region_selection_uses_one_unscaled_frame_and_restores_editor(self):
         from macro_qt import MacroWindow
         from qt_test_helpers import close_test_window
 
         with patch.object(MacroWindow, "_start_hotkeys"):
             window = MacroWindow()
         original_mode = window.settings.value("selection_window_mode")
-        image = Image.new("RGB", (8, 6))
+        image = Image.new("RGB", (20, 20), "red")
+        image.putpixel((2, 3), (0, 128, 0))
         rect = (2, 3, 8, 6)
         try:
             for mode in ("hide", "minimize", "show"):
@@ -152,8 +157,9 @@ class RegionLifecycleTests(unittest.TestCase):
                         guard.size = (20, 20)
 
                         class Picker:
-                            def __init__(self, screen, size, selected, cancelled):
+                            def __init__(self, screen, size, frame, selected, cancelled):
                                 self.selected, self.cancelled = selected, cancelled
+                                observations.append(("frame", frame is image, size))
                                 self.closed = False
 
                             def show(self):
@@ -174,8 +180,8 @@ class RegionLifecycleTests(unittest.TestCase):
                                 self.cancel()
 
                         def capture(operation):
-                            observations.append(("capture", window._wayland_picker,
-                                                 window._busy()))
+                            observations.append(("capture", window.isVisible(),
+                                                 window.isMinimized(), window._busy()))
                             return image
 
                         with patch.object(window, "_require_wayland_editor"), patch(
@@ -185,13 +191,14 @@ class RegionLifecycleTests(unittest.TestCase):
                             result = window._wayland_select_region(capture=choice == "capture")
 
                         self.assertEqual(observations[0],
-                                         ("overlay", mode != "hide", mode == "minimize", True))
+                                         ("capture", mode != "hide", mode == "minimize", True))
+                        self.assertEqual(observations[1], ("frame", True, (20, 20)))
+                        self.assertEqual(observations[2], ("overlay", True, False, True))
+                        grab.assert_called_once()
                         if choice == "capture":
-                            self.assertEqual(observations[1], ("capture", None, True))
-                            grab.assert_called_once()
-                            self.assertIs(result, image)
+                            self.assertEqual(result.size, (8, 6))
+                            self.assertEqual(result.getpixel((0, 0)), (0, 128, 0))
                         else:
-                            grab.assert_not_called()
                             self.assertEqual(result, rect if choice == "select" else None)
                         self.assertIsNone(window._wayland_picker)
                         self.assertTrue(window.isVisible())

@@ -67,7 +67,7 @@ class RegionUITests(unittest.TestCase):
 
         screen = QApplication.primaryScreen()
         size = (screen.geometry().width(), screen.geometry().height())
-        overlay = WaylandRegionOverlay(screen, size)
+        overlay = WaylandRegionOverlay(screen, size, Image.new('RGB', size, 'red'))
         selected = []
         overlay.selected.connect(lambda *rect: selected.append(rect))
         try:
@@ -81,6 +81,12 @@ class RegionUITests(unittest.TestCase):
         finally:
             overlay.closing = True
             overlay.close()
+
+    def test_wayland_region_rejects_mismatched_image_size(self):
+        from macro_platform import DesktopUnavailable
+        with self.assertRaisesRegex(DesktopUnavailable, "dimensions"):
+            WaylandRegionOverlay(QApplication.primaryScreen(), (20, 20),
+                                 Image.new("RGB", (19, 20)))
 
     def test_inspector_draw_button_populates_fields_and_saves(self):
         panel = PropertiesPanel()
